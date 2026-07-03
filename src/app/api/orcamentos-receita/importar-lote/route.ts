@@ -14,14 +14,12 @@ export async function POST(req: NextRequest) {
     const file = form.get('file') as File | null
     if (!file) return NextResponse.json({ error: 'Arquivo obrigatório' }, { status: 400 })
 
-    const arrayBuffer = await file.arrayBuffer()
     const workbook = new ExcelJS.Workbook()
-    await workbook.xlsx.load(arrayBuffer)
+    await workbook.xlsx.load(await file.arrayBuffer())
 
     const sheet = workbook.worksheets[0]
     if (!sheet) return NextResponse.json({ error: 'Planilha não encontrada' }, { status: 400 })
 
-    // Parse header row (case-insensitive)
     const headers: string[] = []
     sheet.getRow(1).eachCell((cell, colNum) => {
       headers[colNum] = String(cell.value ?? '').trim().toLowerCase()
@@ -32,22 +30,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Colunas faltando: ${missing.join(', ')}` }, { status: 400 })
     }
 
-    // Load valid empresas and categorias from categorias_receita
-    const { data: cats } = await supabaseServer.from('categorias_receita').select('empresa, categoria')
-    const empresasValidas = new Set((cats ?? []).map(c => c.empresa as string))
-    const catsPorEmpresa = new Map<string, Set<string>>()
-    for (const c of cats ?? []) {
-      if (!catsPorEmpresa.has(c.empresa)) catsPorEmpresa.set(c.empresa, new Set())
-      catsPorEmpresa.get(c.empresa)!.add(c.categoria)
-    }
-
-    const today = new Date().toISOString().split('T')[0]
-    const invalidos: string[] = []
-    const inserts: object[] = []
+    const rows: Array<{
+      empresa: string; categoria: string; mes: number; ano: number
+      valor_orcamento: number; observacao: string | null
+    }> = []
 
     sheet.eachRow((row, rowNum) => {
       if (rowNum === 1) return
-
       const obj: Record<string, unknown> = {}
       row.eachCell((cell, colNum) => {
         if (headers[colNum]) obj[headers[colNum]] = cell.value
@@ -55,63 +44,57 @@ export async function POST(req: NextRequest) {
 
       const empresa = String(obj['empresa'] ?? '').trim()
       const categoria = String(obj['categoria'] ?? '').trim()
-      if (!empresa || !categoria) return
-
-      let mes = parseInt(String(obj['mês'] ?? ''))
-      if (isNaN(mes) || mes < 1 || mes > 12) {
-        invalidos.push(`Linha ${rowNum}: Mês inválido (${obj['mês']})`)
-        return
-      }
-
+      const mes = parseInt(String(obj['mês'] ?? obj['mes'] ?? ''))
       const ano = parseInt(String(obj['ano'] ?? ''))
-      if (isNaN(ano) || ano < 2025 || ano > 2050) {
-        invalidos.push(`Linha ${rowNum}: Ano inválido (${obj['ano']})`)
-        return
-      }
-
       const valor = parseFloat(String(obj['valor do orçamento'] ?? '0'))
-      if (!valor || valor <= 0) {
-        invalidos.push(`Linha ${rowNum}: Valor inválido (${obj['valor do orçamento']})`)
-        return
-      }
 
-      if (!empresasValidas.has(empresa)) {
-        invalidos.push(`Linha ${rowNum}: Empresa '${empresa}' não encontrada`)
-        return
-      }
+      if (!empresa || !categoria || isNaN(mes) || isNaN(ano) || !valor) return
+      if (mes < 1 || mes > 12) return
+      if (ano < 2025 || ano > 2050) return
+      if (valor <= 0) return
 
-      if (!catsPorEmpresa.get(empresa)?.has(categoria)) {
-        invalidos.push(`Linha ${rowNum}: Categoria '${categoria}' não encontrada para empresa '${empresa}'`)
-        return
-      }
-
-      const observacao = obj['observação'] ? String(obj['observação']).trim() : null
-
-      inserts.push({
-        empresa,
-        categoria,
-        mes,
-        ano,
-        valor_orcamento: valor,
-        data_criacao: today,
-        usuario_criador: session.username,
-        observacao: observacao || null,
+      rows.push({
+        empresa, categoria, mes, ano, valor_orcamento: valor,
+        observacao: obj['observação'] ? String(obj['observação']).trim() || null : null,
       })
     })
 
-    if (invalidos.length > 0 && inserts.length === 0) {
-      return NextResponse.json({ error: invalidos.join('; ') }, { status: 400 })
+    if (rows.length === 0) {
+      return NextResponse.json({ error: 'Nenhuma linha válida encontrada' }, { status: 400 })
     }
 
-    if (inserts.length === 0) {
-      return NextResponse.json({ error: 'Nenhum registro válido para importar' }, { status: 400 })
+    // Validate empresas
+    const empresasSet = [...new Set(rows.map(r => r.empresa))]
+    const { data: empData } = await supabaseServer
+      .from('categorias_receita').select('empresa, categoria')
+    const catValidas = new Set((empData ?? []).map(r => `${r.empresa}||${r.categoria}`))
+
+    const invalid = rows.filter(r => !catValidas.has(`${r.empresa}||${r.categoria}`))
+      .map(r => `${r.categoria} (${r.empresa})`)
+    if (invalid.length > 0) {
+      return NextResponse.json({
+        error: `Empresa/Categoria não encontradas: ${[...new Set(invalid)].join(', ')}`
+      }, { status: 400 })
     }
 
-    const { error: errIns } = await supabaseServer.from('registro_orcamentos_receita').insert(inserts)
-    if (errIns) throw errIns
+    const today = new Date().toISOString().split('T')[0]
+    const username = session.username ?? 'sistema'
 
-    const warnings = invalidos.length > 0 ? invalidos : undefined
-    return NextResponse.json({ ok: true, count: inserts.length, warnings })
+    const inserts = rows.map(r => ({
+      empresa: r.empresa,
+      categoria: r.categoria,
+      mes: r.mes,
+      ano: r.ano,
+      valor_orcamento: r.valor_orcamento,
+      observacao: r.observacao,
+      data_criacao: today,
+      usuario_criador: username,
+    }))
+
+    const { error } = await supabaseServer.from('registro_orcamentos_receita').insert(inserts)
+    if (error) throw error
+
+    return NextResponse.json({ ok: true, count: rows.length })
   } catch (err) {
     console.error('Importar orçamentos receita error:', err)
     return NextResponse.json({ error: 'Erro ao processar arquivo' }, { status: 500 })
