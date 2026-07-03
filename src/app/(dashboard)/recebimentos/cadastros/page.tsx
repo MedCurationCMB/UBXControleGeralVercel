@@ -20,7 +20,7 @@ interface Cliente {
 
 interface Empresa {
   id: string
-  nome: string | null
+  empresa: string | null
   cnpj: string | null
   endereco: string | null
   email: string | null
@@ -230,7 +230,7 @@ function EmpresasTab() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.from('empresas').select('*').order('nome')
+    const { data } = await supabase.from('empresas').select('*').order('empresa')
     setRows(data ?? [])
     setLoading(false)
   }, [])
@@ -245,16 +245,16 @@ function EmpresasTab() {
     setSaving(true); setError('')
 
     const original = rows.find(r => r.id === editId)
-    const nomeAntigo = original?.nome
-    const nomeNovo = editForm.nome?.trim() || null
+    const nomeAntigo = original?.empresa
+    const nomeNovo = editForm.empresa?.trim() || null
 
-    // Cascade: if nome changed, update categorias_receita references
+    // Cascade: if empresa changed, update categorias_receita references
     if (nomeAntigo && nomeNovo && nomeAntigo !== nomeNovo) {
       await supabase.from('categorias_receita').update({ empresa: nomeNovo }).eq('empresa', nomeAntigo)
     }
 
     const { id: _, ...data } = editForm as Empresa
-    const { error: err } = await supabase.from('empresas').update({ ...data, nome: nomeNovo }).eq('id', editId)
+    const { error: err } = await supabase.from('empresas').update({ ...data, empresa: nomeNovo }).eq('id', editId)
     setSaving(false)
     if (err) { setError(err.message); return }
     setEditId(null); load()
@@ -270,10 +270,10 @@ function EmpresasTab() {
   }
 
   const handleAdd = async () => {
-    if (!addForm.nome?.trim()) { setAddError('Nome é obrigatório'); return }
+    if (!addForm.empresa?.trim()) { setAddError('Nome é obrigatório'); return }
     setAdding(true); setAddError('')
     const { error: err } = await supabase.from('empresas').insert({
-      nome: addForm.nome.trim(),
+      empresa: addForm.empresa.trim(),
       cnpj: addForm.cnpj?.trim() || null,
       endereco: addForm.endereco?.trim() || null,
       email: addForm.email?.trim() || null,
@@ -285,7 +285,7 @@ function EmpresasTab() {
   }
 
   const cols = [
-    { key: 'nome', label: 'Nome' },
+    { key: 'empresa', label: 'Nome' },
     { key: 'cnpj', label: 'CNPJ' },
     { key: 'endereco', label: 'Endereço' },
     { key: 'email', label: 'Email' },
@@ -357,7 +357,7 @@ function EmpresasTab() {
 
       <Confirm open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
         title="Excluir Empresa"
-        message={`Excluir a empresa "${deleteTarget?.nome}"? Isso pode impactar categorias e pedidos vinculados.`}
+        message={`Excluir a empresa "${deleteTarget?.empresa}"? Isso pode impactar categorias e pedidos vinculados.`}
         confirmLabel="Excluir" loading={deleting} />
     </div>
   )
@@ -385,10 +385,10 @@ function CategoriasReceitaTab() {
     setLoading(true)
     const [{ data: cats }, { data: emps }] = await Promise.all([
       supabase.from('categorias_receita').select('*').order('empresa').order('categoria'),
-      supabase.from('empresas').select('nome').order('nome'),
+      supabase.from('empresas').select('empresa').order('empresa'),
     ])
     setRows(cats ?? [])
-    setEmpresas((emps ?? []).map(e => e.nome).filter(Boolean) as string[])
+    setEmpresas((emps ?? []).map(e => e.empresa).filter(Boolean) as string[])
     setLoading(false)
   }, [])
 
