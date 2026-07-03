@@ -309,7 +309,7 @@ function EmpresasTab() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
           {cols.map(c => (
             <div key={c.key}>
-              <label className="label text-xs">{c.label}{c.key === 'nome' ? ' *' : ''}</label>
+              <label className="label text-xs">{c.label}{c.key === 'empresa' ? ' *' : ''}</label>
               <input className="input text-xs" value={(addForm as Record<string, string>)[c.key] ?? ''}
                 onChange={e => af(c.key)(e.target.value)} />
             </div>
