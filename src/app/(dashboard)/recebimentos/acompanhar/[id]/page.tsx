@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import {
-  ArrowLeft, AlertTriangle, RefreshCw, MessageSquare, FileText,
-  Printer, Brain, FileSignature, X, ExternalLink, Upload,
-  CreditCard, Check, Edit2,
+  ArrowLeft, AlertTriangle, RefreshCw,
+  MessageSquare, FileText, Upload, ExternalLink,
+  X, ChevronDown, ChevronUp, CreditCard, Check, Edit2,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import Confirm from '@/components/ui/Confirm'
@@ -18,33 +18,31 @@ interface Pedido {
   data_solicitacao: string; data_autorizacao: string | null; status: string
   cancelado: boolean; usuario_autorizador: string | null
   pedido_status_receita: number | null; arquivo_texto: string | null; analise_texto: string | null
+  arquivos_pdf_ids: string[] | null
 }
 interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string }
 interface Comentario {
   id: number; comentario: string; usuario: string; data_comentario: string
-  anexo_url: string | null; documento_id: number | null
+  tipo_documento: number | null; anexo_id: string | null
 }
 interface Documento {
   id: number; nome_documento: string; anexo_id: string | null; anexo_url: string | null
-  tipo_documento: number | null; tipo_nome?: string; data_upload: string
-  comentario_id: number | null
+  tipo_documento: number | null; tipo_nome?: string; data_upload: string; comentario_id: number | null
 }
 interface TipoDoc { id: number; tipo: string }
 interface Recebimento {
   id: number; pedido_id: number; data_vencimento: string | null; valor_pagar: number
-  data_recebimento: string | null; valor_recebimento: number | null
-  status_pagamento: number | null; tipo_recebimento: number | null
+  data_pagamento: string | null; valor_pagamento: number | null
+  status_pagamento: number | null; tipo_pagamento: number | null; anexo_url: string | null
 }
 interface RecebimentoStatus { id: number; nome_status: string }
 interface TipoRecebimento { id: number; tipos: string }
-interface ModeloContrato { id: number; nome: string; estilo: string }
-interface PedidoStatusReceita { id: number; nome_status: string }
+interface StatusPedido { id: number; nome_status: string }
 
 const fmtMoeda = (v: number | null) =>
   v != null ? Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'
 const fmtData = (d: string | null) =>
   d ? new Date(d.includes('T') ? d : d + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
-const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
 function InfoField({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -57,9 +55,9 @@ function InfoField({ label, value }: { label: string; value: React.ReactNode }) 
 
 // --- Controle de Recebimentos Modal ---
 function ControleRecebimentosModal({
-  open, onClose, pedidoId, username,
+  open, onClose, pedidoId,
 }: {
-  open: boolean; onClose: () => void; pedidoId: number; username: string
+  open: boolean; onClose: () => void; pedidoId: number
 }) {
   const [tab, setTab] = useState<'individual' | 'lote' | 'comprovante'>('individual')
   const [recebimentos, setRecebimentos] = useState<Recebimento[]>([])
@@ -103,6 +101,7 @@ function ControleRecebimentosModal({
 
   const statusMap = Object.fromEntries(statusList.map(s => [s.id, s.nome_status]))
   const tiposMap = Object.fromEntries(tiposList.map(t => [t.id, t.tipos]))
+
   const recsFiltrados = bulkFilterStatus
     ? recebimentos.filter(r => r.status_pagamento === Number(bulkFilterStatus))
     : recebimentos
@@ -115,7 +114,7 @@ function ControleRecebimentosModal({
       pedido_id: pedidoId,
       data_vencimento: dataVenc || null,
       valor_pagar: parseFloat(valorPagar),
-      tipo_recebimento: tipoAdd,
+      tipo_pagamento: tipoAdd,
     })
     setDataVenc(new Date().toISOString().split('T')[0])
     setValorPagar('')
@@ -127,10 +126,10 @@ function ControleRecebimentosModal({
   const startEdit = (r: Recebimento) => {
     setEditId(r.id)
     setEditForm({
-      data_recebimento: r.data_recebimento,
-      valor_recebimento: r.valor_recebimento,
+      data_pagamento: r.data_pagamento,
+      valor_pagamento: r.valor_pagamento,
       status_pagamento: r.status_pagamento,
-      tipo_recebimento: r.tipo_recebimento,
+      tipo_pagamento: r.tipo_pagamento,
     })
   }
 
@@ -162,12 +161,14 @@ function ControleRecebimentosModal({
     fd.append('pagamento_id', String(comprovantePayId))
     fd.append('tipo_documento', '-2')
     fd.append('modulo', 'recebimentos')
-    await fetch('/api/documentos/upload', { method: 'POST', body: fd })
+    const r = await fetch('/api/documentos/upload', { method: 'POST', body: fd })
     setComprovanteUploading(false)
     setComprovanteFile(null)
     if (comprFileRef.current) comprFileRef.current.value = ''
-    setComprovanteMsg('Comprovante enviado!')
-    setTimeout(() => setComprovanteMsg(''), 2500)
+    if (r.ok) {
+      setComprovanteMsg('Comprovante enviado!')
+      setTimeout(() => setComprovanteMsg(''), 2000)
+    }
   }
 
   const tabs = [
@@ -178,16 +179,15 @@ function ControleRecebimentosModal({
 
   return (
     <Modal open={open} onClose={onClose} title={`Controle de Recebimentos — Pedido #${pedidoId}`} size="lg">
-      <div className="flex border-b border-slate-200 mb-4 -mx-5 px-5 overflow-x-auto">
+      <div className="flex border-b border-slate-200 mb-4 -mx-5 px-5">
         {tabs.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${tab === t.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
             {t.label}
           </button>
         ))}
       </div>
 
-      {/* Tab: Adicionar Individual */}
       {tab === 'individual' && (
         <div className="space-y-4">
           <form onSubmit={handleAdd} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
@@ -204,8 +204,7 @@ function ControleRecebimentosModal({
               </div>
               <div>
                 <label className="label">Tipo</label>
-                <select className="input" value={tipoAdd}
-                  onChange={e => setTipoAdd(e.target.value === '' ? '' : Number(e.target.value))} required>
+                <select className="input" value={tipoAdd} onChange={e => setTipoAdd(e.target.value === '' ? '' : Number(e.target.value))} required>
                   <option value="">Selecionar...</option>
                   {tiposList.map(t => <option key={t.id} value={t.id}>{t.tipos}</option>)}
                 </select>
@@ -250,20 +249,20 @@ function ControleRecebimentosModal({
                           </select>
                         </td>
                         <td className="table-cell">
-                          <select className="input text-xs py-0.5 px-1" value={editForm.tipo_recebimento ?? ''}
-                            onChange={e => setEditForm(f => ({ ...f, tipo_recebimento: e.target.value ? Number(e.target.value) : null }))}>
+                          <select className="input text-xs py-0.5 px-1" value={editForm.tipo_pagamento ?? ''}
+                            onChange={e => setEditForm(f => ({ ...f, tipo_pagamento: e.target.value ? Number(e.target.value) : null }))}>
                             <option value="">—</option>
                             {tiposList.map(t => <option key={t.id} value={t.id}>{t.tipos}</option>)}
                           </select>
                         </td>
                         <td className="table-cell">
-                          <input className="input text-xs py-0.5 px-1" type="date" value={editForm.data_recebimento ?? ''}
-                            onChange={e => setEditForm(f => ({ ...f, data_recebimento: e.target.value || null }))} />
+                          <input className="input text-xs py-0.5 px-1" type="date" value={editForm.data_pagamento ?? ''}
+                            onChange={e => setEditForm(f => ({ ...f, data_pagamento: e.target.value || null }))} />
                         </td>
                         <td className="table-cell">
                           <input className="input text-xs py-0.5 px-1 w-20" type="number" step="0.01"
-                            value={editForm.valor_recebimento ?? ''}
-                            onChange={e => setEditForm(f => ({ ...f, valor_recebimento: e.target.value ? parseFloat(e.target.value) : null }))} />
+                            value={editForm.valor_pagamento ?? ''}
+                            onChange={e => setEditForm(f => ({ ...f, valor_pagamento: e.target.value ? parseFloat(e.target.value) : null }))} />
                         </td>
                         <td className="table-cell">
                           <div className="flex items-center gap-1">
@@ -282,13 +281,11 @@ function ControleRecebimentosModal({
                             {r.status_pagamento ? statusMap[r.status_pagamento] ?? '?' : '—'}
                           </span>
                         </td>
-                        <td className="table-cell text-slate-600">{r.tipo_recebimento ? tiposMap[r.tipo_recebimento] ?? '?' : '—'}</td>
-                        <td className="table-cell">{fmtData(r.data_recebimento)}</td>
-                        <td className="table-cell text-right">{fmtMoeda(r.valor_recebimento)}</td>
+                        <td className="table-cell text-slate-600">{r.tipo_pagamento ? tiposMap[r.tipo_pagamento] ?? '?' : '—'}</td>
+                        <td className="table-cell">{fmtData(r.data_pagamento)}</td>
+                        <td className="table-cell text-right">{fmtMoeda(r.valor_pagamento)}</td>
                         <td className="table-cell">
-                          <button onClick={() => startEdit(r)} className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded">
-                            <Edit2 size={13} />
-                          </button>
+                          <button onClick={() => startEdit(r)} className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded"><Edit2 size={13} /></button>
                         </td>
                       </tr>
                     )
@@ -300,22 +297,19 @@ function ControleRecebimentosModal({
         </div>
       )}
 
-      {/* Tab: Alterar Status em Lote */}
       {tab === 'lote' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Filtrar por status atual</label>
-              <select className="input" value={bulkFilterStatus}
-                onChange={e => { setBulkFilterStatus(e.target.value); setBulkSelected(new Set()) }}>
+              <select className="input" value={bulkFilterStatus} onChange={e => { setBulkFilterStatus(e.target.value); setBulkSelected(new Set()) }}>
                 <option value="">Todos</option>
                 {statusList.map(s => <option key={s.id} value={s.id}>{s.nome_status}</option>)}
               </select>
             </div>
             <div>
               <label className="label">Novo status</label>
-              <select className="input" value={bulkNewStatus}
-                onChange={e => setBulkNewStatus(e.target.value === '' ? '' : Number(e.target.value))}>
+              <select className="input" value={bulkNewStatus} onChange={e => setBulkNewStatus(e.target.value === '' ? '' : Number(e.target.value))}>
                 <option value="">Selecionar...</option>
                 {statusList.map(s => <option key={s.id} value={s.id}>{s.nome_status}</option>)}
               </select>
@@ -329,32 +323,27 @@ function ControleRecebimentosModal({
               <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
                 <input type="checkbox" className="w-4 h-4 accent-blue-600"
                   checked={bulkSelected.size === recsFiltrados.length}
-                  onChange={() => setBulkSelected(
-                    bulkSelected.size === recsFiltrados.length ? new Set() : new Set(recsFiltrados.map(r => r.id))
-                  )} />
+                  onChange={() => setBulkSelected(bulkSelected.size === recsFiltrados.length ? new Set() : new Set(recsFiltrados.map(r => r.id)))} />
                 Selecionar todos ({recsFiltrados.length})
               </label>
+
               <div className="space-y-1 max-h-56 overflow-y-auto">
                 {recsFiltrados.map(r => (
-                  <label key={r.id}
-                    className={`flex items-center gap-3 p-2 rounded border cursor-pointer ${bulkSelected.has(r.id) ? 'bg-blue-50 border-blue-200' : 'border-slate-100 hover:bg-slate-50'}`}>
+                  <label key={r.id} className={`flex items-center gap-3 p-2 rounded border cursor-pointer ${bulkSelected.has(r.id) ? 'bg-blue-50 border-blue-200' : 'border-slate-100 hover:bg-slate-50'}`}>
                     <input type="checkbox" className="w-4 h-4 accent-blue-600 shrink-0"
                       checked={bulkSelected.has(r.id)}
-                      onChange={() => setBulkSelected(prev => {
-                        const n = new Set(prev); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n
-                      })} />
+                      onChange={() => setBulkSelected(prev => { const n = new Set(prev); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n })} />
                     <span className="text-sm flex-1">#{r.id} — {fmtData(r.data_vencimento)} — {fmtMoeda(r.valor_pagar)}</span>
-                    <span className="text-xs text-slate-500">
-                      {r.status_pagamento ? statusMap[r.status_pagamento] : 'Sem status'}
-                    </span>
+                    <span className="text-xs text-slate-500">{r.status_pagamento ? statusMap[r.status_pagamento] : 'Sem status'}</span>
                   </label>
                 ))}
               </div>
+
               <div className="flex items-center justify-between pt-2 border-t border-slate-200">
                 <span className="text-sm text-slate-600">{bulkSelected.size} selecionado(s)</span>
                 <button onClick={handleBulkApply}
                   disabled={bulkApplying || bulkSelected.size === 0 || bulkNewStatus === ''}
-                  className="btn-primary text-sm">
+                  className="btn-primary text-sm gap-1.5">
                   {bulkApplying ? 'Aplicando...' : 'Aplicar Status'}
                 </button>
               </div>
@@ -363,7 +352,6 @@ function ControleRecebimentosModal({
         </div>
       )}
 
-      {/* Tab: Comprovante */}
       {tab === 'comprovante' && (
         <div className="space-y-4">
           <form onSubmit={handleUploadComprovante} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
@@ -391,8 +379,7 @@ function ControleRecebimentosModal({
                 </button>
               </div>
               {comprovanteMsg && <p className="text-sm text-green-600">{comprovanteMsg}</p>}
-              <button type="submit"
-                disabled={!comprovanteFile || comprovantePayId === '' || comprovanteUploading}
+              <button type="submit" disabled={!comprovanteFile || comprovantePayId === '' || comprovanteUploading}
                 className="btn-primary text-sm">
                 {comprovanteUploading ? 'Enviando...' : 'Anexar Comprovante'}
               </button>
@@ -408,7 +395,7 @@ function ControleRecebimentosModal({
   )
 }
 
-// --- Comentarios Modal ---
+// --- Comentários Modal ---
 function ComentariosModal({ open, onClose, pedidoId, username }: {
   open: boolean; onClose: () => void; pedidoId: number; username: string
 }) {
@@ -445,24 +432,44 @@ function ComentariosModal({ open, onClose, pedidoId, username }: {
     e.preventDefault()
     if (!texto.trim()) return
     setSaving(true)
-    const { data: newCom } = await supabase.from('comentarios_receita').insert({
-      pedido_id: pedidoId, comentario: texto.trim(), usuario: username,
-      data_comentario: new Date().toISOString(),
-    }).select().single()
 
-    if (newCom && file) {
+    let anexo_id: string | null = null
+
+    if (file) {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('pedido_id', String(pedidoId))
       fd.append('tipo_documento', tipoId !== '' ? String(tipoId) : '-1')
-      fd.append('comentario_id', String(newCom.id))
       fd.append('modulo', 'recebimentos')
-      await fetch('/api/documentos/upload', { method: 'POST', body: fd })
+      const r = await fetch('/api/documentos/upload', { method: 'POST', body: fd })
+      if (r.ok) {
+        const d = await r.json()
+        anexo_id = d.documento?.anexo_id ?? null
+      }
     }
 
-    setTexto(''); setTipoId(''); setFile(null)
+    const { data: newCom } = await supabase.from('comentarios_receita').insert({
+      pedido_id: pedidoId,
+      comentario: texto.trim(),
+      usuario: username,
+      data_comentario: new Date().toISOString(),
+      tipo_documento: tipoId !== '' ? tipoId : null,
+      anexo_id,
+    }).select().single()
+
+    if (newCom && anexo_id) {
+      await supabase.from('documentos_receita')
+        .update({ comentario_id: newCom.id })
+        .eq('pedido_id', pedidoId)
+        .eq('anexo_id', anexo_id)
+    }
+
+    setTexto('')
+    setTipoId('')
+    setFile(null)
     if (fileRef.current) fileRef.current.value = ''
-    setSaving(false); load()
+    setSaving(false)
+    load()
   }
 
   return (
@@ -470,7 +477,9 @@ function ComentariosModal({ open, onClose, pedidoId, username }: {
       <div className="space-y-4">
         <div className="max-h-64 overflow-y-auto space-y-3 pr-1">
           {loading && <p className="text-slate-400 text-sm">Carregando...</p>}
-          {!loading && comentarios.length === 0 && <p className="text-slate-400 text-sm text-center py-6">Nenhum comentário.</p>}
+          {!loading && comentarios.length === 0 && (
+            <p className="text-slate-400 text-sm text-center py-6">Nenhum comentário ainda.</p>
+          )}
           {comentarios.map(c => (
             <div key={c.id} className="bg-slate-50 rounded-lg p-3 border border-slate-200">
               <div className="flex items-center justify-between mb-1">
@@ -487,30 +496,29 @@ function ComentariosModal({ open, onClose, pedidoId, username }: {
             </div>
           ))}
         </div>
+
         <div className="border-t border-slate-200 pt-4">
           <p className="text-xs font-semibold text-slate-600 mb-3">Adicionar comentário</p>
           <form onSubmit={handleSubmit} className="space-y-3">
             <textarea className="input resize-none" rows={3} placeholder="Escreva um comentário..."
               value={texto} onChange={e => setTexto(e.target.value)} required />
             <div className="grid grid-cols-2 gap-3">
-              <select className="input" value={tipoId}
-                onChange={e => setTipoId(e.target.value === '' ? '' : Number(e.target.value))}>
-                <option value="">Tipo de arquivo (opcional)</option>
+              <select className="input" value={tipoId} onChange={e => setTipoId(e.target.value === '' ? '' : Number(e.target.value))}>
+                <option value="">Tipo de documento (opcional)</option>
                 {tiposDocs.map(t => <option key={t.id} value={t.id}>{t.tipo}</option>)}
               </select>
               <div>
-                <input ref={fileRef} type="file" className="hidden"
-                  onChange={e => setFile(e.target.files?.[0] ?? null)} />
+                <input ref={fileRef} type="file" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} />
                 <button type="button" onClick={() => fileRef.current?.click()}
-                  className="btn-secondary w-full text-xs gap-1">
-                  <Upload size={12} /> {file ? file.name.slice(0, 20) + '…' : 'Anexar arquivo'}
+                  className="btn-secondary w-full justify-center text-xs gap-1.5">
+                  <Upload size={13} /> {file ? file.name.slice(0, 20) + '…' : 'Anexar arquivo'}
                 </button>
               </div>
             </div>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={onClose} className="btn-secondary text-sm">Fechar</button>
               <button type="submit" disabled={saving || !texto.trim()} className="btn-primary text-sm">
-                {saving ? 'Enviando...' : 'Adicionar'}
+                {saving ? 'Salvando...' : 'Adicionar'}
               </button>
             </div>
           </form>
@@ -521,8 +529,11 @@ function ComentariosModal({ open, onClose, pedidoId, username }: {
 }
 
 // --- Documentos Modal ---
-function DocumentosModal({ open, onClose, pedidoId }: {
+function DocumentosModal({
+  open, onClose, pedidoId, pedidoArquivosIds,
+}: {
   open: boolean; onClose: () => void; pedidoId: number
+  pedidoArquivosIds: string[] | null
 }) {
   const [docs, setDocs] = useState<Documento[]>([])
   const [tiposDocs, setTiposDocs] = useState<TipoDoc[]>([])
@@ -532,6 +543,7 @@ function DocumentosModal({ open, onClose, pedidoId }: {
   const [uploading, setUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState('')
   const [uploadError, setUploadError] = useState('')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(['Documentos de Solicitação']))
   const fileRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
@@ -557,76 +569,114 @@ function DocumentosModal({ open, onClose, pedidoId }: {
     setUploadError('')
     if (!file) { setUploadError('Selecione um arquivo.'); return }
     if (tipoId === '') { setUploadError('Selecione o tipo de documento.'); return }
+
     setUploading(true)
     const fd = new FormData()
     fd.append('file', file)
     fd.append('pedido_id', String(pedidoId))
     fd.append('tipo_documento', String(tipoId))
     fd.append('modulo', 'recebimentos')
+
     const r = await fetch('/api/documentos/upload', { method: 'POST', body: fd })
-    const resData = await r.json()
     setUploading(false)
-    if (!r.ok) { setUploadError(resData.error ?? 'Erro ao enviar.'); return }
-    setFile(null)
-    if (fileRef.current) fileRef.current.value = ''
+
+    if (!r.ok) { setUploadError('Erro ao enviar.'); return }
+
+    setFile(null); if (fileRef.current) fileRef.current.value = ''
     setTipoId('')
     setUploadMsg('Documento enviado!')
-    setTimeout(() => setUploadMsg(''), 2500)
+    setTimeout(() => setUploadMsg(''), 2000)
     load()
   }
 
-  const grouped = docs.reduce<Record<string, Documento[]>>((acc, doc) => {
-    const key = doc.tipo_nome ?? 'Sem tipo'
-    if (!acc[key]) acc[key] = []
-    acc[key].push(doc)
-    return acc
-  }, {})
+  const grouped: Record<string, Documento[]> = {}
+  tiposDocs.forEach(t => {
+    const items = docs.filter(d => d.tipo_documento === t.id)
+    if (items.length) grouped[t.tipo] = items
+  })
+  const semTipo = docs.filter(d => d.tipo_documento == null)
+  if (semTipo.length) grouped['Sem tipo'] = semTipo
+
+  const toggle = (n: string) => setExpanded(p => { const s = new Set(p); s.has(n) ? s.delete(n) : s.add(n); return s })
 
   return (
     <Modal open={open} onClose={onClose} title={`Documentos — Pedido #${pedidoId}`} size="lg">
       <div className="space-y-4">
-        <form onSubmit={handleUpload} className="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
-          <p className="text-xs font-semibold text-slate-600">Enviar documento</p>
+        <form onSubmit={handleUpload} className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+          <p className="text-xs font-semibold text-slate-600">Adicionar documento</p>
           <div className="grid grid-cols-2 gap-3">
-            <select className="input" value={tipoId}
-              onChange={e => setTipoId(e.target.value === '' ? '' : Number(e.target.value))} required>
-              <option value="">Tipo de documento *</option>
-              {tiposDocs.map(t => <option key={t.id} value={t.id}>{t.tipo}</option>)}
-            </select>
             <div>
-              <input ref={fileRef} type="file" className="hidden"
-                onChange={e => setFile(e.target.files?.[0] ?? null)} />
-              <button type="button" onClick={() => fileRef.current?.click()}
-                className="btn-secondary w-full text-sm gap-1.5">
-                <Upload size={14} /> {file ? file.name.slice(0, 25) + '…' : 'Selecionar arquivo'}
-              </button>
+              <label className="label">Tipo de Documento *</label>
+              <select className="input" value={tipoId} onChange={e => setTipoId(e.target.value === '' ? '' : Number(e.target.value))}>
+                <option value="">Selecionar tipo...</option>
+                {tiposDocs.filter(t => t.id > 0).map(t => <option key={t.id} value={t.id}>{t.tipo}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Arquivo *</label>
+              <div className="flex gap-2">
+                <input ref={fileRef} type="file" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} />
+                <button type="button" onClick={() => fileRef.current?.click()} className="btn-secondary text-xs gap-1 flex-1 truncate">
+                  <Upload size={12} />{file ? file.name.slice(0, 18) + '…' : 'Selecionar'}
+                </button>
+              </div>
             </div>
           </div>
-          {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
-          {uploadMsg && <p className="text-sm text-green-600">{uploadMsg}</p>}
-          <button type="submit" disabled={uploading || !file || tipoId === ''} className="btn-primary text-sm">
-            {uploading ? 'Enviando...' : 'Enviar'}
+
+          {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+          {uploadMsg && <p className="text-xs text-green-600">{uploadMsg}</p>}
+          <button type="submit" disabled={uploading || !file || tipoId === ''} className="btn-primary text-sm gap-1">
+            <Upload size={13} /> {uploading ? 'Enviando...' : 'Enviar Documento'}
           </button>
         </form>
 
-        {loading ? (
-          <p className="text-slate-400 text-sm">Carregando...</p>
-        ) : docs.length === 0 ? (
-          <p className="text-slate-400 text-sm text-center py-6">Nenhum documento.</p>
-        ) : (
-          <div className="space-y-3 max-h-72 overflow-y-auto">
-            {Object.entries(grouped).map(([tipo, grupo]) => (
-              <div key={tipo}>
-                <p className="text-xs font-semibold text-slate-500 mb-1">{tipo}</p>
-                <div className="space-y-1">
-                  {grupo.map(doc => (
-                    <div key={doc.id} className="flex items-center justify-between p-2 bg-white border border-slate-200 rounded text-xs">
-                      <span className="text-slate-700 truncate max-w-xs">{doc.nome_documento}</span>
-                      <div className="flex items-center gap-2 shrink-0 ml-2">
-                        <span className="text-slate-400">{fmtData(doc.data_upload)}</span>
+        {pedidoArquivosIds && pedidoArquivosIds.length > 0 && (
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <button onClick={() => toggle('Documentos de Solicitação')}
+              className="w-full flex items-center justify-between px-3 py-2 bg-blue-50 text-sm font-medium text-blue-800">
+              <span>Documentos de Solicitação ({pedidoArquivosIds.length})</span>
+              {expanded.has('Documentos de Solicitação') ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+            {expanded.has('Documentos de Solicitação') && (
+              <div className="divide-y divide-slate-100">
+                {pedidoArquivosIds.map((fileId, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-2">
+                    <p className="text-xs text-slate-600">Documento de solicitação #{i + 1}</p>
+                    <a href={`/api/b2/file?fileId=${fileId}`} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline shrink-0 ml-2">
+                      <ExternalLink size={11} /> Ver
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="max-h-72 overflow-y-auto space-y-2">
+          {loading && <p className="text-slate-400 text-sm">Carregando...</p>}
+          {!loading && docs.length === 0 && Object.keys(grouped).length === 0 && (
+            <p className="text-slate-400 text-sm text-center py-6">Nenhum documento enviado.</p>
+          )}
+          {Object.entries(grouped).map(([tipo, items]) => (
+            <div key={tipo} className="border border-slate-200 rounded-lg overflow-hidden">
+              <button onClick={() => toggle(tipo)}
+                className="w-full flex items-center justify-between px-3 py-2 bg-slate-100 text-sm font-medium text-slate-700">
+                <span>{tipo} ({items.length})</span>
+                {expanded.has(tipo) ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+              {expanded.has(tipo) && (
+                <div className="divide-y divide-slate-100">
+                  {items.map(doc => (
+                    <div key={doc.id} className="px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0">
+                          <p className="text-xs text-slate-700 truncate">{doc.nome_documento}</p>
+                          <p className="text-xs text-slate-400">{fmtData(doc.data_upload)}</p>
+                        </div>
                         {doc.anexo_id && (
                           <a href={`/api/b2/file?fileId=${doc.anexo_id}`} target="_blank" rel="noopener noreferrer"
-                            className="text-blue-600 hover:underline flex items-center gap-0.5">
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline shrink-0 ml-2">
                             <ExternalLink size={11} /> Ver
                           </a>
                         )}
@@ -634,59 +684,12 @@ function DocumentosModal({ open, onClose, pedidoId }: {
                     </div>
                   ))}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="flex justify-end pt-3 border-t border-slate-200">
-          <button onClick={onClose} className="btn-secondary text-sm">Fechar</button>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-// --- Analise Modal ---
-function AnaliseModal({ open, onClose, pedidoId }: {
-  open: boolean; onClose: () => void; pedidoId: number
-}) {
-  const [analise, setAnalise] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [semDoc, setSemDoc] = useState(false)
-  const [error, setError] = useState('')
-  const [cached, setCached] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-    setAnalise(null); setSemDoc(false); setError(''); setCached(false)
-    setLoading(true)
-    fetch(`/api/pedidos-receita/${pedidoId}/analise`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.sem_documento) setSemDoc(true)
-        else if (data.error) setError(data.error)
-        else { setAnalise(data.analise); setCached(data.cached) }
-      })
-      .catch(() => setError('Erro ao buscar análise.'))
-      .finally(() => setLoading(false))
-  }, [open, pedidoId])
-
-  return (
-    <Modal open={open} onClose={onClose} title={`Análise do Documento — Pedido #${pedidoId}`} size="lg">
-      <div className="space-y-3">
-        {loading && <p className="text-slate-400 text-sm text-center py-8">Analisando documento com IA...</p>}
-        {semDoc && <p className="text-slate-500 text-sm text-center py-8">Nenhum documento encontrado para análise.</p>}
-        {error && <p className="text-red-600 text-sm">{error}</p>}
-        {analise && (
-          <>
-            {cached && <p className="text-xs text-slate-400 text-right">Análise em cache</p>}
-            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 max-h-96 overflow-y-auto">
-              <p className="text-sm text-slate-800 whitespace-pre-wrap">{analise}</p>
+              )}
             </div>
-          </>
-        )}
-        <div className="flex justify-end pt-2 border-t border-slate-200">
+          ))}
+        </div>
+
+        <div className="flex justify-end">
           <button onClick={onClose} className="btn-secondary text-sm">Fechar</button>
         </div>
       </div>
@@ -694,322 +697,214 @@ function AnaliseModal({ open, onClose, pedidoId }: {
   )
 }
 
-// --- Contrato Modal ---
-function ContratoModal({ open, onClose, pedido }: {
-  open: boolean; onClose: () => void; pedido: Pedido | null
-}) {
-  const [modelos, setModelos] = useState<ModeloContrato[]>([])
-  const [modeloId, setModeloId] = useState<number | ''>('')
-  const [loading, setLoading] = useState(false)
-  const [generating, setGenerating] = useState(false)
+// --- Cancel section ---
+function CancelarSection({ pedido, onCancel }: { pedido: Pedido; onCancel: () => void }) {
+  const [confirmCancel, setConfirmCancel] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
 
-  useEffect(() => {
-    if (!open) return
-    setLoading(true)
-    supabase.from('modelo_contrato_venda').select('id, nome, estilo').order('nome')
-      .then(({ data }) => { setModelos(data ?? []); setLoading(false) })
-  }, [open])
-
-  const handleGerar = async () => {
-    if (!pedido || modeloId === '') return
-    const modelo = modelos.find(m => m.id === modeloId)
-    if (!modelo) return
-    setGenerating(true)
-
-    const { jsPDF } = await import('jspdf')
-    const doc = new jsPDF()
-
-    if (modelo.estilo === 'estatico') {
-      const { data } = await supabase
-        .from('modelo_contrato_venda')
-        .select('conteudo')
-        .eq('id', modeloId)
-        .single()
-      doc.setFontSize(12)
-      const lines = doc.splitTextToSize(data?.conteudo ?? '', 180)
-      doc.text(lines, 15, 20)
-    } else {
-      doc.setFontSize(14)
-      doc.text(`Contrato — ${modelo.nome}`, 15, 20)
-      doc.setFontSize(11)
-      const info = [
-        `Pedido: #${pedido.id}`,
-        `Empresa: ${pedido.empresa}`,
-        `Categoria: ${pedido.categoria}`,
-        `Cliente: ${pedido.cliente}`,
-        `Valor: ${fmtMoeda(pedido.valor_pedido)}`,
-        `Data: ${fmtData(pedido.data_solicitacao)}`,
-        pedido.observacao ? `Observação: ${pedido.observacao}` : '',
-      ].filter(Boolean)
-      info.forEach((line, i) => doc.text(line, 15, 35 + i * 8))
-    }
-
-    doc.save(`contrato_pedido_${pedido.id}.pdf`)
-    setGenerating(false)
+  const handleCancel = async () => {
+    setCancelling(true)
+    await supabase.from('pedidos_solicitados_receita')
+      .update({ cancelado: true, status: 'Cancelado' })
+      .eq('id', pedido.id)
+    await supabase.from('pedidos_solicitados_fluxo_receita')
+      .update({ status: 'Cancelado' })
+      .eq('pedido_id', pedido.id)
+    setCancelling(false)
+    setConfirmCancel(false)
+    onCancel()
   }
 
+  const isCancelado = pedido.cancelado || pedido.status === 'Cancelado'
+  if (isCancelado) return null
+
   return (
-    <Modal open={open} onClose={onClose} title="Gerar Contrato" size="md">
-      <div className="space-y-4">
-        {loading ? (
-          <p className="text-slate-400 text-sm">Carregando modelos...</p>
-        ) : modelos.length === 0 ? (
-          <p className="text-slate-500 text-sm text-center py-6">Nenhum modelo de contrato cadastrado.</p>
-        ) : (
-          <>
-            <div>
-              <label className="label">Modelo de contrato</label>
-              <select className="input" value={modeloId}
-                onChange={e => setModeloId(e.target.value === '' ? '' : Number(e.target.value))}>
-                <option value="">Selecionar...</option>
-                {modelos.map(m => (
-                  <option key={m.id} value={m.id}>{m.nome} ({m.estilo})</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
-              <button onClick={onClose} className="btn-secondary text-sm">Cancelar</button>
-              <button onClick={handleGerar} disabled={modeloId === '' || generating}
-                className="btn-primary text-sm gap-1.5">
-                <FileSignature size={14} />
-                {generating ? 'Gerando...' : 'Gerar PDF'}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </Modal>
+    <div className="card border border-red-100">
+      <h2 className="text-sm font-semibold text-slate-700 mb-3">Cancelar Pedido</h2>
+      {pedido.status === 'Autorizado' && (
+        <div className="mb-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-800">
+          ⚠️ Este pedido já foi autorizado. Ao cancelar, comunique imediatamente o cliente e verifique se há recebimentos pendentes.
+        </div>
+      )}
+      <button onClick={() => setConfirmCancel(true)} className="btn-danger gap-1.5">
+        <X size={14} /> Cancelar Pedido
+      </button>
+      <Confirm
+        open={confirmCancel}
+        onClose={() => setConfirmCancel(false)}
+        onConfirm={handleCancel}
+        title="Cancelar Pedido"
+        message={`Confirma o cancelamento do pedido #${pedido.id}? Esta ação não pode ser desfeita.`}
+        confirmLabel="Cancelar Pedido"
+        loading={cancelling}
+      />
+    </div>
   )
 }
 
 // --- Main Page ---
-export default function AcompanharRecebimentoDetalhe() {
-  const params = useParams()
+export default function AcompanharRecebimentoDetalhePage() {
+  const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const pedidoId = parseInt(params.id as string)
+  const pedidoId = parseInt(id)
 
   const [pedido, setPedido] = useState<Pedido | null>(null)
   const [fluxo, setFluxo] = useState<FluxoRow[]>([])
-  const [statusOpcoes, setStatusOpcoes] = useState<PedidoStatusReceita[]>([])
+  const [statusNome, setStatusNome] = useState<string | null>(null)
+  const [user, setUser] = useState<{ username: string } | null>(null)
   const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState<{ username: string; role: string } | null>(null)
+  const [error, setError] = useState('')
 
-  const [modalComentarios, setModalComentarios] = useState(false)
-  const [modalDocumentos, setModalDocumentos] = useState(false)
-  const [modalAnalise, setModalAnalise] = useState(false)
-  const [modalContrato, setModalContrato] = useState(false)
-  const [modalControle, setModalControle] = useState(false)
-
-  const [confirmCancelar, setConfirmCancelar] = useState(false)
-  const [processing, setProcessing] = useState(false)
+  const [showRecebimentos, setShowRecebimentos] = useState(false)
+  const [showComents, setShowComents] = useState(false)
+  const [showDocs, setShowDocs] = useState(false)
 
   const load = useCallback(async () => {
-    setLoading(true)
-    const [{ data: ped }, { data: fl }, { data: st }, u] = await Promise.all([
-      supabase.from('pedidos_solicitados_receita')
-        .select('id, empresa, categoria, cliente, valor_pedido, observacao, emergencia, data_solicitacao, data_autorizacao, status, cancelado, usuario_autorizador, pedido_status_receita, arquivo_texto, analise_texto')
-        .eq('id', pedidoId).maybeSingle(),
-      supabase.from('pedidos_solicitados_fluxo_receita')
-        .select('id, mes, ano, valor_referente, status').eq('pedido_id', pedidoId).order('ano').order('mes'),
-      supabase.from('pedido_status_receita').select('id, nome_status').order('id'),
+    setLoading(true); setError('')
+    const [{ data: p, error: pErr }, { data: fl }, u] = await Promise.all([
+      supabase.from('pedidos_solicitados_receita').select('*').eq('id', pedidoId).maybeSingle(),
+      supabase.from('pedidos_solicitados_fluxo_receita').select('*').eq('pedido_id', pedidoId).order('ano').order('mes'),
       fetch('/api/auth/me').then(r => r.json()),
     ])
-    setPedido(ped ?? null)
-    setFluxo(fl ?? [])
-    setStatusOpcoes(st ?? [])
-    setUser(u)
+    if (pErr || !p) { setError('Pedido não encontrado.'); setLoading(false); return }
+    setPedido(p as Pedido); setFluxo(fl ?? []); setUser(u)
+    if ((p as Pedido).pedido_status_receita) {
+      const { data: st } = await supabase.from('pedido_status_receita').select('nome_status').eq('id', (p as Pedido).pedido_status_receita).maybeSingle()
+      setStatusNome((st as StatusPedido | null)?.nome_status ?? null)
+    }
     setLoading(false)
   }, [pedidoId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (!isNaN(pedidoId)) load() }, [load, pedidoId])
 
-  const handleCancelar = async () => {
-    setProcessing(true)
-    await supabase.from('pedidos_solicitados_receita')
-      .update({ cancelado: true }).eq('id', pedidoId)
-    await supabase.from('pedidos_solicitados_fluxo_receita')
-      .update({ status: 'Cancelado' }).eq('pedido_id', pedidoId)
-    setProcessing(false)
-    setConfirmCancelar(false)
-    load()
-  }
+  if (loading) return <div className="card text-center py-16 text-slate-400">Carregando...</div>
+  if (error || !pedido) return (
+    <div className="card text-center py-12">
+      <p className="text-red-600 mb-4">{error || 'Pedido não encontrado'}</p>
+      <button onClick={() => router.back()} className="btn-secondary gap-1.5"><ArrowLeft size={14} /> Voltar</button>
+    </div>
+  )
 
-  const handlePrint = () => window.print()
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <RefreshCw size={20} className="animate-spin text-slate-400" />
-      </div>
-    )
-  }
-
-  if (!pedido) {
-    return (
-      <div className="card text-center py-16">
-        <p className="text-slate-500">Pedido não encontrado.</p>
-        <button onClick={() => router.back()} className="btn-secondary mt-4 gap-1.5"><ArrowLeft size={14} /> Voltar</button>
-      </div>
-    )
-  }
-
-  const statusDisplay = pedido.cancelado ? 'Cancelado' : pedido.status
-  const STATUS_BADGE: Record<string, string> = {
-    'Autorizado': 'bg-green-100 text-green-700',
-    'Não Autorizado': 'bg-red-100 text-red-700',
-    'Aguardando Autorização': 'bg-yellow-100 text-yellow-700',
-    'Cancelado': 'bg-slate-200 text-slate-600',
-  }
-  const statusNomeMap = Object.fromEntries(statusOpcoes.map(s => [s.id, s.nome_status]))
+  const isCancelado = pedido.cancelado || pedido.status === 'Cancelado'
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-start gap-3">
-        <button onClick={() => router.back()} className="btn-secondary p-2 mt-0.5 shrink-0">
-          <ArrowLeft size={16} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="page-title">Pedido #{pedido.id}</h1>
-            {pedido.emergencia && !pedido.cancelado && (
-              <span className="badge bg-orange-100 text-orange-700 flex items-center gap-1">
-                <AlertTriangle size={11} /> Emergência
-              </span>
-            )}
-            <span className={`badge ${STATUS_BADGE[statusDisplay] ?? 'bg-slate-100 text-slate-600'}`}>
-              {statusDisplay}
-            </span>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.back()} className="btn-secondary p-2"><ArrowLeft size={16} /></button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="page-title">Pedido #{pedido.id}</h1>
+              {pedido.emergencia && (
+                <span className="badge bg-orange-100 text-orange-700 flex items-center gap-1">
+                  <AlertTriangle size={10} /> Emergência
+                </span>
+              )}
+              {isCancelado && <span className="badge bg-red-100 text-red-700">Cancelado</span>}
+            </div>
+            <p className="page-subtitle">{pedido.empresa} · {pedido.categoria}</p>
           </div>
-          <p className="page-subtitle">Acompanhar Recebimentos</p>
         </div>
-        <button onClick={load} className="btn-secondary p-2 shrink-0" title="Atualizar">
-          <RefreshCw size={15} />
+        <span className={`badge text-sm px-3 py-1 ${
+          pedido.status === 'Autorizado' ? 'bg-green-100 text-green-700' :
+          pedido.status === 'Não Autorizado' ? 'bg-red-100 text-red-700' :
+          pedido.status === 'Cancelado' ? 'bg-slate-200 text-slate-600' :
+          'bg-yellow-100 text-yellow-700'
+        }`}>{pedido.status}</span>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex flex-wrap gap-2">
+        <button onClick={() => setShowRecebimentos(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700">
+          <CreditCard size={15} /> Controle de Recebimentos
+        </button>
+        <button onClick={() => setShowComents(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-200">
+          <MessageSquare size={15} /> Comentários
+        </button>
+        <button onClick={() => setShowDocs(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-200">
+          <FileText size={15} /> Documentos
+        </button>
+        <button onClick={load} className="btn-secondary p-2" title="Atualizar">
+          <RefreshCw size={16} />
         </button>
       </div>
 
-      {/* Info Card */}
+      {/* Info grid */}
       <div className="card">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <h2 className="text-sm font-semibold text-slate-700 mb-4">Informações do Pedido</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-4">
           <InfoField label="Empresa" value={pedido.empresa} />
           <InfoField label="Categoria" value={pedido.categoria} />
           <InfoField label="Cliente" value={pedido.cliente} />
-          <InfoField label="Valor do Pedido" value={fmtMoeda(pedido.valor_pedido)} />
-          <InfoField label="Data de Solicitação" value={fmtData(pedido.data_solicitacao)} />
-          <InfoField label="Data de Autorização" value={fmtData(pedido.data_autorizacao)} />
-          {pedido.usuario_autorizador && (
-            <InfoField label="Autorizado por" value={pedido.usuario_autorizador} />
-          )}
-          {pedido.pedido_status_receita != null && (
-            <InfoField label="Status do Pedido" value={statusNomeMap[pedido.pedido_status_receita] ?? pedido.pedido_status_receita} />
+          <InfoField label="Valor do Pedido" value={<span className="text-lg font-bold">{fmtMoeda(pedido.valor_pedido)}</span>} />
+          <InfoField label="Status Autorização" value={pedido.status} />
+          <InfoField label="Status do Pedido" value={statusNome ?? '—'} />
+          <InfoField label="Data Solicitação" value={fmtData(pedido.data_solicitacao)} />
+          <InfoField label="Data Autorização" value={fmtData(pedido.data_autorizacao)} />
+          <InfoField label="Autorizado por" value={pedido.usuario_autorizador} />
+          <InfoField label="Emergência" value={pedido.emergencia ? '⚠️ Sim' : 'Não'} />
+          <InfoField label="Cancelado" value={isCancelado ? '❌ Sim' : 'Não'} />
+          {pedido.observacao && (
+            <div className="col-span-2 md:col-span-3">
+              <p className="text-xs text-slate-400 mb-0.5">Observação</p>
+              <p className="text-sm text-slate-800 bg-slate-50 rounded px-3 py-2 border border-slate-100 whitespace-pre-wrap">{pedido.observacao}</p>
+            </div>
           )}
         </div>
-        {pedido.observacao && (
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <p className="text-xs text-slate-400 mb-1">Observação</p>
-            <p className="text-sm text-slate-700 whitespace-pre-wrap">{pedido.observacao}</p>
-          </div>
-        )}
       </div>
 
-      {/* Fluxo de Caixa */}
+      {/* Fluxo table */}
       {fluxo.length > 0 && (
         <div className="card">
-          <h2 className="text-sm font-semibold text-slate-700 mb-3">Fluxo de Caixa</h2>
-          <div className="overflow-auto">
-            <table className="w-full text-xs">
-              <thead className="table-header">
-                <tr>
+          <h2 className="text-sm font-semibold text-slate-700 mb-4">Cronograma de Recebimentos</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="table-header">
                   <th className="table-cell font-medium">Mês/Ano</th>
                   <th className="table-cell font-medium text-right">Valor</th>
                   <th className="table-cell font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {fluxo.map(f => (
-                  <tr key={f.id} className="table-row">
-                    <td className="table-cell">{MESES[(f.mes ?? 1) - 1]}/{f.ano}</td>
-                    <td className="table-cell text-right font-medium">{fmtMoeda(f.valor_referente)}</td>
+                {fluxo.map(r => (
+                  <tr key={r.id} className="table-row">
+                    <td className="table-cell">{r.mes}/{r.ano}</td>
+                    <td className="table-cell text-right font-medium">{fmtMoeda(Number(r.valor_referente))}</td>
                     <td className="table-cell">
-                      <span className={`badge text-xs ${STATUS_BADGE[f.status] ?? 'bg-slate-100 text-slate-600'}`}>
-                        {f.status}
-                      </span>
+                      <span className={`badge ${
+                        r.status === 'Autorizado' ? 'bg-green-100 text-green-700' :
+                        r.status === 'Não Autorizado' ? 'bg-red-100 text-red-700' :
+                        'bg-yellow-100 text-yellow-700'
+                      }`}>{r.status}</span>
                     </td>
                   </tr>
                 ))}
+                <tr className="table-row bg-slate-50">
+                  <td className="table-cell font-semibold">Total</td>
+                  <td className="table-cell text-right font-bold">{fmtMoeda(fluxo.reduce((s, r) => s + Number(r.valor_referente), 0))}</td>
+                  <td className="table-cell" />
+                </tr>
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* Ações */}
-      <div className="card">
-        <h2 className="text-sm font-semibold text-slate-700 mb-3">Ações</h2>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => setModalAnalise(true)}
-            className="btn-secondary gap-1.5 text-sm">
-            <Brain size={14} /> Analisar Documento
-          </button>
-          <button onClick={handlePrint}
-            className="btn-secondary gap-1.5 text-sm">
-            <Printer size={14} /> Imprimir Pedido
-          </button>
-          <button onClick={() => setModalContrato(true)}
-            className="btn-secondary gap-1.5 text-sm">
-            <FileSignature size={14} /> Gerar Contrato
-          </button>
-          <button onClick={() => setModalComentarios(true)}
-            className="btn-secondary gap-1.5 text-sm">
-            <MessageSquare size={14} /> Comentários
-          </button>
-          <button onClick={() => setModalDocumentos(true)}
-            className="btn-secondary gap-1.5 text-sm">
-            <FileText size={14} /> Documentos
-          </button>
-          <button onClick={() => setModalControle(true)}
-            className="btn-secondary gap-1.5 text-sm">
-            <CreditCard size={14} /> Controle de Recebimentos
-          </button>
-          {!pedido.cancelado && (
-            <button onClick={() => setConfirmCancelar(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-red-200 bg-red-50 text-red-700 rounded text-sm font-medium hover:bg-red-100">
-              <X size={14} /> Cancelar Pedido
-            </button>
-          )}
-        </div>
-      </div>
+      {/* Cancel section (view-only page still allows cancellation) */}
+      <CancelarSection pedido={pedido} onCancel={load} />
 
-      {/* Modais */}
-      <ComentariosModal
-        open={modalComentarios} onClose={() => setModalComentarios(false)}
-        pedidoId={pedidoId} username={user?.username ?? ''} />
-
-      <DocumentosModal
-        open={modalDocumentos} onClose={() => setModalDocumentos(false)}
+      {/* Modals */}
+      <ControleRecebimentosModal open={showRecebimentos} onClose={() => setShowRecebimentos(false)}
         pedidoId={pedidoId} />
-
-      <AnaliseModal
-        open={modalAnalise} onClose={() => setModalAnalise(false)}
-        pedidoId={pedidoId} />
-
-      <ContratoModal
-        open={modalContrato} onClose={() => setModalContrato(false)}
-        pedido={pedido} />
-
-      <ControleRecebimentosModal
-        open={modalControle} onClose={() => setModalControle(false)}
+      <ComentariosModal open={showComents} onClose={() => setShowComents(false)}
         pedidoId={pedidoId} username={user?.username ?? ''} />
-
-      <Confirm
-        open={confirmCancelar}
-        onClose={() => setConfirmCancelar(false)}
-        onConfirm={handleCancelar}
-        title="Cancelar Pedido"
-        message={`Confirma o cancelamento do pedido #${pedidoId}? Esta ação não pode ser desfeita.`}
-        confirmLabel="Cancelar Pedido"
-        loading={processing}
-      />
+      <DocumentosModal open={showDocs} onClose={() => setShowDocs(false)}
+        pedidoId={pedidoId} pedidoArquivosIds={pedido.arquivos_pdf_ids} />
     </div>
   )
 }

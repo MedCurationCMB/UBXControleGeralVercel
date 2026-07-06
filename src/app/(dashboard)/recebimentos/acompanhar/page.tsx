@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Search, RefreshCw, ChevronRight, ChevronLeft, AlertTriangle } from 'lucide-react'
+import { Search, Download, RefreshCw, ChevronRight, ChevronLeft, AlertTriangle } from 'lucide-react'
 
 interface Pedido {
   id: number; empresa: string; categoria: string; cliente: string
@@ -63,7 +63,9 @@ export default function AcompanharRecebimentosPage() {
     fetchOpcoes()
   }, [])
 
-  useEffect(() => { setPage(0) }, [filtroEmpresa, filtroCategoria, filtroCliente, filtroStatus, activeSearchId])
+  useEffect(() => {
+    setPage(0)
+  }, [filtroEmpresa, filtroCategoria, filtroCliente, filtroStatus, activeSearchId])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -71,13 +73,19 @@ export default function AcompanharRecebimentosPage() {
     if (activeSearchId) {
       const idNum = parseInt(activeSearchId)
       if (isNaN(idNum)) {
-        setPedidos([]); setTotal(0); setLoading(false); return
+        setPedidos([])
+        setTotal(0)
+        setLoading(false)
+        return
       }
       const { data } = await supabase
         .from('pedidos_solicitados_receita')
         .select('id, empresa, categoria, cliente, valor_pedido, status, emergencia, data_solicitacao, cancelado')
         .eq('id', idNum)
-      setPedidos(data ?? []); setTotal(data?.length ?? 0); setLoading(false); return
+      setPedidos(data ?? [])
+      setTotal(data?.length ?? 0)
+      setLoading(false)
+      return
     }
 
     let query = supabase
@@ -89,9 +97,9 @@ export default function AcompanharRecebimentosPage() {
       .order('id', { ascending: false })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
-    if (filtroEmpresa)   query = query.eq('empresa', filtroEmpresa)
+    if (filtroEmpresa)   query = query.eq('empresa',   filtroEmpresa)
     if (filtroCategoria) query = query.eq('categoria', filtroCategoria)
-    if (filtroCliente)   query = query.eq('cliente', filtroCliente)
+    if (filtroCliente)   query = query.eq('cliente',   filtroCliente)
 
     if (filtroStatus === 'Cancelado') {
       query = query.eq('cancelado', true)
@@ -100,46 +108,73 @@ export default function AcompanharRecebimentosPage() {
     }
 
     const { data, count } = await query
-    setPedidos(data ?? []); setTotal(count ?? 0); setLoading(false)
+    setPedidos(data ?? [])
+    setTotal(count ?? 0)
+    setLoading(false)
   }, [page, activeSearchId, filtroEmpresa, filtroCategoria, filtroCliente, filtroStatus])
 
   useEffect(() => { load() }, [load])
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
-  const statusDisplay = (p: Pedido) => p.cancelado ? 'Cancelado' : p.status
+
+  const handleSearchIdKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') setActiveSearchId(searchId.trim())
+  }
+
+  const clearIdSearch = () => {
+    setSearchId('')
+    setActiveSearchId('')
+  }
+
+  const exportCSV = () => {
+    const header = 'ID,Empresa,Categoria,Cliente,Valor,Status,Data Solicitação,Cancelado'
+    const rows = pedidos.map(p =>
+      `${p.id},"${p.empresa}","${p.categoria}","${p.cliente}",${p.valor_pedido},"${p.status}","${fmtData(p.data_solicitacao)}","${p.cancelado ? 'Sim' : 'Não'}"`
+    )
+    const csv = [header, ...rows].join('\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'pedidos_receita.csv'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const filtersActive = !!(activeSearchId || filtroEmpresa || filtroCategoria || filtroCliente || filtroStatus)
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">Acompanhar Pedidos</h1>
-          <p className="page-subtitle">Recebimentos — todos os pedidos</p>
+          <p className="page-subtitle">Todos os pedidos de recebimento solicitados</p>
         </div>
-        <button onClick={load} className="btn-secondary p-2" title="Atualizar">
-          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportCSV} className="btn-secondary gap-1.5 text-sm">
+            <Download size={15} /> Exportar CSV
+          </button>
+          <button onClick={load} className="btn-secondary p-2" title="Atualizar">
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
       {/* Filtros */}
       <div className="card">
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {/* ID search */}
-          <div className="relative lg:col-span-1">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input className="input pl-9" type="number" min="0" placeholder="Buscar ID..."
+            <input
+              className="input pl-9"
+              type="number"
+              min="0"
+              placeholder="ID — pressione Enter"
               value={searchId}
               onChange={e => setSearchId(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') setActiveSearchId(searchId) }}
+              onKeyDown={handleSearchIdKeyDown}
             />
           </div>
-          <button
-            onClick={() => setActiveSearchId(searchId)}
-            className="btn-secondary text-sm lg:col-span-1">
-            Buscar
-          </button>
           <select className="input" value={filtroEmpresa}
-            onChange={e => { setFiltroEmpresa(e.target.value); setFiltroCategoria(''); setFiltroCliente('') }}
-            disabled={!!activeSearchId}>
+            onChange={e => setFiltroEmpresa(e.target.value)} disabled={!!activeSearchId}>
             <option value="">Todas as empresas</option>
             {empresas.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
@@ -160,97 +195,102 @@ export default function AcompanharRecebimentosPage() {
           </select>
         </div>
 
-        {activeSearchId && (
-          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2">
-            <span className="text-sm text-slate-500">Buscando por ID: <strong>{activeSearchId}</strong></span>
-            <button onClick={() => { setSearchId(''); setActiveSearchId('') }}
-              className="text-xs text-blue-600 hover:underline">Limpar</button>
-          </div>
-        )}
-
         <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
-          <span className="text-sm text-slate-500">{total} pedido(s)</span>
-          {!activeSearchId && totalPages > 1 && (
-            <div className="flex items-center gap-2">
-              <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-                className="btn-secondary p-1 disabled:opacity-40"><ChevronLeft size={14} /></button>
-              <span className="text-xs text-slate-500">Pág. {page + 1}/{totalPages}</span>
-              <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                className="btn-secondary p-1 disabled:opacity-40"><ChevronRight size={14} /></button>
-            </div>
+          <p className="text-sm text-slate-500">
+            {loading
+              ? 'Carregando...'
+              : activeSearchId
+              ? `${pedidos.length} resultado(s) para ID #${activeSearchId}`
+              : `${total.toLocaleString('pt-BR')} pedido(s)${filtersActive ? ' encontrado(s)' : ' no total'} — página ${page + 1} de ${Math.max(1, totalPages)}`
+            }
+          </p>
+          {activeSearchId && (
+            <button onClick={clearIdSearch} className="text-xs text-blue-600 hover:underline">
+              Limpar busca por ID
+            </button>
           )}
         </div>
       </div>
 
       {loading && <div className="card text-center py-12 text-slate-400">Carregando...</div>}
+
       {!loading && pedidos.length === 0 && (
-        <div className="card text-center py-16">
-          <p className="text-slate-500 font-medium">Nenhum pedido encontrado</p>
+        <div className="card text-center py-12">
+          <Search size={36} className="mx-auto text-slate-300 mb-3" />
+          <p className="text-slate-500">Nenhum pedido encontrado</p>
         </div>
       )}
 
       {!loading && pedidos.length > 0 && (
-        <div className="space-y-3">
-          {pedidos.map(p => {
-            const st = statusDisplay(p)
-            return (
-              <div key={p.id}
-                className={`card border transition-all ${p.emergencia && !p.cancelado ? 'border-orange-300 bg-orange-50' : 'border-slate-200'}`}>
-                <div className="flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="text-xs font-bold text-slate-600">Pedido #{p.id}</span>
-                      {p.emergencia && !p.cancelado && (
-                        <span className="badge bg-orange-100 text-orange-700 flex items-center gap-1">
-                          <AlertTriangle size={10} /> Emergência
-                        </span>
-                      )}
-                      <span className={`badge ${STATUS_BADGE[st] ?? 'bg-slate-100 text-slate-600'}`}>{st}</span>
-                      <span className="text-xs text-slate-400 ml-auto">{fmtData(p.data_solicitacao)}</span>
-                    </div>
+        <div className="card p-0 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="table-header">
+                  <th className="table-cell font-medium">ID</th>
+                  <th className="table-cell font-medium">Empresa</th>
+                  <th className="table-cell font-medium">Categoria</th>
+                  <th className="table-cell font-medium">Cliente</th>
+                  <th className="table-cell font-medium text-right">Valor</th>
+                  <th className="table-cell font-medium">Status</th>
+                  <th className="table-cell font-medium">Solicitação</th>
+                  <th className="table-cell font-medium w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {pedidos.map(p => (
+                  <tr
+                    key={p.id}
+                    className={`table-row cursor-pointer hover:bg-slate-50 ${p.cancelado ? 'opacity-60' : ''}`}
+                    onClick={() => router.push(`/recebimentos/acompanhar/${p.id}`)}
+                  >
+                    <td className="table-cell font-mono text-xs text-slate-500">
+                      <div className="flex items-center gap-1">
+                        #{p.id}
+                        {p.emergencia && <AlertTriangle size={11} className="text-orange-500 shrink-0" />}
+                      </div>
+                    </td>
+                    <td className="table-cell font-medium max-w-[140px] truncate">{p.empresa}</td>
+                    <td className="table-cell text-slate-600 max-w-[120px] truncate">{p.categoria}</td>
+                    <td className="table-cell text-slate-600 max-w-[140px] truncate">{p.cliente}</td>
+                    <td className="table-cell text-right font-medium">{fmtMoeda(p.valor_pedido)}</td>
+                    <td className="table-cell">
+                      <span className={`badge ${STATUS_BADGE[p.cancelado ? 'Cancelado' : p.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                        {p.cancelado ? 'Cancelado' : p.status}
+                      </span>
+                    </td>
+                    <td className="table-cell text-slate-500">{fmtData(p.data_solicitacao)}</td>
+                    <td className="table-cell">
+                      <ChevronRight size={14} className="text-slate-400" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      <div>
-                        <p className="text-xs text-slate-400">Empresa</p>
-                        <p className="text-sm font-medium truncate">{p.empresa}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-400">Categoria</p>
-                        <p className="text-sm truncate">{p.categoria}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-400">Cliente</p>
-                        <p className="text-sm truncate">{p.cliente}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-slate-400">Valor</p>
-                        <p className="text-base font-bold text-slate-900">{fmtMoeda(p.valor_pedido)}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button onClick={() => router.push(`/recebimentos/acompanhar/${p.id}`)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-700 rounded text-xs font-medium hover:bg-slate-200 shrink-0">
-                    Detalhes <ChevronRight size={12} />
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {!activeSearchId && totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3">
-          <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-            className="btn-secondary gap-1.5 disabled:opacity-40">
-            <ChevronLeft size={14} /> Anterior
-          </button>
-          <span className="text-sm text-slate-600">Pág. {page + 1} de {totalPages}</span>
-          <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-            className="btn-secondary gap-1.5 disabled:opacity-40">
-            Próxima <ChevronRight size={14} />
-          </button>
+          {!activeSearchId && totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
+              <button
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={14} /> Anterior
+              </button>
+              <span className="text-sm text-slate-600">
+                Página <span className="font-semibold">{page + 1}</span> de{' '}
+                <span className="font-semibold">{totalPages}</span>
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1}
+                className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Próximo <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

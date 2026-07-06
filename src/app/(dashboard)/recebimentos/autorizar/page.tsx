@@ -117,7 +117,7 @@ export default function AutorizarRecebimentosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Autorizar Pedidos</h1>
-          <p className="page-subtitle">Recebimentos aguardando autorização</p>
+          <p className="page-subtitle">Pedidos de recebimento aguardando autorização</p>
         </div>
         <button onClick={load} className="btn-secondary p-2" title="Atualizar">
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -180,7 +180,6 @@ export default function AutorizarRecebimentosPage() {
       {/* Cards */}
       {!loading && filtered.length > 0 && (
         <div className="space-y-3">
-          {/* Select-all bar */}
           <label className="flex items-center gap-2 px-1 cursor-pointer select-none">
             <input type="checkbox" className="w-4 h-4 accent-blue-600"
               checked={allSelected} onChange={toggleAll} />

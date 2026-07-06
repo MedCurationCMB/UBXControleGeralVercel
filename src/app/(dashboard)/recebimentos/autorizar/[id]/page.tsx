@@ -5,8 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import {
   ArrowLeft, CheckCircle, XCircle, AlertTriangle, RefreshCw,
-  MessageSquare, FileText, Printer, Brain, Upload, Download,
-  ExternalLink, X, ChevronDown, ChevronUp, FileSignature,
+  MessageSquare, FileText, Upload, ExternalLink,
+  X, ChevronDown, ChevronUp, CreditCard, Check, Edit2,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import Confirm from '@/components/ui/Confirm'
@@ -18,33 +18,385 @@ interface Pedido {
   data_solicitacao: string; data_autorizacao: string | null; status: string
   cancelado: boolean; usuario_autorizador: string | null
   pedido_status_receita: number | null; arquivo_texto: string | null; analise_texto: string | null
+  arquivos_pdf_ids: string[] | null
 }
 interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string }
-interface Comentario { id: number; comentario: string; usuario: string; data_comentario: string; tipo_documento: number | null }
-interface Documento { id: number; nome_documento: string; anexo_id: string | null; anexo_url: string | null; tipo_documento: number | null; tipo_nome?: string; data_upload: string }
+interface Comentario {
+  id: number; comentario: string; usuario: string; data_comentario: string
+  tipo_documento: number | null; anexo_id: string | null
+}
+interface Documento {
+  id: number; nome_documento: string; anexo_id: string | null; anexo_url: string | null
+  tipo_documento: number | null; tipo_nome?: string; data_upload: string; comentario_id: number | null
+}
 interface TipoDoc { id: number; tipo: string }
+interface Recebimento {
+  id: number; pedido_id: number; data_vencimento: string | null; valor_pagar: number
+  data_pagamento: string | null; valor_pagamento: number | null
+  status_pagamento: number | null; tipo_pagamento: number | null; anexo_url: string | null
+}
+interface RecebimentoStatus { id: number; nome_status: string }
+interface TipoRecebimento { id: number; tipos: string }
 interface StatusPedido { id: number; nome_status: string }
-interface ModeloContrato { id: number; nome: string; estilo: string }
 
-const fmtMoeda = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const fmtMoeda = (v: number | null) =>
+  v != null ? Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'
 const fmtData = (d: string | null) =>
   d ? new Date(d.includes('T') ? d : d + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
 
-// --- Subcomponents ---
-
-function InfoField({ label, value, className }: { label: string; value: React.ReactNode; className?: string }) {
+function InfoField({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className={className}>
+    <div>
       <p className="text-xs text-slate-400 mb-0.5">{label}</p>
       <p className="text-sm font-medium text-slate-800">{value ?? '—'}</p>
     </div>
   )
 }
 
-// --- Comments Modal ---
-function ComentariosModal({
-  open, onClose, pedidoId, username,
+// --- Controle de Recebimentos Modal ---
+function ControleRecebimentosModal({
+  open, onClose, pedidoId,
 }: {
+  open: boolean; onClose: () => void; pedidoId: number
+}) {
+  const [tab, setTab] = useState<'individual' | 'lote' | 'comprovante'>('individual')
+  const [recebimentos, setRecebimentos] = useState<Recebimento[]>([])
+  const [statusList, setStatusList] = useState<RecebimentoStatus[]>([])
+  const [tiposList, setTiposList] = useState<TipoRecebimento[]>([])
+  const [loading, setLoading] = useState(false)
+
+  const [dataVenc, setDataVenc] = useState(new Date().toISOString().split('T')[0])
+  const [valorPagar, setValorPagar] = useState('')
+  const [tipoAdd, setTipoAdd] = useState<number | ''>('')
+  const [adding, setAdding] = useState(false)
+
+  const [editId, setEditId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState<Partial<Recebimento>>({})
+
+  const [bulkSelected, setBulkSelected] = useState<Set<number>>(new Set())
+  const [bulkFilterStatus, setBulkFilterStatus] = useState('')
+  const [bulkNewStatus, setBulkNewStatus] = useState<number | ''>('')
+  const [bulkApplying, setBulkApplying] = useState(false)
+
+  const [comprovantePayId, setComprovantePayId] = useState<number | ''>('')
+  const [comprovanteFile, setComprovanteFile] = useState<File | null>(null)
+  const [comprovanteUploading, setComprovanteUploading] = useState(false)
+  const [comprovanteMsg, setComprovanteMsg] = useState('')
+  const comprFileRef = useRef<HTMLInputElement>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const [{ data: recs }, { data: st }, { data: tipos }] = await Promise.all([
+      supabase.from('controle_recebimento').select('*').eq('pedido_id', pedidoId).order('data_vencimento'),
+      supabase.from('recebimento_status').select('id, nome_status').order('id'),
+      supabase.from('tipos_recebimento').select('id, tipos').order('id'),
+    ])
+    setRecebimentos(recs ?? [])
+    setStatusList(st ?? [])
+    setTiposList(tipos ?? [])
+    setLoading(false)
+  }, [pedidoId])
+
+  useEffect(() => { if (open) load() }, [open, load])
+
+  const statusMap = Object.fromEntries(statusList.map(s => [s.id, s.nome_status]))
+  const tiposMap = Object.fromEntries(tiposList.map(t => [t.id, t.tipos]))
+
+  const recsFiltrados = bulkFilterStatus
+    ? recebimentos.filter(r => r.status_pagamento === Number(bulkFilterStatus))
+    : recebimentos
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!valorPagar || tipoAdd === '') return
+    setAdding(true)
+    await supabase.from('controle_recebimento').insert({
+      pedido_id: pedidoId,
+      data_vencimento: dataVenc || null,
+      valor_pagar: parseFloat(valorPagar),
+      tipo_pagamento: tipoAdd,
+    })
+    setDataVenc(new Date().toISOString().split('T')[0])
+    setValorPagar('')
+    setTipoAdd('')
+    setAdding(false)
+    load()
+  }
+
+  const startEdit = (r: Recebimento) => {
+    setEditId(r.id)
+    setEditForm({
+      data_pagamento: r.data_pagamento,
+      valor_pagamento: r.valor_pagamento,
+      status_pagamento: r.status_pagamento,
+      tipo_pagamento: r.tipo_pagamento,
+    })
+  }
+
+  const saveEdit = async () => {
+    if (!editId) return
+    await supabase.from('controle_recebimento').update(editForm).eq('id', editId)
+    setEditId(null)
+    load()
+  }
+
+  const handleBulkApply = async () => {
+    if (!bulkNewStatus || bulkSelected.size === 0) return
+    setBulkApplying(true)
+    await supabase.from('controle_recebimento')
+      .update({ status_pagamento: bulkNewStatus })
+      .in('id', [...bulkSelected])
+    setBulkSelected(new Set())
+    setBulkApplying(false)
+    load()
+  }
+
+  const handleUploadComprovante = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!comprovanteFile || comprovantePayId === '') return
+    setComprovanteUploading(true)
+    const fd = new FormData()
+    fd.append('file', comprovanteFile)
+    fd.append('pedido_id', String(pedidoId))
+    fd.append('pagamento_id', String(comprovantePayId))
+    fd.append('tipo_documento', '-2')
+    fd.append('modulo', 'recebimentos')
+    const r = await fetch('/api/documentos/upload', { method: 'POST', body: fd })
+    setComprovanteUploading(false)
+    setComprovanteFile(null)
+    if (comprFileRef.current) comprFileRef.current.value = ''
+    if (r.ok) {
+      setComprovanteMsg('Comprovante enviado!')
+      setTimeout(() => setComprovanteMsg(''), 2000)
+    }
+  }
+
+  const tabs = [
+    { id: 'individual', label: 'Adicionar Recebimento' },
+    { id: 'lote', label: 'Alterar Status em Lote' },
+    { id: 'comprovante', label: 'Comprovante' },
+  ] as const
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Controle de Recebimentos — Pedido #${pedidoId}`} size="lg">
+      <div className="flex border-b border-slate-200 mb-4 -mx-5 px-5">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t.id ? 'border-blue-500 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'individual' && (
+        <div className="space-y-4">
+          <form onSubmit={handleAdd} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+            <p className="text-xs font-semibold text-slate-600 mb-3">Novo recebimento</p>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="label">Vencimento</label>
+                <input className="input" type="date" value={dataVenc} onChange={e => setDataVenc(e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Valor (R$)</label>
+                <input className="input" type="number" step="0.01" min="0.01" placeholder="0,00"
+                  value={valorPagar} onChange={e => setValorPagar(e.target.value)} required />
+              </div>
+              <div>
+                <label className="label">Tipo</label>
+                <select className="input" value={tipoAdd} onChange={e => setTipoAdd(e.target.value === '' ? '' : Number(e.target.value))} required>
+                  <option value="">Selecionar...</option>
+                  {tiposList.map(t => <option key={t.id} value={t.id}>{t.tipos}</option>)}
+                </select>
+              </div>
+            </div>
+            <button type="submit" disabled={adding} className="btn-primary mt-3 text-sm">
+              {adding ? 'Adicionando...' : '+ Adicionar Recebimento'}
+            </button>
+          </form>
+
+          {loading ? (
+            <p className="text-slate-400 text-sm">Carregando...</p>
+          ) : recebimentos.length === 0 ? (
+            <p className="text-slate-400 text-sm text-center py-6">Nenhum recebimento cadastrado.</p>
+          ) : (
+            <div className="overflow-auto max-h-64 border border-slate-200 rounded-lg">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 z-10 table-header">
+                  <tr>
+                    <th className="table-cell font-medium">ID</th>
+                    <th className="table-cell font-medium">Vencimento</th>
+                    <th className="table-cell font-medium text-right">A Receber</th>
+                    <th className="table-cell font-medium">Status</th>
+                    <th className="table-cell font-medium">Tipo</th>
+                    <th className="table-cell font-medium">Data Rec.</th>
+                    <th className="table-cell font-medium text-right">Recebido</th>
+                    <th className="table-cell font-medium w-16"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recebimentos.map(r => (
+                    editId === r.id ? (
+                      <tr key={r.id} className="bg-blue-50">
+                        <td className="table-cell">{r.id}</td>
+                        <td className="table-cell">{fmtData(r.data_vencimento)}</td>
+                        <td className="table-cell text-right">{fmtMoeda(r.valor_pagar)}</td>
+                        <td className="table-cell">
+                          <select className="input text-xs py-0.5 px-1" value={editForm.status_pagamento ?? ''}
+                            onChange={e => setEditForm(f => ({ ...f, status_pagamento: e.target.value ? Number(e.target.value) : null }))}>
+                            <option value="">—</option>
+                            {statusList.map(s => <option key={s.id} value={s.id}>{s.nome_status}</option>)}
+                          </select>
+                        </td>
+                        <td className="table-cell">
+                          <select className="input text-xs py-0.5 px-1" value={editForm.tipo_pagamento ?? ''}
+                            onChange={e => setEditForm(f => ({ ...f, tipo_pagamento: e.target.value ? Number(e.target.value) : null }))}>
+                            <option value="">—</option>
+                            {tiposList.map(t => <option key={t.id} value={t.id}>{t.tipos}</option>)}
+                          </select>
+                        </td>
+                        <td className="table-cell">
+                          <input className="input text-xs py-0.5 px-1" type="date" value={editForm.data_pagamento ?? ''}
+                            onChange={e => setEditForm(f => ({ ...f, data_pagamento: e.target.value || null }))} />
+                        </td>
+                        <td className="table-cell">
+                          <input className="input text-xs py-0.5 px-1 w-20" type="number" step="0.01"
+                            value={editForm.valor_pagamento ?? ''}
+                            onChange={e => setEditForm(f => ({ ...f, valor_pagamento: e.target.value ? parseFloat(e.target.value) : null }))} />
+                        </td>
+                        <td className="table-cell">
+                          <div className="flex items-center gap-1">
+                            <button onClick={saveEdit} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check size={13} /></button>
+                            <button onClick={() => setEditId(null)} className="p-1 text-slate-400 hover:bg-slate-100 rounded"><X size={13} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr key={r.id} className="table-row">
+                        <td className="table-cell text-slate-500">{r.id}</td>
+                        <td className="table-cell">{fmtData(r.data_vencimento)}</td>
+                        <td className="table-cell text-right font-medium">{fmtMoeda(r.valor_pagar)}</td>
+                        <td className="table-cell">
+                          <span className={`badge text-xs ${r.status_pagamento ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                            {r.status_pagamento ? statusMap[r.status_pagamento] ?? '?' : '—'}
+                          </span>
+                        </td>
+                        <td className="table-cell text-slate-600">{r.tipo_pagamento ? tiposMap[r.tipo_pagamento] ?? '?' : '—'}</td>
+                        <td className="table-cell">{fmtData(r.data_pagamento)}</td>
+                        <td className="table-cell text-right">{fmtMoeda(r.valor_pagamento)}</td>
+                        <td className="table-cell">
+                          <button onClick={() => startEdit(r)} className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded"><Edit2 size={13} /></button>
+                        </td>
+                      </tr>
+                    )
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'lote' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Filtrar por status atual</label>
+              <select className="input" value={bulkFilterStatus} onChange={e => { setBulkFilterStatus(e.target.value); setBulkSelected(new Set()) }}>
+                <option value="">Todos</option>
+                {statusList.map(s => <option key={s.id} value={s.id}>{s.nome_status}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Novo status</label>
+              <select className="input" value={bulkNewStatus} onChange={e => setBulkNewStatus(e.target.value === '' ? '' : Number(e.target.value))}>
+                <option value="">Selecionar...</option>
+                {statusList.map(s => <option key={s.id} value={s.id}>{s.nome_status}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {recsFiltrados.length === 0 ? (
+            <p className="text-slate-400 text-sm text-center py-6">Nenhum recebimento.</p>
+          ) : (
+            <>
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
+                <input type="checkbox" className="w-4 h-4 accent-blue-600"
+                  checked={bulkSelected.size === recsFiltrados.length}
+                  onChange={() => setBulkSelected(bulkSelected.size === recsFiltrados.length ? new Set() : new Set(recsFiltrados.map(r => r.id)))} />
+                Selecionar todos ({recsFiltrados.length})
+              </label>
+
+              <div className="space-y-1 max-h-56 overflow-y-auto">
+                {recsFiltrados.map(r => (
+                  <label key={r.id} className={`flex items-center gap-3 p-2 rounded border cursor-pointer ${bulkSelected.has(r.id) ? 'bg-blue-50 border-blue-200' : 'border-slate-100 hover:bg-slate-50'}`}>
+                    <input type="checkbox" className="w-4 h-4 accent-blue-600 shrink-0"
+                      checked={bulkSelected.has(r.id)}
+                      onChange={() => setBulkSelected(prev => { const n = new Set(prev); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n })} />
+                    <span className="text-sm flex-1">#{r.id} — {fmtData(r.data_vencimento)} — {fmtMoeda(r.valor_pagar)}</span>
+                    <span className="text-xs text-slate-500">{r.status_pagamento ? statusMap[r.status_pagamento] : 'Sem status'}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                <span className="text-sm text-slate-600">{bulkSelected.size} selecionado(s)</span>
+                <button onClick={handleBulkApply}
+                  disabled={bulkApplying || bulkSelected.size === 0 || bulkNewStatus === ''}
+                  className="btn-primary text-sm gap-1.5">
+                  {bulkApplying ? 'Aplicando...' : 'Aplicar Status'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'comprovante' && (
+        <div className="space-y-4">
+          <form onSubmit={handleUploadComprovante} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+            <p className="text-xs font-semibold text-slate-600 mb-3">Anexar comprovante de recebimento</p>
+            <div className="space-y-3">
+              <div>
+                <label className="label">Recebimento *</label>
+                <select className="input" value={comprovantePayId}
+                  onChange={e => setComprovantePayId(e.target.value === '' ? '' : Number(e.target.value))}>
+                  <option value="">Selecionar...</option>
+                  {recebimentos.map(r => (
+                    <option key={r.id} value={r.id}>
+                      #{r.id} — Venc. {fmtData(r.data_vencimento)} — {fmtMoeda(r.valor_pagar)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">Arquivo PDF *</label>
+                <input ref={comprFileRef} type="file" accept=".pdf" className="hidden"
+                  onChange={e => setComprovanteFile(e.target.files?.[0] ?? null)} />
+                <button type="button" onClick={() => comprFileRef.current?.click()}
+                  className="btn-secondary text-sm gap-1.5">
+                  <Upload size={14} /> {comprovanteFile ? comprovanteFile.name.slice(0, 30) : 'Selecionar PDF'}
+                </button>
+              </div>
+              {comprovanteMsg && <p className="text-sm text-green-600">{comprovanteMsg}</p>}
+              <button type="submit" disabled={!comprovanteFile || comprovantePayId === '' || comprovanteUploading}
+                className="btn-primary text-sm">
+                {comprovanteUploading ? 'Enviando...' : 'Anexar Comprovante'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="flex justify-end mt-4 pt-4 border-t border-slate-200">
+        <button onClick={onClose} className="btn-secondary text-sm">Fechar</button>
+      </div>
+    </Modal>
+  )
+}
+
+// --- Comentários Modal ---
+function ComentariosModal({ open, onClose, pedidoId, username }: {
   open: boolean; onClose: () => void; pedidoId: number; username: string
 }) {
   const [comentarios, setComentarios] = useState<Comentario[]>([])
@@ -59,7 +411,7 @@ function ComentariosModal({
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: coms }, { data: tipos }, { data: docAnexos }] = await Promise.all([
+    const [{ data: coms }, { data: tipos }, { data: docs }] = await Promise.all([
       supabase.from('comentarios_receita').select('*').eq('pedido_id', pedidoId).order('data_comentario', { ascending: false }),
       supabase.from('tipos_documento').select('id, tipo').order('tipo'),
       supabase.from('documentos_receita').select('comentario_id, anexo_id').eq('pedido_id', pedidoId).not('comentario_id', 'is', null),
@@ -67,7 +419,7 @@ function ComentariosModal({
     setComentarios(coms ?? [])
     setTiposDocs(tipos ?? [])
     const map: Record<number, string> = {}
-    for (const d of (docAnexos ?? [])) {
+    for (const d of (docs ?? [])) {
       if (d.comentario_id && d.anexo_id) map[d.comentario_id] = d.anexo_id
     }
     setDocByComment(map)
@@ -81,29 +433,37 @@ function ComentariosModal({
     if (!texto.trim()) return
     setSaving(true)
 
-    let anexo_url: string | null = null
+    let anexo_id: string | null = null
 
     if (file) {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('pedido_id', String(pedidoId))
+      fd.append('tipo_documento', tipoId !== '' ? String(tipoId) : '-1')
       fd.append('modulo', 'recebimentos')
-      if (tipoId !== '') fd.append('tipo_documento', String(tipoId))
       const r = await fetch('/api/documentos/upload', { method: 'POST', body: fd })
       if (r.ok) {
         const d = await r.json()
-        anexo_url = d.url ?? null
+        anexo_id = d.documento?.anexo_id ?? null
       }
     }
 
-    await supabase.from('comentarios_receita').insert({
+    const { data: newCom } = await supabase.from('comentarios_receita').insert({
       pedido_id: pedidoId,
       comentario: texto.trim(),
       usuario: username,
       data_comentario: new Date().toISOString(),
       tipo_documento: tipoId !== '' ? tipoId : null,
-      anexo_url,
-    })
+      anexo_id,
+    }).select().single()
+
+    // Link document to comment if both exist
+    if (newCom && anexo_id) {
+      await supabase.from('documentos_receita')
+        .update({ comentario_id: newCom.id })
+        .eq('pedido_id', pedidoId)
+        .eq('anexo_id', anexo_id)
+    }
 
     setTexto('')
     setTipoId('')
@@ -116,7 +476,6 @@ function ComentariosModal({
   return (
     <Modal open={open} onClose={onClose} title={`Comentários — Pedido #${pedidoId}`} size="lg">
       <div className="space-y-4">
-        {/* History */}
         <div className="max-h-64 overflow-y-auto space-y-3 pr-1">
           {loading && <p className="text-slate-400 text-sm">Carregando...</p>}
           {!loading && comentarios.length === 0 && (
@@ -170,11 +529,12 @@ function ComentariosModal({
   )
 }
 
-// --- Documents Modal ---
+// --- Documentos Modal ---
 function DocumentosModal({
-  open, onClose, pedidoId,
+  open, onClose, pedidoId, pedidoArquivosIds,
 }: {
   open: boolean; onClose: () => void; pedidoId: number
+  pedidoArquivosIds: string[] | null
 }) {
   const [docs, setDocs] = useState<Documento[]>([])
   const [tiposDocs, setTiposDocs] = useState<TipoDoc[]>([])
@@ -182,7 +542,9 @@ function DocumentosModal({
   const [tipoId, setTipoId] = useState<number | ''>('')
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
-  const [expandedTipos, setExpandedTipos] = useState<Set<string>>(new Set(['todos']))
+  const [uploadMsg, setUploadMsg] = useState('')
+  const [uploadError, setUploadError] = useState('')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set(['Documentos de Solicitação']))
   const fileRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
@@ -193,11 +555,10 @@ function DocumentosModal({
     ])
     const tipos = (t ?? []) as TipoDoc[]
     const tipoMap = Object.fromEntries(tipos.map(x => [x.id, x.tipo]))
-    const docsComTipo: Documento[] = (d ?? []).map((doc: Documento) => ({
+    setDocs((d ?? []).map((doc: Documento) => ({
       ...doc,
-      tipo_nome: doc.tipo_documento ? tipoMap[doc.tipo_documento] ?? 'Outros' : 'Sem tipo',
-    }))
-    setDocs(docsComTipo)
+      tipo_nome: doc.tipo_documento != null ? tipoMap[doc.tipo_documento] ?? 'Outros' : 'Sem tipo',
+    })))
     setTiposDocs(tipos)
     setLoading(false)
   }, [pedidoId])
@@ -206,82 +567,121 @@ function DocumentosModal({
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!file) return
-    setUploading(true)
+    setUploadError('')
+    if (!file) { setUploadError('Selecione um arquivo.'); return }
+    if (tipoId === '') { setUploadError('Selecione o tipo de documento.'); return }
 
+    setUploading(true)
     const fd = new FormData()
     fd.append('file', file)
     fd.append('pedido_id', String(pedidoId))
+    fd.append('tipo_documento', String(tipoId))
     fd.append('modulo', 'recebimentos')
-    if (tipoId !== '') fd.append('tipo_documento', String(tipoId))
-    await fetch('/api/documentos/upload', { method: 'POST', body: fd })
 
-    setFile(null)
-    if (fileRef.current) fileRef.current.value = ''
-    setTipoId('')
+    const r = await fetch('/api/documentos/upload', { method: 'POST', body: fd })
     setUploading(false)
+
+    if (!r.ok) { setUploadError('Erro ao enviar.'); return }
+
+    setFile(null); if (fileRef.current) fileRef.current.value = ''
+    setTipoId('')
+    setUploadMsg('Documento enviado!')
+    setTimeout(() => setUploadMsg(''), 2000)
     load()
   }
 
-  const grouped = tiposDocs.reduce<Record<string, Documento[]>>((acc, t) => {
-    const docsDeTipo = docs.filter(d => d.tipo_documento === t.id)
-    if (docsDeTipo.length) acc[t.tipo] = docsDeTipo
-    return acc
-  }, {})
-  const semTipo = docs.filter(d => !d.tipo_documento)
+  const grouped: Record<string, Documento[]> = {}
+  tiposDocs.forEach(t => {
+    const items = docs.filter(d => d.tipo_documento === t.id)
+    if (items.length) grouped[t.tipo] = items
+  })
+  const semTipo = docs.filter(d => d.tipo_documento == null)
   if (semTipo.length) grouped['Sem tipo'] = semTipo
 
-  const toggleExpand = (nome: string) =>
-    setExpandedTipos(prev => { const n = new Set(prev); n.has(nome) ? n.delete(nome) : n.add(nome); return n })
+  const toggle = (n: string) => setExpanded(p => { const s = new Set(p); s.has(n) ? s.delete(n) : s.add(n); return s })
 
   return (
     <Modal open={open} onClose={onClose} title={`Documentos — Pedido #${pedidoId}`} size="lg">
       <div className="space-y-4">
-        {/* Upload form */}
-        <form onSubmit={handleUpload} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-          <p className="text-xs font-semibold text-slate-600 mb-2">Adicionar documento</p>
-          <div className="flex items-center gap-2">
-            <select className="input flex-1" value={tipoId} onChange={e => setTipoId(e.target.value === '' ? '' : Number(e.target.value))}>
-              <option value="">Tipo de documento</option>
-              {tiposDocs.map(t => <option key={t.id} value={t.id}>{t.tipo}</option>)}
-            </select>
+        <form onSubmit={handleUpload} className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+          <p className="text-xs font-semibold text-slate-600">Adicionar documento</p>
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <input ref={fileRef} type="file" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} />
-              <button type="button" onClick={() => fileRef.current?.click()} className="btn-secondary text-xs gap-1">
-                <Upload size={12} /> {file ? file.name.slice(0, 16) + '…' : 'Arquivo'}
-              </button>
+              <label className="label">Tipo de Documento *</label>
+              <select className="input" value={tipoId} onChange={e => setTipoId(e.target.value === '' ? '' : Number(e.target.value))}>
+                <option value="">Selecionar tipo...</option>
+                {tiposDocs.filter(t => t.id > 0).map(t => <option key={t.id} value={t.id}>{t.tipo}</option>)}
+              </select>
             </div>
-            <button type="submit" disabled={!file || uploading} className="btn-primary text-xs px-3 gap-1">
-              <Upload size={12} /> {uploading ? '...' : 'Enviar'}
-            </button>
+            <div>
+              <label className="label">Arquivo *</label>
+              <div className="flex gap-2">
+                <input ref={fileRef} type="file" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} />
+                <button type="button" onClick={() => fileRef.current?.click()} className="btn-secondary text-xs gap-1 flex-1 truncate">
+                  <Upload size={12} />{file ? file.name.slice(0, 18) + '…' : 'Selecionar'}
+                </button>
+              </div>
+            </div>
           </div>
+
+          {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+          {uploadMsg && <p className="text-xs text-green-600">{uploadMsg}</p>}
+          <button type="submit" disabled={uploading || !file || tipoId === ''} className="btn-primary text-sm gap-1">
+            <Upload size={13} /> {uploading ? 'Enviando...' : 'Enviar Documento'}
+          </button>
         </form>
 
-        {/* Document list */}
+        {pedidoArquivosIds && pedidoArquivosIds.length > 0 && (
+          <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <button onClick={() => toggle('Documentos de Solicitação')}
+              className="w-full flex items-center justify-between px-3 py-2 bg-blue-50 text-sm font-medium text-blue-800">
+              <span>Documentos de Solicitação ({pedidoArquivosIds.length})</span>
+              {expanded.has('Documentos de Solicitação') ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+            {expanded.has('Documentos de Solicitação') && (
+              <div className="divide-y divide-slate-100">
+                {pedidoArquivosIds.map((fileId, i) => (
+                  <div key={i} className="flex items-center justify-between px-3 py-2">
+                    <p className="text-xs text-slate-600">Documento de solicitação #{i + 1}</p>
+                    <a href={`/api/b2/file?fileId=${fileId}`} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline shrink-0 ml-2">
+                      <ExternalLink size={11} /> Ver
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="max-h-72 overflow-y-auto space-y-2">
           {loading && <p className="text-slate-400 text-sm">Carregando...</p>}
-          {!loading && docs.length === 0 && (
-            <p className="text-slate-400 text-sm text-center py-8">Nenhum documento.</p>
+          {!loading && docs.length === 0 && Object.keys(grouped).length === 0 && (
+            <p className="text-slate-400 text-sm text-center py-6">Nenhum documento enviado.</p>
           )}
           {Object.entries(grouped).map(([tipo, items]) => (
             <div key={tipo} className="border border-slate-200 rounded-lg overflow-hidden">
-              <button onClick={() => toggleExpand(tipo)}
+              <button onClick={() => toggle(tipo)}
                 className="w-full flex items-center justify-between px-3 py-2 bg-slate-100 text-sm font-medium text-slate-700">
                 <span>{tipo} ({items.length})</span>
-                {expandedTipos.has(tipo) ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                {expanded.has(tipo) ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </button>
-              {expandedTipos.has(tipo) && (
+              {expanded.has(tipo) && (
                 <div className="divide-y divide-slate-100">
                   {items.map(doc => (
-                    <div key={doc.id} className="flex items-center justify-between px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="text-xs text-slate-700 truncate">{doc.nome_documento}</p>
-                        <p className="text-xs text-slate-400">{fmtData(doc.data_upload)}</p>
+                    <div key={doc.id} className="px-3 py-2">
+                      <div className="flex items-center justify-between">
+                        <div className="min-w-0">
+                          <p className="text-xs text-slate-700 truncate">{doc.nome_documento}</p>
+                          <p className="text-xs text-slate-400">{fmtData(doc.data_upload)}</p>
+                        </div>
+                        {doc.anexo_id && (
+                          <a href={`/api/b2/file?fileId=${doc.anexo_id}`} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline shrink-0 ml-2">
+                            <ExternalLink size={11} /> Ver
+                          </a>
+                        )}
                       </div>
-                      <a href={`/api/b2/file?fileId=${doc.anexo_id}`} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline shrink-0 ml-2">
-                        <Download size={11} /> Ver
-                      </a>
                     </div>
                   ))}
                 </div>
@@ -298,223 +698,8 @@ function DocumentosModal({
   )
 }
 
-// --- Analysis Modal ---
-function AnaliseModal({
-  open, onClose, pedidoId,
-}: {
-  open: boolean; onClose: () => void; pedidoId: number
-}) {
-  const [analise, setAnalise] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const fetchAnalise = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const r = await fetch(`/api/pedidos-receita/${pedidoId}/analise`)
-      const d = await r.json()
-      if (d.sem_documento) {
-        setError('Este pedido não possui texto de documento para análise.')
-      } else if (d.error) {
-        setError(d.error)
-      } else {
-        setAnalise(d.analise)
-      }
-    } catch {
-      setError('Erro ao buscar análise.')
-    }
-    setLoading(false)
-  }, [pedidoId])
-
-  useEffect(() => { if (open) fetchAnalise() }, [open, fetchAnalise])
-
-  return (
-    <Modal open={open} onClose={onClose} title="Análise de Documento — IA" size="lg">
-      <div className="space-y-4">
-        {loading && (
-          <div className="text-center py-12">
-            <Brain size={32} className="mx-auto text-blue-400 animate-pulse mb-3" />
-            <p className="text-slate-500 text-sm">Analisando documento com IA...</p>
-          </div>
-        )}
-        {error && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
-        )}
-        {analise && !loading && (
-          <>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-h-96 overflow-y-auto">
-              <p className="text-sm text-slate-800 whitespace-pre-wrap">{analise}</p>
-            </div>
-            <button onClick={fetchAnalise} className="btn-secondary text-xs gap-1.5">
-              <RefreshCw size={12} /> Reanalisar
-            </button>
-          </>
-        )}
-        <div className="flex justify-end">
-          <button onClick={onClose} className="btn-secondary text-sm">Fechar</button>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-// --- Contract Modal ---
-function ContratoModal({
-  open, onClose, pedido, fluxo,
-}: {
-  open: boolean; onClose: () => void
-  pedido: Pedido; fluxo: FluxoRow[]
-}) {
-  const [modelos, setModelos] = useState<ModeloContrato[]>([])
-  const [modeloVar, setModeloVar] = useState('')
-  const [modeloEst, setModeloEst] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [generating, setGenerating] = useState(false)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    if (!open) return
-    setLoading(true)
-    supabase.from('modelo_contrato_venda').select('*').then(({ data }) => {
-      setModelos(data ?? [])
-      setLoading(false)
-    })
-  }, [open])
-
-  const handleGerar = async () => {
-    setGenerating(true)
-    setError('')
-    try {
-      // Build placeholders
-      const valorTotal = fluxo.reduce((s, r) => s + Number(r.valor_referente), 0)
-      const fluxoPlaceholders: Record<string, string> = {}
-      fluxo.forEach((r, i) => {
-        fluxoPlaceholders[`mes_ano_${i + 1}`] = `${r.mes}/${r.ano}`
-        fluxoPlaceholders[`valor_referente_${i + 1}`] = fmtMoeda(Number(r.valor_referente))
-      })
-
-      const vars: Record<string, string> = {
-        id: String(pedido.id),
-        empresa: pedido.empresa,
-        categoria: pedido.categoria,
-        cliente: pedido.cliente,
-        valor_pedido: fmtMoeda(Number(pedido.valor_pedido)),
-        status: pedido.status,
-        data_solicitacao: fmtData(pedido.data_solicitacao),
-        data_autorizacao: fmtData(pedido.data_autorizacao),
-        emergencia: pedido.emergencia ? 'Sim' : 'Não',
-        observacao: pedido.observacao ?? '',
-        valor_total_fluxo: fmtMoeda(valorTotal),
-        ...fluxoPlaceholders,
-      }
-
-      // Generate PDF in browser
-      const { jsPDF } = await import('jspdf')
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-
-      const fillTemplate = (text: string) =>
-        text.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`)
-
-      // Header
-      doc.setFontSize(16)
-      doc.setFont('helvetica', 'bold')
-      doc.text('CONTRATO DE PRESTAÇÃO DE SERVIÇOS / VENDA', 105, 20, { align: 'center' })
-
-      doc.setFontSize(10)
-      doc.setFont('helvetica', 'normal')
-      doc.text(`Pedido: #${pedido.id}`, 20, 35)
-      doc.text(`Data: ${fmtData(pedido.data_solicitacao)}`, 20, 42)
-      doc.text(`Empresa: ${pedido.empresa}`, 20, 49)
-      doc.text(`Cliente: ${pedido.cliente}`, 20, 56)
-      doc.text(`Categoria: ${pedido.categoria}`, 20, 63)
-      doc.text(`Valor Total: ${fmtMoeda(Number(pedido.valor_pedido))}`, 20, 70)
-      if (pedido.observacao) doc.text(`Observação: ${pedido.observacao}`, 20, 77)
-
-      // Fluxo
-      if (fluxo.length > 0) {
-        let y = 90
-        doc.setFont('helvetica', 'bold')
-        doc.text('Cronograma de Recebimentos', 20, y)
-        y += 8
-        doc.setFont('helvetica', 'normal')
-        fluxo.forEach(r => {
-          doc.text(`${r.mes}/${r.ano}  —  ${fmtMoeda(Number(r.valor_referente))}`, 25, y)
-          y += 7
-        })
-        y += 5
-        doc.setFont('helvetica', 'bold')
-        doc.text(`Total: ${fmtMoeda(valorTotal)}`, 20, y)
-      }
-
-      // Signature lines
-      const sigY = 240
-      doc.line(20, sigY, 90, sigY)
-      doc.line(120, sigY, 190, sigY)
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(9)
-      doc.text(pedido.empresa, 55, sigY + 5, { align: 'center' })
-      doc.text(pedido.cliente, 155, sigY + 5, { align: 'center' })
-
-      doc.save(fillTemplate(`contrato_pedido_${pedido.id}.pdf`))
-    } catch (e) {
-      console.error(e)
-      setError('Erro ao gerar contrato.')
-    }
-    setGenerating(false)
-  }
-
-  return (
-    <Modal open={open} onClose={onClose} title="Gerar Contrato" size="md">
-      <div className="space-y-4">
-        {loading ? (
-          <p className="text-slate-400 text-sm">Carregando modelos...</p>
-        ) : modelos.length === 0 ? (
-          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-            Nenhum modelo de contrato cadastrado. Será gerado um PDF padrão.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div>
-              <label className="label">Modelo Variável</label>
-              <select className="input" value={modeloVar} onChange={e => setModeloVar(e.target.value)}>
-                <option value="">Selecionar...</option>
-                {modelos.filter(m => m.estilo === 'variavel').map(m => (
-                  <option key={m.id} value={m.id}>{m.nome}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Modelo Estático</label>
-              <select className="input" value={modeloEst} onChange={e => setModeloEst(e.target.value)}>
-                <option value="">Selecionar...</option>
-                {modelos.filter(m => m.estilo === 'estatico').map(m => (
-                  <option key={m.id} value={m.id}>{m.nome}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
-
-        {error && <p className="text-red-600 text-sm">{error}</p>}
-
-        <div className="text-xs text-slate-500">
-          O contrato será gerado como PDF com os dados do pedido #{pedido.id}.
-        </div>
-
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary text-sm">Cancelar</button>
-          <button onClick={handleGerar} disabled={generating} className="btn-primary text-sm gap-1.5">
-            <FileSignature size={14} /> {generating ? 'Gerando...' : 'Gerar PDF'}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
 // --- Main Page ---
-export default function DetalhePedidoReceitaPage() {
+export default function AutorizarRecebimentoDetalhePage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const pedidoId = parseInt(id)
@@ -522,110 +707,36 @@ export default function DetalhePedidoReceitaPage() {
   const [pedido, setPedido] = useState<Pedido | null>(null)
   const [fluxo, setFluxo] = useState<FluxoRow[]>([])
   const [statusNome, setStatusNome] = useState<string | null>(null)
-  const [user, setUser] = useState<{ username: string; hierarquia: string } | null>(null)
+  const [user, setUser] = useState<{ username: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Modal states
+  const [showRecebimentos, setShowRecebimentos] = useState(false)
   const [showComents, setShowComents] = useState(false)
   const [showDocs, setShowDocs] = useState(false)
-  const [showAnalise, setShowAnalise] = useState(false)
-  const [showContrato, setShowContrato] = useState(false)
 
-  // Confirm states
   const [confirmAcao, setConfirmAcao] = useState<{
     open: boolean; acao: 'Autorizado' | 'Não Autorizado' | 'cancelar'
   }>({ open: false, acao: 'Autorizado' })
   const [processing, setProcessing] = useState(false)
 
   const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-
+    setLoading(true); setError('')
     const [{ data: p, error: pErr }, { data: fl }, u] = await Promise.all([
       supabase.from('pedidos_solicitados_receita').select('*').eq('id', pedidoId).maybeSingle(),
       supabase.from('pedidos_solicitados_fluxo_receita').select('*').eq('pedido_id', pedidoId).order('ano').order('mes'),
       fetch('/api/auth/me').then(r => r.json()),
     ])
-
-    if (pErr || !p) {
-      setError('Pedido não encontrado.')
-      setLoading(false)
-      return
-    }
-
-    setPedido(p as Pedido)
-    setFluxo(fl ?? [])
-    setUser(u)
-
-    // Fetch pedido_status_receita name if set
+    if (pErr || !p) { setError('Pedido não encontrado.'); setLoading(false); return }
+    setPedido(p as Pedido); setFluxo(fl ?? []); setUser(u)
     if ((p as Pedido).pedido_status_receita) {
-      const { data: st } = await supabase
-        .from('pedido_status_receita')
-        .select('nome_status')
-        .eq('id', (p as Pedido).pedido_status_receita)
-        .maybeSingle()
+      const { data: st } = await supabase.from('pedido_status_receita').select('nome_status').eq('id', (p as Pedido).pedido_status_receita).maybeSingle()
       setStatusNome((st as StatusPedido | null)?.nome_status ?? null)
     }
-
     setLoading(false)
   }, [pedidoId])
 
   useEffect(() => { if (!isNaN(pedidoId)) load() }, [load, pedidoId])
-
-  const handlePrint = async () => {
-    if (!pedido) return
-    const { jsPDF } = await import('jspdf')
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-
-    doc.setFontSize(16)
-    doc.setFont('helvetica', 'bold')
-    doc.text('PEDIDO DE RECEBIMENTO', 105, 18, { align: 'center' })
-
-    doc.setFontSize(10)
-    doc.setFont('helvetica', 'normal')
-
-    const fields: [string, string][] = [
-      ['Pedido ID', `#${pedido.id}`],
-      ['Empresa', pedido.empresa],
-      ['Categoria', pedido.categoria],
-      ['Cliente', pedido.cliente],
-      ['Valor', fmtMoeda(Number(pedido.valor_pedido))],
-      ['Status', pedido.status],
-      ['Data Solicitação', fmtData(pedido.data_solicitacao)],
-      ['Data Autorização', fmtData(pedido.data_autorizacao)],
-      ['Emergência', pedido.emergencia ? 'Sim' : 'Não'],
-      ['Cancelado', pedido.cancelado ? 'Sim' : 'Não'],
-    ]
-    if (pedido.observacao) fields.push(['Observação', pedido.observacao])
-    if (statusNome) fields.push(['Status do Pedido', statusNome])
-    if (pedido.usuario_autorizador) fields.push(['Autorizado por', pedido.usuario_autorizador])
-
-    let y = 32
-    fields.forEach(([k, v]) => {
-      doc.setFont('helvetica', 'bold')
-      doc.text(`${k}:`, 20, y)
-      doc.setFont('helvetica', 'normal')
-      doc.text(v ?? '—', 70, y)
-      y += 7
-    })
-
-    if (fluxo.length > 0) {
-      y += 5
-      doc.setFont('helvetica', 'bold')
-      doc.text('Cronograma de Recebimentos', 20, y)
-      y += 7
-      doc.setFont('helvetica', 'normal')
-      fluxo.forEach(r => {
-        doc.text(`${r.mes}/${r.ano}`, 25, y)
-        doc.text(fmtMoeda(Number(r.valor_referente)), 80, y)
-        doc.text(r.status, 140, y)
-        y += 6
-      })
-    }
-
-    doc.save(`pedido_${pedido.id}.pdf`)
-  }
 
   const handleAcao = async () => {
     if (!pedido || !user) return
@@ -666,22 +777,13 @@ export default function DetalhePedidoReceitaPage() {
     load()
   }
 
-  if (loading) {
-    return (
-      <div className="card text-center py-16 text-slate-400">Carregando...</div>
-    )
-  }
-
-  if (error || !pedido) {
-    return (
-      <div className="card text-center py-12">
-        <p className="text-red-600 mb-4">{error || 'Pedido não encontrado'}</p>
-        <button onClick={() => router.back()} className="btn-secondary gap-1.5">
-          <ArrowLeft size={14} /> Voltar
-        </button>
-      </div>
-    )
-  }
+  if (loading) return <div className="card text-center py-16 text-slate-400">Carregando...</div>
+  if (error || !pedido) return (
+    <div className="card text-center py-12">
+      <p className="text-red-600 mb-4">{error || 'Pedido não encontrado'}</p>
+      <button onClick={() => router.back()} className="btn-secondary gap-1.5"><ArrowLeft size={14} /> Voltar</button>
+    </div>
+  )
 
   const isPending = pedido.status === 'Aguardando Autorização' && !pedido.cancelado
   const isAutorizado = pedido.status === 'Autorizado'
@@ -692,9 +794,7 @@ export default function DetalhePedidoReceitaPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="btn-secondary p-2">
-            <ArrowLeft size={16} />
-          </button>
+          <button onClick={() => router.back()} className="btn-secondary p-2"><ArrowLeft size={16} /></button>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="page-title">Pedido #{pedido.id}</h1>
@@ -703,40 +803,24 @@ export default function DetalhePedidoReceitaPage() {
                   <AlertTriangle size={10} /> Emergência
                 </span>
               )}
-              {isCancelado && (
-                <span className="badge bg-red-100 text-red-700">Cancelado</span>
-              )}
+              {isCancelado && <span className="badge bg-red-100 text-red-700">Cancelado</span>}
             </div>
             <p className="page-subtitle">{pedido.empresa} · {pedido.categoria}</p>
           </div>
         </div>
-
-        {/* Status badge */}
         <span className={`badge text-sm px-3 py-1 ${
           pedido.status === 'Autorizado' ? 'bg-green-100 text-green-700' :
           pedido.status === 'Não Autorizado' ? 'bg-red-100 text-red-700' :
           pedido.status === 'Cancelado' ? 'bg-slate-200 text-slate-600' :
           'bg-yellow-100 text-yellow-700'
-        }`}>
-          {pedido.status}
-        </span>
+        }`}>{pedido.status}</span>
       </div>
 
-      {/* Action buttons row */}
+      {/* Action buttons */}
       <div className="flex flex-wrap gap-2">
-        {pedido.arquivo_texto && (
-          <button onClick={() => setShowAnalise(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700">
-            <Brain size={15} /> Analisar Documento
-          </button>
-        )}
-        <button onClick={handlePrint}
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-800">
-          <Printer size={15} /> Imprimir Pedido
-        </button>
-        <button onClick={() => setShowContrato(true)}
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-          <FileSignature size={15} /> Gerar Contrato
+        <button onClick={() => setShowRecebimentos(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700">
+          <CreditCard size={15} /> Controle de Recebimentos
         </button>
         <button onClick={() => setShowComents(true)}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-200">
@@ -745,6 +829,9 @@ export default function DetalhePedidoReceitaPage() {
         <button onClick={() => setShowDocs(true)}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-200">
           <FileText size={15} /> Documentos
+        </button>
+        <button onClick={load} className="btn-secondary p-2" title="Atualizar">
+          <RefreshCw size={16} />
         </button>
       </div>
 
@@ -755,7 +842,7 @@ export default function DetalhePedidoReceitaPage() {
           <InfoField label="Empresa" value={pedido.empresa} />
           <InfoField label="Categoria" value={pedido.categoria} />
           <InfoField label="Cliente" value={pedido.cliente} />
-          <InfoField label="Valor do Pedido" value={<span className="text-lg font-bold">{fmtMoeda(Number(pedido.valor_pedido))}</span>} />
+          <InfoField label="Valor do Pedido" value={<span className="text-lg font-bold">{fmtMoeda(pedido.valor_pedido)}</span>} />
           <InfoField label="Status Autorização" value={pedido.status} />
           <InfoField label="Status do Pedido" value={statusNome ?? '—'} />
           <InfoField label="Data Solicitação" value={fmtData(pedido.data_solicitacao)} />
@@ -801,9 +888,7 @@ export default function DetalhePedidoReceitaPage() {
                 ))}
                 <tr className="table-row bg-slate-50">
                   <td className="table-cell font-semibold">Total</td>
-                  <td className="table-cell text-right font-bold text-slate-900">
-                    {fmtMoeda(fluxo.reduce((s, r) => s + Number(r.valor_referente), 0))}
-                  </td>
+                  <td className="table-cell text-right font-bold">{fmtMoeda(fluxo.reduce((s, r) => s + Number(r.valor_referente), 0))}</td>
                   <td className="table-cell" />
                 </tr>
               </tbody>
@@ -812,7 +897,7 @@ export default function DetalhePedidoReceitaPage() {
         </div>
       )}
 
-      {/* Authorize / Reject / Cancel actions */}
+      {/* Authorize / Reject / Cancel */}
       <div className="card border-t-4 border-slate-200">
         <h2 className="text-sm font-semibold text-slate-700 mb-4">Ações</h2>
         <div className="flex flex-wrap gap-3">
@@ -843,20 +928,20 @@ export default function DetalhePedidoReceitaPage() {
             </p>
           )}
         </div>
+        {isAutorizado && !isCancelado && (
+          <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-800">
+            ⚠️ Este pedido já foi autorizado. Ao cancelar, comunique imediatamente o cliente e verifique se há recebimentos pendentes.
+          </div>
+        )}
       </div>
 
       {/* Modals */}
+      <ControleRecebimentosModal open={showRecebimentos} onClose={() => setShowRecebimentos(false)}
+        pedidoId={pedidoId} />
       <ComentariosModal open={showComents} onClose={() => setShowComents(false)}
         pedidoId={pedidoId} username={user?.username ?? ''} />
-
       <DocumentosModal open={showDocs} onClose={() => setShowDocs(false)}
-        pedidoId={pedidoId} />
-
-      <AnaliseModal open={showAnalise} onClose={() => setShowAnalise(false)}
-        pedidoId={pedidoId} />
-
-      <ContratoModal open={showContrato} onClose={() => setShowContrato(false)}
-        pedido={pedido} fluxo={fluxo} />
+        pedidoId={pedidoId} pedidoArquivosIds={pedido.arquivos_pdf_ids} />
 
       <Confirm
         open={confirmAcao.open}
@@ -868,11 +953,11 @@ export default function DetalhePedidoReceitaPage() {
         }
         message={
           confirmAcao.acao === 'cancelar' && isAutorizado
-            ? `⚠️ Atenção: Este pedido já foi autorizado. Cancelar irá reverter a autorização e remover do controle de recebimentos. Confirma?`
+            ? `⚠️ Atenção: Este pedido já foi autorizado. Cancelar irá reverter a autorização. Confirma?`
             : confirmAcao.acao === 'cancelar'
             ? `Confirma o cancelamento do pedido #${pedidoId}? Esta ação não pode ser desfeita.`
             : confirmAcao.acao === 'Autorizado'
-            ? `Confirma a autorização do pedido #${pedidoId} — ${pedido.cliente} — ${fmtMoeda(Number(pedido.valor_pedido))}?`
+            ? `Confirma a autorização do pedido #${pedidoId} — ${pedido.cliente} — ${fmtMoeda(pedido.valor_pedido)}?`
             : `Confirma a rejeição do pedido #${pedidoId}?`
         }
         confirmLabel={
