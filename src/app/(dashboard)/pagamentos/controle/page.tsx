@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
-import { RefreshCw, Plus, Pencil, X, Trash2, Check, Download, Upload, FileSpreadsheet } from 'lucide-react'
+import { RefreshCw, Plus, Pencil, X, Trash2, Check, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight, Info, FileOutput } from 'lucide-react'
+import RemessaRetornoModal from '@/components/controle-pagamentos/RemessaRetornoModal'
 
 // ---- Types ----
 interface PagamentoStatus { id: number; nome_status: string }
@@ -20,6 +21,10 @@ interface Pedido {
 interface Row extends Controle {
   empresa: string; categoria: string; fornecedor: string
   status_pedido: string; observacao: string | null; situacao: string
+}
+interface Resumo {
+  total_pagar: number; total_pago: number; saldo_restante: number
+  total_vencido: number; count_vencido: number; count_total: number
 }
 
 // ---- Helpers ----
@@ -42,6 +47,8 @@ const SITUACAO_BADGE: Record<string, string> = {
   'Em dia': 'bg-blue-100 text-blue-700',
   'Sem vencimento': 'bg-slate-100 text-slate-500',
 }
+
+const PAGE_SIZE = 100
 
 // ---- Edit Modal ----
 function EditModal({
@@ -172,7 +179,6 @@ function AdicionarModal({
 }) {
   const [tab, setTab] = useState<'individual' | 'lote'>('individual')
 
-  // Individual tab state
   const [pedidoId, setPedidoId] = useState('')
   const [dataVenc, setDataVenc] = useState('')
   const [valorPagar, setValorPagar] = useState('')
@@ -183,7 +189,6 @@ function AdicionarModal({
   const [success, setSuccess] = useState('')
   const boletoRef = useRef<HTMLInputElement>(null)
 
-  // Lote tab state
   const [loteFile, setLoteFile] = useState<File | null>(null)
   const [loteLoading, setLoteLoading] = useState(false)
   const [loteError, setLoteError] = useState('')
@@ -225,7 +230,6 @@ function AdicionarModal({
       return
     }
 
-    // Upload boleto if provided
     if (isBoleto && boletoFile && user) {
       const fd = new FormData()
       fd.append('file', boletoFile)
@@ -274,7 +278,6 @@ function AdicionarModal({
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
         </div>
 
-        {/* Tabs */}
         <div className="flex border-b border-slate-200">
           {(['individual', 'lote'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
@@ -287,7 +290,6 @@ function AdicionarModal({
           ))}
         </div>
 
-        {/* Tab: Individual */}
         {tab === 'individual' && (
           <form onSubmit={handleAddIndividual} className="space-y-4">
             {error && <p className="text-sm text-red-600">{error}</p>}
@@ -360,7 +362,6 @@ function AdicionarModal({
           </form>
         )}
 
-        {/* Tab: Lote */}
         {tab === 'lote' && (
           <div className="space-y-4">
             <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded p-3 space-y-1">
@@ -368,7 +369,7 @@ function AdicionarModal({
               <p>• <strong>pedido_id</strong>: OBRIGATÓRIO — ID de pedido existente</p>
               <p>• <strong>data_vencimento</strong>: OBRIGATÓRIO — formato DD/MM/AAAA</p>
               <p>• <strong>valor_pagar</strong>: OBRIGATÓRIO — separador decimal é ponto (1000.00)</p>
-              <p>• <strong>tipo_pagamento</strong>: OBRIGATÓRIO — 1=PIX, 2=Dinheiro, 3=Boleto, 4=Cartão</p>
+              <p>• <strong>tipo_pagamento</strong>: OBRIGATÓRIO — 1=PIX, 2=Dinheiro, 3=Boleto, 4=Cartão de Crédito, 5=Ainda à Definir</p>
               <p>• <strong>data_pagamento</strong> e <strong>valor_pagamento</strong>: opcionais</p>
             </div>
 
@@ -478,7 +479,11 @@ function AlterarStatusLoteModal({
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
         </div>
 
-        {/* Filters */}
+        <div className="flex items-start gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-2.5 shrink-0">
+          <Info size={13} className="shrink-0 mt-0.5 text-slate-400" />
+          <span>Operando sobre os pagamentos da página atual. Para abranger mais resultados, feche e aplique filtros de empresa ou status antes de abrir.</span>
+        </div>
+
         <div className="grid grid-cols-2 gap-3 shrink-0">
           <div>
             <label className="label">Filtrar por empresa</label>
@@ -498,14 +503,12 @@ function AlterarStatusLoteModal({
 
         {success && <p className="text-sm text-green-600 shrink-0">{success}</p>}
 
-        {/* List */}
         <div className="overflow-y-auto flex-1 border border-slate-200 rounded-lg">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-slate-50">
               <tr>
                 <th className="table-cell w-10">
-                  <input type="checkbox" checked={allSelected} onChange={toggleAll}
-                    className="w-4 h-4" />
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} className="w-4 h-4" />
                 </th>
                 <th className="table-cell font-medium text-left">Pagamento</th>
                 <th className="table-cell font-medium text-left">Vencimento</th>
@@ -520,8 +523,7 @@ function AlterarStatusLoteModal({
                 <tr key={r.id} className={`table-row cursor-pointer ${selected.has(r.id) ? 'bg-blue-50' : ''}`}
                   onClick={() => toggle(r.id)}>
                   <td className="table-cell" onClick={e => e.stopPropagation()}>
-                    <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)}
-                      className="w-4 h-4" />
+                    <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} className="w-4 h-4" />
                   </td>
                   <td className="table-cell">
                     <span className="font-mono text-slate-500">#{r.id}</span>
@@ -539,11 +541,8 @@ function AlterarStatusLoteModal({
           </table>
         </div>
 
-        {/* Action bar */}
         <div className="flex items-center gap-3 pt-2 shrink-0 border-t border-slate-100">
-          <span className="text-sm text-slate-500 mr-auto">
-            {selected.size} selecionado(s)
-          </span>
+          <span className="text-sm text-slate-500 mr-auto">{selected.size} selecionado(s)</span>
           <div className="flex-1 max-w-[200px]">
             <select className="input" value={novoStatus} onChange={e => setNovoStatus(e.target.value)}>
               {statuses.map(s => <option key={s.id} value={s.id}>{s.nome_status}</option>)}
@@ -562,12 +561,25 @@ function AlterarStatusLoteModal({
 
 // ---- Main Page ----
 export default function ControlePage() {
-  const [controles, setControles] = useState<Controle[]>([])
-  const [pedidos, setPedidos] = useState<Record<number, Pedido>>({})
   const [statuses, setStatuses] = useState<PagamentoStatus[]>([])
   const [tipos, setTipos] = useState<TipoPagamento[]>([])
-  const [loading, setLoading] = useState(true)
+  const [pedidosForAdd, setPedidosForAdd] = useState<Pedido[]>([])
   const [user, setUser] = useState<{ username: string } | null>(null)
+  const [empresas, setEmpresas] = useState<string[]>([])
+  const [categorias, setCategorias] = useState<string[]>([])
+
+  // Resumo (accurate full-dataset aggregates via API route)
+  const [resumo, setResumo] = useState<Resumo>({
+    total_pagar: 0, total_pago: 0, saldo_restante: 0,
+    total_vencido: 0, count_vencido: 0, count_total: 0,
+  })
+  const [resumoLoading, setResumoLoading] = useState(true)
+
+  // Table (paginated)
+  const [rows, setRows] = useState<Row[]>([])
+  const [tableLoading, setTableLoading] = useState(true)
+  const [page, setPage] = useState(0)
+  const [total, setTotal] = useState(0)
 
   // Filters
   const [filtroEmpresa, setFiltroEmpresa] = useState('')
@@ -579,41 +591,93 @@ export default function ControlePage() {
   const [editRow, setEditRow] = useState<Row | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [showLote, setShowLote] = useState(false)
+  const [showRemessa, setShowRemessa] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    const [{ data: ctrls }, { data: sts }, { data: tps }, u] = await Promise.all([
-      supabase.from('controle_pagamentos').select('*').order('id', { ascending: false }),
+  // Load reference data once
+  useEffect(() => {
+    Promise.all([
       supabase.from('pagamento_status').select('*').order('id'),
       supabase.from('tipos_pagamento').select('*').order('id'),
+      supabase.from('pedidos_solicitados').select('id, empresa, categoria, fornecedor, valor_pedido, status, observacao, cancelado')
+        .eq('status', 'Autorizado').eq('cancelado', false).order('id', { ascending: false }),
+      supabase.from('pedidos_solicitados').select('empresa').order('empresa'),
+      supabase.from('pedidos_solicitados').select('categoria').order('categoria'),
       fetch('/api/auth/me').then(r => r.json()),
-    ])
-    setStatuses(sts ?? [])
-    setTipos(tps ?? [])
-    setUser(u?.username ? u : null)
+    ]).then(([{ data: sts }, { data: tps }, { data: peds }, { data: emp }, { data: cat }, u]) => {
+      setStatuses(sts ?? [])
+      setTipos(tps ?? [])
+      setPedidosForAdd(peds ?? [])
+      setEmpresas([...new Set((emp ?? []).map((r: { empresa: string }) => r.empresa).filter(Boolean))].sort())
+      setCategorias([...new Set((cat ?? []).map((r: { categoria: string }) => r.categoria).filter(Boolean))].sort())
+      setUser(u?.username ? u : null)
+    })
+  }, [])
 
-    const ctrlList = ctrls ?? []
-    setControles(ctrlList)
+  // Reset page when server-side filters change
+  useEffect(() => { setPage(0) }, [filtroEmpresa, filtroCategoria, filtroStatusPag, filtroSituacao])
 
-    const pedidoIds = [...new Set(ctrlList.filter(c => c.pedido_id).map(c => c.pedido_id as number))]
-    if (pedidoIds.length > 0) {
+  // Load resumo from API (full dataset aggregates)
+  const loadResumo = useCallback(async () => {
+    setResumoLoading(true)
+    const params = new URLSearchParams()
+    if (filtroEmpresa) params.set('empresa', filtroEmpresa)
+    if (filtroCategoria) params.set('categoria', filtroCategoria)
+    if (filtroStatusPag) params.set('status_pagamento', filtroStatusPag)
+    try {
+      const res = await fetch(`/api/controle-pagamentos/resumo?${params}`)
+      const data = await res.json()
+      setResumo(data)
+    } catch { /* keep previous */ }
+    setResumoLoading(false)
+  }, [filtroEmpresa, filtroCategoria, filtroStatusPag])
+
+  // Load paginated table rows
+  const loadTable = useCallback(async () => {
+    setTableLoading(true)
+
+    // Resolve pedido_ids for empresa/categoria filters (these fields live on pedidos_solicitados)
+    let pedidoIds: number[] | null = null
+    if (filtroEmpresa || filtroCategoria) {
+      let q = supabase.from('pedidos_solicitados').select('id')
+      if (filtroEmpresa) q = q.eq('empresa', filtroEmpresa)
+      if (filtroCategoria) q = q.eq('categoria', filtroCategoria)
+      const { data } = await q
+      pedidoIds = (data ?? []).map((p: { id: number }) => p.id)
+      if (pedidoIds.length === 0) {
+        setRows([])
+        setTotal(0)
+        setTableLoading(false)
+        return
+      }
+    }
+
+    let q = supabase
+      .from('controle_pagamentos')
+      .select('*', { count: 'exact' })
+      .order('id', { ascending: false })
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+
+    if (pedidoIds) q = q.in('pedido_id', pedidoIds)
+    if (filtroStatusPag) q = q.eq('status_pagamento', parseInt(filtroStatusPag))
+
+    const { data: ctrls, count } = await q
+    setTotal(count ?? 0)
+
+    const ctrlList = (ctrls ?? []) as Controle[]
+
+    // Enrich current page with pedido data
+    const uniquePedidoIds = [...new Set(ctrlList.filter(c => c.pedido_id).map(c => c.pedido_id as number))]
+    const pedidoMap: Record<number, Pedido> = {}
+    if (uniquePedidoIds.length > 0) {
       const { data: peds } = await supabase
         .from('pedidos_solicitados')
         .select('id, empresa, categoria, fornecedor, valor_pedido, status, observacao, cancelado')
-        .in('id', pedidoIds)
-      const map: Record<number, Pedido> = {}
-      peds?.forEach(p => { map[p.id] = p })
-      setPedidos(map)
+        .in('id', uniquePedidoIds)
+      ;(peds ?? []).forEach((p: Pedido) => { pedidoMap[p.id] = p })
     }
-    setLoading(false)
-  }, [])
 
-  useEffect(() => { load() }, [load])
-
-  // Build enriched rows
-  const rows: Row[] = useMemo(() =>
-    controles.map(c => {
-      const ped = c.pedido_id ? pedidos[c.pedido_id] : undefined
+    const enriched: Row[] = ctrlList.map(c => {
+      const ped = c.pedido_id ? pedidoMap[c.pedido_id] : undefined
       return {
         ...c,
         empresa: ped?.empresa ?? '',
@@ -623,44 +687,27 @@ export default function ControlePage() {
         observacao: ped?.observacao ?? null,
         situacao: getSituacao(c),
       }
-    }), [controles, pedidos])
+    })
 
-  const empresas = useMemo(() => [...new Set(rows.map(r => r.empresa).filter(Boolean))].sort(), [rows])
-  const categorias = useMemo(() => {
-    const base = filtroEmpresa ? rows.filter(r => r.empresa === filtroEmpresa) : rows
-    return [...new Set(base.map(r => r.categoria).filter(Boolean))].sort()
-  }, [rows, filtroEmpresa])
+    setRows(enriched)
+    setTableLoading(false)
+  }, [page, filtroEmpresa, filtroCategoria, filtroStatusPag])
 
-  const filtered = useMemo(() => {
-    let list = rows
-    if (filtroEmpresa) list = list.filter(r => r.empresa === filtroEmpresa)
-    if (filtroCategoria) list = list.filter(r => r.categoria === filtroCategoria)
-    if (filtroStatusPag) list = list.filter(r => String(r.status_pagamento) === filtroStatusPag)
-    if (filtroSituacao) list = list.filter(r => r.situacao === filtroSituacao)
-    return list
-  }, [rows, filtroEmpresa, filtroCategoria, filtroStatusPag, filtroSituacao])
+  useEffect(() => { loadResumo() }, [loadResumo])
+  useEffect(() => { loadTable() }, [loadTable])
 
-  const sorted = useMemo(() =>
-    [...filtered].sort((a, b) => (a.pedido_id ?? 0) - (b.pedido_id ?? 0) || a.id - b.id),
-    [filtered])
+  const reload = () => { loadResumo(); loadTable() }
 
-  // Summary cards
-  const totalAPagar = useMemo(() => filtered.reduce((s, r) => s + (r.valor_pagar ?? 0), 0), [filtered])
-  const totalPago = useMemo(() => filtered.reduce((s, r) => s + (r.valor_pagamento ?? 0), 0), [filtered])
-  const saldoRestante = totalAPagar - totalPago
+  // situacao filter is client-side on current page only
+  const visibleRows = useMemo(() => {
+    if (!filtroSituacao) return rows
+    return rows.filter(r => r.situacao === filtroSituacao)
+  }, [rows, filtroSituacao])
 
-  const vencidosCount = useMemo(() =>
-    filtered.filter(r => r.situacao === 'Atrasado').length, [filtered])
-  const totalVencido = useMemo(() =>
-    filtered.filter(r => r.situacao === 'Atrasado')
-      .reduce((s, r) => s + (r.valor_pagar ?? 0) - (r.valor_pagamento ?? 0), 0),
-    [filtered])
+  const totalPages = Math.ceil(total / PAGE_SIZE)
 
   const statusNome = (id: number | null) => statuses.find(s => s.id === id)?.nome_status ?? '-'
   const tipoNome = (id: number | null) => tipos.find(t => t.id === id)?.tipos ?? '-'
-
-  const pedidosList = useMemo(() =>
-    Object.values(pedidos).sort((a, b) => b.id - a.id), [pedidos])
 
   return (
     <div className="space-y-5">
@@ -677,8 +724,11 @@ export default function ControlePage() {
           <button onClick={() => setShowLote(true)} className="btn-secondary text-sm">
             Alterar Status em Lote
           </button>
-          <button onClick={load} className="btn-secondary p-2" title="Atualizar">
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          <button onClick={() => setShowRemessa(true)} className="btn-secondary gap-1.5 text-sm">
+            <FileOutput size={15} /> Remessa / Retorno
+          </button>
+          <button onClick={reload} className="btn-secondary p-2" title="Atualizar">
+            <RefreshCw size={16} className={(resumoLoading || tableLoading) ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
@@ -697,7 +747,7 @@ export default function ControlePage() {
           <div>
             <label className="label">Categoria</label>
             <select className="input" value={filtroCategoria}
-              onChange={e => setFiltroCategoria(e.target.value)} disabled={!filtroEmpresa}>
+              onChange={e => setFiltroCategoria(e.target.value)}>
               <option value="">Todas</option>
               {categorias.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -721,38 +771,57 @@ export default function ControlePage() {
             </select>
           </div>
         </div>
-        <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">
-          {loading ? 'Carregando...' : `${filtered.length} pagamento(s) de ${controles.length} total`}
-        </p>
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+          <p className="text-xs text-slate-500">
+            {tableLoading
+              ? 'Carregando...'
+              : filtroSituacao
+              ? `${visibleRows.length} de ${rows.length} na página com situação "${filtroSituacao}"`
+              : `${total.toLocaleString('pt-BR')} pagamento(s) — página ${page + 1} de ${Math.max(1, totalPages)}`
+            }
+          </p>
+          {filtroSituacao && (
+            <p className="text-xs text-amber-600 flex items-center gap-1">
+              <Info size={11} /> Filtro de situação aplicado à página atual
+            </p>
+          )}
+        </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* Summary Cards — from API (accurate full-dataset totals) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total a Pagar</p>
-          <p className="text-xl font-bold text-slate-900 mt-1">{fmtMoeda(totalAPagar)}</p>
+          <p className={`text-xl font-bold text-slate-900 mt-1 ${resumoLoading ? 'opacity-40' : ''}`}>
+            {fmtMoeda(resumo.total_pagar)}
+          </p>
+          <p className="text-xs text-slate-400 mt-0.5">{resumo.count_total.toLocaleString('pt-BR')} parcela(s)</p>
         </div>
         <div className="card">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total Pago</p>
-          <p className="text-xl font-bold text-green-700 mt-1">{fmtMoeda(totalPago)}</p>
+          <p className={`text-xl font-bold text-green-700 mt-1 ${resumoLoading ? 'opacity-40' : ''}`}>
+            {fmtMoeda(resumo.total_pago)}
+          </p>
         </div>
         <div className="card">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Saldo Restante</p>
-          <p className={`text-xl font-bold mt-1 ${saldoRestante < 0 ? 'text-red-600' : 'text-slate-900'}`}>
-            {fmtMoeda(saldoRestante)}
+          <p className={`text-xl font-bold mt-1 ${resumo.saldo_restante < 0 ? 'text-red-600' : 'text-slate-900'} ${resumoLoading ? 'opacity-40' : ''}`}>
+            {fmtMoeda(resumo.saldo_restante)}
           </p>
         </div>
         <div className="card">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total Vencido</p>
-          <p className="text-xl font-bold text-red-600 mt-1">{fmtMoeda(totalVencido)}</p>
-          <p className="text-xs text-red-500 mt-0.5">{vencidosCount} parcela(s) vencida(s)</p>
+          <p className={`text-xl font-bold text-red-600 mt-1 ${resumoLoading ? 'opacity-40' : ''}`}>
+            {fmtMoeda(resumo.total_vencido)}
+          </p>
+          <p className="text-xs text-red-500 mt-0.5">{resumo.count_vencido} parcela(s) vencida(s)</p>
         </div>
       </div>
 
       {/* Table */}
-      {loading ? (
+      {tableLoading ? (
         <div className="card text-center py-12 text-slate-400">Carregando...</div>
-      ) : sorted.length === 0 ? (
+      ) : visibleRows.length === 0 ? (
         <div className="card text-center py-12 text-slate-400">Nenhum pagamento encontrado.</div>
       ) : (
         <div className="card p-0 overflow-hidden">
@@ -776,7 +845,7 @@ export default function ControlePage() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map(r => (
+                {visibleRows.map(r => (
                   <tr key={r.id} className="table-row">
                     <td className="table-cell font-mono text-xs text-slate-400">#{r.id}</td>
                     <td className="table-cell font-mono text-xs text-slate-500">#{r.pedido_id}</td>
@@ -814,6 +883,29 @@ export default function ControlePage() {
               </tbody>
             </table>
           </div>
+
+          {!filtroSituacao && totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
+              <button
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={14} /> Anterior
+              </button>
+              <span className="text-sm text-slate-600">
+                Página <span className="font-semibold">{page + 1}</span> de{' '}
+                <span className="font-semibold">{totalPages}</span>
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1}
+                className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Próximo <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -824,19 +916,19 @@ export default function ControlePage() {
           statuses={statuses}
           tipos={tipos}
           onClose={() => setEditRow(null)}
-          onSaved={() => { setEditRow(null); load() }}
+          onSaved={() => { setEditRow(null); reload() }}
         />
       )}
 
       {/* Adicionar Modal */}
       {showAdd && (
         <AdicionarModal
-          pedidos={pedidosList}
+          pedidos={pedidosForAdd}
           statuses={statuses}
           tipos={tipos}
           user={user}
           onClose={() => setShowAdd(false)}
-          onSaved={() => { load() }}
+          onSaved={() => reload()}
         />
       )}
 
@@ -846,7 +938,14 @@ export default function ControlePage() {
           rows={rows}
           statuses={statuses}
           onClose={() => setShowLote(false)}
-          onSaved={() => { load() }}
+          onSaved={() => reload()}
+        />
+      )}
+
+      {showRemessa && (
+        <RemessaRetornoModal
+          onClose={() => setShowRemessa(false)}
+          onUpdated={() => reload()}
         />
       )}
     </div>
