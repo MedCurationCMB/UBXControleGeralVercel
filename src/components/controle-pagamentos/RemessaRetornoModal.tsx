@@ -40,6 +40,18 @@ interface ArquivoDoc {
   id: number; nome: string; tipo: string; file_id: string; data_upload: string
 }
 
+interface GeradoData {
+  fileName: string
+  pdfFileName: string
+  sequencial: number
+  nomeEmpresa: string
+  rows: Array<{
+    pagamento_id: number; pedido_id: number | null; fornecedor: string
+    empresa: string; categoria: string; tipo_pagamento: number
+    data_pagamento: string; valor_pagamento: number; observacao: string
+  }>
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const FORMA_INICIACAO_MAP: Record<string, string> = {
@@ -100,6 +112,8 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
   const [previewRows, setPreviewRows] = useState<PreviewRow[] | null>(null)
   const [generating, setGenerating] = useState(false)
   const [geradoNome, setGeradoNome] = useState('')
+  const [geradoData, setGeradoData] = useState<GeradoData | null>(null)
+  const [generatingPdf, setGeneratingPdf] = useState(false)
 
   // Retorno state
   const [retornoFile, setRetornoFile] = useState<File | null>(null)
@@ -274,6 +288,17 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
     if (!previewRows?.length || !contaId) return
     setGenerating(true)
     try {
+      // Fetch observações dos pedidos para o relatório PDF
+      const pedidoIds = [...new Set(previewRows.filter(r => r.pedido_id).map(r => r.pedido_id as number))]
+      const obsMap: Record<number, { observacao: string; categoria: string }> = {}
+      if (pedidoIds.length > 0) {
+        const { data: peds } = await supabase
+          .from('pedidos_solicitados')
+          .select('id, observacao, categoria')
+          .in('id', pedidoIds)
+        for (const p of peds ?? []) obsMap[p.id] = { observacao: p.observacao ?? '', categoria: p.categoria ?? '' }
+      }
+
       const res = await fetch('/api/remessa/gerar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -295,14 +320,37 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
       const data = await res.json()
       if (!res.ok || !data.ok) throw new Error(data.error ?? 'Erro ao gerar')
 
-      // Trigger download
+      // Trigger download of .rem file
       const blob = new Blob([data.file_content], { type: 'text/plain' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url; a.download = data.file_name; a.click()
       URL.revokeObjectURL(url)
 
+      // Prepare data for PDF report
+      const contaNome = contas.find(c => String(c.id) === contaId)?.nome_empresa ?? ''
+      const seqNum = data.sequencial as number
+      const pdfFileName = data.file_name.replace(/\.rem$/i, '_relatorio.pdf')
+
       setGeradoNome(data.file_name)
+      setGeradoData({
+        fileName: data.file_name,
+        pdfFileName,
+        sequencial: seqNum,
+        nomeEmpresa: contaNome,
+        rows: previewRows.map(r => ({
+          pagamento_id: r.pagamento_id,
+          pedido_id: r.pedido_id,
+          fornecedor: r.fornecedor,
+          empresa: r.empresa,
+          categoria: r.pedido_id ? obsMap[r.pedido_id]?.categoria ?? '' : '',
+          tipo_pagamento: r.tipo_pagamento,
+          data_pagamento: r.data_pagamento,
+          valor_pagamento: r.valor_pagamento,
+          observacao: r.pedido_id ? obsMap[r.pedido_id]?.observacao ?? '' : '',
+        })),
+      })
+
       setPreviewRows(null)
       setSelected(new Set())
       onUpdated()
@@ -311,6 +359,131 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
       alert(String(e))
     }
     setGenerating(false)
+  }
+
+  // ─── Generate PDF report ──────────────────────────────────────────────────
+
+  const handleGerarPDF = async () => {
+    if (!geradoData) return
+    setGeneratingPdf(true)
+    try {
+      const { jsPDF } = await import('jspdf')
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const W = 210; const M = 15; const CW = W - M * 2
+      const AZUL = '#1f4e79'; const CINZA = '#f4f6f9'; const LINHA = '#d0d5dd'
+
+      const now = new Date()
+      const dataHora = now.toLocaleDateString('pt-BR') + ' ' + now.toLocaleTimeString('pt-BR')
+      let y = 15
+
+      // ── Cabeçalho ────────────────────────────────────────────────────────
+      doc.setFillColor(AZUL)
+      doc.rect(M, y, CW, 12, 'F')
+      doc.setTextColor('#ffffff')
+      doc.setFontSize(13); doc.setFont('helvetica', 'bold')
+      doc.text('Relatório de Arquivo de Remessa CNAB 240', W / 2, y + 8, { align: 'center' })
+      y += 16
+
+      doc.setTextColor('#333333')
+      doc.setFontSize(9); doc.setFont('helvetica', 'normal')
+      doc.text(`Arquivo: ${geradoData.fileName}`, M, y); y += 5
+      doc.text(`Empresa pagadora: ${geradoData.nomeEmpresa}`, M, y); y += 5
+      doc.text(`Gerado em: ${dataHora}`, M, y); y += 8
+
+      doc.setDrawColor(AZUL)
+      doc.setLineWidth(0.5)
+      doc.line(M, y, M + CW, y)
+      y += 6
+
+      // ── Cards de pagamento ────────────────────────────────────────────────
+      const TIPO_NOME: Record<number, string> = { 1: 'PIX', 2: 'Dinheiro', 3: 'Boleto', 4: 'Cartão', 5: 'À Definir' }
+
+      const addPage = () => { doc.addPage(); y = 15 }
+      const checkY = (needed: number) => { if (y + needed > 275) addPage() }
+
+      for (const row of geradoData.rows) {
+        const obsLines = doc.splitTextToSize(row.observacao || '—', CW - 4)
+        const cardH = 10 + 6 * 3 + 5 + obsLines.length * 4.5 + 4
+        checkY(cardH + 4)
+
+        // Header do card
+        doc.setFillColor(AZUL)
+        doc.rect(M, y, CW, 8, 'F')
+        doc.setTextColor('#ffffff')
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold')
+        doc.text(`Pagamento #${row.pagamento_id}`, M + 3, y + 5.5)
+        doc.text(`Pedido #${row.pedido_id ?? '—'}`, M + CW - 3, y + 5.5, { align: 'right' })
+        y += 8
+
+        // Corpo do card (fundo cinza)
+        const bodyH = 6 * 3 + 4
+        doc.setFillColor(CINZA)
+        doc.rect(M, y, CW, bodyH, 'F')
+        doc.setTextColor('#1f4e79')
+        doc.setFontSize(8); doc.setFont('helvetica', 'bold')
+        const col2 = M + CW / 2
+
+        const fieldRow = (label1: string, val1: string, label2: string, val2: string, yy: number) => {
+          doc.setFont('helvetica', 'bold'); doc.setTextColor('#1f4e79')
+          doc.text(label1, M + 3, yy)
+          doc.setFont('helvetica', 'normal'); doc.setTextColor('#222222')
+          doc.text(val1, M + 3 + doc.getTextWidth(label1) + 1, yy)
+          doc.setFont('helvetica', 'bold'); doc.setTextColor('#1f4e79')
+          doc.text(label2, col2, yy)
+          doc.setFont('helvetica', 'normal'); doc.setTextColor('#222222')
+          doc.text(val2, col2 + doc.getTextWidth(label2) + 1, yy)
+        }
+
+        const dataPgto = row.data_pagamento
+          ? new Date(row.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
+        const valorStr = row.valor_pagamento.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+        fieldRow('Empresa:', row.empresa || '—', 'Fornecedor:', row.fornecedor || '—', y + 5)
+        doc.setDrawColor(LINHA); doc.setLineWidth(0.2); doc.line(M, y + 7, M + CW, y + 7)
+        fieldRow('Categoria:', row.categoria || '—', 'Tipo de Pagamento:', TIPO_NOME[row.tipo_pagamento] ?? '—', y + 12)
+        doc.line(M, y + 14, M + CW, y + 14)
+        fieldRow('Data do Pagamento:', dataPgto, 'Valor:', valorStr, y + 19)
+        y += bodyH
+
+        // Descrição
+        doc.setFillColor(CINZA)
+        doc.rect(M, y, CW, obsLines.length * 4.5 + 8, 'F')
+        doc.setFont('helvetica', 'bold'); doc.setTextColor('#1f4e79'); doc.setFontSize(8)
+        doc.text('Descrição da Compra/Contratação:', M + 3, y + 5)
+        doc.setFont('helvetica', 'normal'); doc.setTextColor('#222222')
+        doc.text(obsLines, M + 3, y + 10)
+        y += obsLines.length * 4.5 + 10
+        y += 5
+      }
+
+      // ── Rodapé / resumo ───────────────────────────────────────────────────
+      checkY(16)
+      doc.setDrawColor(AZUL); doc.setLineWidth(0.5); doc.line(M, y, M + CW, y); y += 5
+      doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(AZUL)
+      const totalValor = geradoData.rows.reduce((s, r) => s + r.valor_pagamento, 0)
+      doc.text(`Total de pagamentos: ${geradoData.rows.length}`, M, y); y += 6
+      doc.text(`Valor total: ${totalValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, M, y)
+
+      // Download
+      const pdfBytes = doc.output('arraybuffer')
+      const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' })
+      const pdfUrl = URL.createObjectURL(pdfBlob)
+      const pdfLink = document.createElement('a')
+      pdfLink.href = pdfUrl; pdfLink.download = geradoData.pdfFileName; pdfLink.click()
+      URL.revokeObjectURL(pdfUrl)
+
+      // Upload to B2 in background
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(pdfBytes)))
+      fetch('/api/remessa/salvar-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_name: geradoData.pdfFileName, pdf_base64: base64 }),
+      }).catch(() => {/* silently ignore */})
+
+    } catch (e) {
+      alert('Erro ao gerar PDF: ' + String(e))
+    }
+    setGeneratingPdf(false)
   }
 
   // ─── Import retorno ───────────────────────────────────────────────────────
@@ -618,9 +791,19 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
                         </div>
 
                         {geradoNome && (
-                          <p className="text-sm text-green-600 mt-2">
-                            Arquivo <strong>{geradoNome}</strong> gerado e baixado com sucesso.
-                          </p>
+                          <div className="mt-3 space-y-2">
+                            <p className="text-sm text-green-600">
+                              Arquivo <strong>{geradoNome}</strong> gerado e baixado com sucesso.
+                            </p>
+                            <button
+                              onClick={handleGerarPDF}
+                              disabled={generatingPdf}
+                              className="btn-secondary gap-2 text-sm">
+                              {generatingPdf
+                                ? <><RefreshCw size={14} className="animate-spin" /> Gerando PDF...</>
+                                : <><FileText size={14} /> Baixar Relatório PDF</>}
+                            </button>
+                          </div>
                         )}
 
                         <button
