@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { CheckCircle, XCircle, AlertTriangle, RefreshCw, Search, ChevronRight } from 'lucide-react'
+import { CheckCircle, XCircle, AlertTriangle, RefreshCw, Search, ChevronRight, X } from 'lucide-react'
 import Confirm from '@/components/ui/Confirm'
 
 interface Pedido {
@@ -32,6 +32,23 @@ export default function AutorizarPage() {
     open: boolean; ids: number[]; acao: 'Autorizado' | 'Não Autorizado'
   }>({ open: false, ids: [], acao: 'Autorizado' })
   const [processing, setProcessing] = useState(false)
+
+  const [ajuste, setAjuste] = useState<{ id: number; comentario: string; processing: boolean; error: string } | null>(null)
+
+  const handleAjuste = async () => {
+    if (!ajuste || !ajuste.comentario.trim()) {
+      setAjuste(a => a ? { ...a, error: 'O comentário é obrigatório.' } : a)
+      return
+    }
+    setAjuste(a => a ? { ...a, processing: true, error: '' } : a)
+    await supabase.from('pedidos_solicitados').update({ status: 'Aguardando Ajuste' }).eq('id', ajuste.id)
+    await supabase.from('comentarios').insert({
+      pedido_id: ajuste.id, comentario: ajuste.comentario.trim(),
+      usuario: user?.username ?? '', data_comentario: new Date().toISOString(), tipo_documento: null,
+    })
+    setAjuste(null)
+    load()
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -240,6 +257,10 @@ export default function AutorizarPage() {
                     className="inline-flex items-center gap-1 px-3 py-1.5 border border-red-200 bg-red-50 text-red-700 rounded text-xs font-medium hover:bg-red-100">
                     <XCircle size={12} /> Rejeitar
                   </button>
+                  <button onClick={() => setAjuste({ id: p.id, comentario: '', processing: false, error: '' })}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 border border-orange-200 bg-orange-50 text-orange-700 rounded text-xs font-medium hover:bg-orange-100">
+                    Solicitar Ajuste
+                  </button>
                   <button onClick={() => router.push(`/pagamentos/autorizar/${p.id}`)}
                     className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-700 rounded text-xs font-medium hover:bg-slate-200">
                     Detalhes <ChevronRight size={12} />
@@ -248,6 +269,38 @@ export default function AutorizarPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal Solicitar Ajuste */}
+      {ajuste && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-slate-900">Solicitar Ajuste — Pedido #{ajuste.id}</h2>
+              <button onClick={() => setAjuste(null)} className="text-slate-400 hover:text-slate-600">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-slate-500">Descreva o que precisa ser ajustado. O solicitante receberá este comentário.</p>
+            <textarea
+              className="input w-full min-h-[100px] resize-none"
+              placeholder="Comentário obrigatório..."
+              value={ajuste.comentario}
+              onChange={e => setAjuste(a => a ? { ...a, comentario: e.target.value, error: '' } : a)}
+            />
+            {ajuste.error && <p className="text-xs text-red-600">{ajuste.error}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setAjuste(null)} className="btn-secondary text-sm">Cancelar</button>
+              <button
+                onClick={handleAjuste}
+                disabled={ajuste.processing}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
+              >
+                {ajuste.processing ? 'Enviando...' : 'Solicitar Ajuste'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
