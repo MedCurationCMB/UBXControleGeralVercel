@@ -15,6 +15,7 @@ const PAGE_SIZE = 100
 
 const STATUS_OPTIONS = [
   'Aguardando Autorização',
+  'Aguardando Ajuste',
   'Autorizado',
   'Não Autorizado',
   'Cancelado',
@@ -24,6 +25,7 @@ const STATUS_BADGE: Record<string, string> = {
   'Autorizado': 'bg-green-100 text-green-700',
   'Não Autorizado': 'bg-red-100 text-red-700',
   'Aguardando Autorização': 'bg-yellow-100 text-yellow-700',
+  'Aguardando Ajuste': 'bg-orange-100 text-orange-700',
   'Cancelado': 'bg-slate-200 text-slate-600',
 }
 

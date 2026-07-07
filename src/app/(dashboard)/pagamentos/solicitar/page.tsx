@@ -165,13 +165,16 @@ export default function SolicitarPage() {
   const [showImport, setShowImport] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const [controlarOrcamento, setControlarOrcamento] = useState(false)
+
   // Load reference data from orcamentos_usuarios
   useEffect(() => {
     Promise.all([
       supabase.from('orcamentos_usuarios').select('empresa, categoria'),
       supabase.from('fornecedores').select('nome').order('nome'),
       supabase.from('tipos_documento').select('id').eq('tipo', 'Documentos da Solicitação').maybeSingle(),
-    ]).then(([{ data: oc }, { data: forns }, { data: tipoDoc }]) => {
+      supabase.from('config').select('valor').eq('chave', 'controla_orcamento').maybeSingle(),
+    ]).then(([{ data: oc }, { data: forns }, { data: tipoDoc }, { data: cfgOrc }]) => {
       const emps = [...new Set((oc ?? []).map(r => r.empresa).filter(Boolean))].sort() as string[]
       const catMap: Record<string, string[]> = {}
       for (const row of (oc ?? [])) {
@@ -185,6 +188,7 @@ export default function SolicitarPage() {
       setCategoriasPorEmpresa(catMap)
       setFornecedores((forns ?? []).map(f => f.nome))
       if (tipoDoc) setTipoDocSolicitacao(tipoDoc.id)
+      setControlarOrcamento(cfgOrc?.valor === 'true')
     })
   }, [])
 
@@ -282,26 +286,28 @@ export default function SolicitarPage() {
       setError(`Período ${addMes}/${addAno} já adicionado.`); return
     }
 
-    setAddingMes(true)
-    const { data: saldoData } = await supabase
-      .from('controle_orcamento')
-      .select('valor_orcamento, valor_pedidos_solicitados')
-      .eq('empresa', empresa)
-      .eq('categoria', categoria)
-      .eq('mes', mesNum)
-      .eq('ano', anoNum)
-      .maybeSingle()
+    if (controlarOrcamento) {
+      setAddingMes(true)
+      const { data: saldoData } = await supabase
+        .from('controle_orcamento')
+        .select('valor_orcamento, valor_pedidos_solicitados')
+        .eq('empresa', empresa)
+        .eq('categoria', categoria)
+        .eq('mes', mesNum)
+        .eq('ano', anoNum)
+        .maybeSingle()
 
-    setAddingMes(false)
+      setAddingMes(false)
 
-    if (!saldoData) {
-      setError(`Não existe orçamento para ${addMes}/${addAno}.`); return
-    }
+      if (!saldoData) {
+        setError(`Não existe orçamento para ${addMes}/${addAno}.`); return
+      }
 
-    const saldoAtual = saldoData.valor_orcamento - saldoData.valor_pedidos_solicitados
-    if (valor > saldoAtual) {
-      setError(`Valor ${fmtMoeda(valor)} excede o saldo disponível de ${fmtMoeda(saldoAtual)} para ${addMes}/${addAno}.`)
-      return
+      const saldoAtual = saldoData.valor_orcamento - saldoData.valor_pedidos_solicitados
+      if (valor > saldoAtual) {
+        setError(`Valor ${fmtMoeda(valor)} excede o saldo disponível de ${fmtMoeda(saldoAtual)} para ${addMes}/${addAno}.`)
+        return
+      }
     }
 
     setError('')

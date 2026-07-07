@@ -6,7 +6,7 @@ import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import {
   ArrowLeft, AlertTriangle, RefreshCw, MessageSquare, FileText,
   Printer, Brain, FileSignature, X, ChevronDown, ChevronUp,
-  ExternalLink, Upload, Download, CreditCard, Check, Edit2, Building2,
+  ExternalLink, Upload, Download, CreditCard, Check, Edit2, Building2, Send,
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import Confirm from '@/components/ui/Confirm'
@@ -1061,6 +1061,16 @@ export default function AcompanharDetalhePage() {
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [cancelling, setCancelling] = useState(false)
 
+  // Ajuste state
+  const [comentariosAjuste, setComentariosAjuste] = useState<Comentario[]>([])
+  const [editando, setEditando] = useState(false)
+  const [editForm, setEditFormAjuste] = useState({ empresa: '', categoria: '', fornecedor: '', valor_pedido: '', observacao: '' })
+  const [editEmpresas, setEditEmpresas] = useState<string[]>([])
+  const [editCategorias, setEditCategorias] = useState<string[]>([])
+  const [editFornecedores, setEditFornecedores] = useState<string[]>([])
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [reenviando, setReenviando] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true); setError('')
     const [{ data: p, error: pErr }, { data: fl }, { data: pags }, u] = await Promise.all([
@@ -1074,6 +1084,31 @@ export default function AcompanharDetalhePage() {
     if ((p as Pedido).pedido_status) {
       const { data: st } = await supabase.from('pedido_status').select('nome_status').eq('id', (p as Pedido).pedido_status).maybeSingle()
       setStatusNome((st as { nome_status: string } | null)?.nome_status ?? null)
+    }
+    // Load comentários de ajuste (do gestor) — todos, para histórico
+    if ((p as Pedido).status === 'Aguardando Ajuste') {
+      const { data: coms } = await supabase.from('comentarios')
+        .select('id, comentario, usuario, data_comentario, anexo_url, documento_id')
+        .eq('pedido_id', pedidoId)
+        .order('data_comentario', { ascending: false })
+      setComentariosAjuste(coms ?? [])
+      // Pre-fill edit form
+      setEditFormAjuste({
+        empresa: (p as Pedido).empresa,
+        categoria: (p as Pedido).categoria,
+        fornecedor: (p as Pedido).fornecedor,
+        valor_pedido: String((p as Pedido).valor_pedido),
+        observacao: (p as Pedido).observacao ?? '',
+      })
+      // Load reference data for edit dropdowns
+      const [{ data: emps }, { data: fors }] = await Promise.all([
+        supabase.from('pedidos_solicitados').select('empresa').order('empresa'),
+        supabase.from('fornecedores').select('nome').order('nome'),
+      ])
+      setEditEmpresas([...new Set((emps ?? []).map((r: { empresa: string }) => r.empresa).filter(Boolean))])
+      setEditFornecedores((fors ?? []).map((r: { nome: string }) => r.nome))
+    } else {
+      setComentariosAjuste([])
     }
     setLoading(false)
   }, [pedidoId])
@@ -1116,6 +1151,44 @@ export default function AcompanharDetalhePage() {
     setCancelling(false); setConfirmCancel(false); load()
   }
 
+  const handleEmpresaChange = async (empresa: string) => {
+    setEditFormAjuste(f => ({ ...f, empresa, categoria: '' }))
+    const { data } = await supabase.from('pedidos_solicitados').select('categoria').eq('empresa', empresa).order('categoria')
+    setEditCategorias([...new Set((data ?? []).map((r: { categoria: string }) => r.categoria).filter(Boolean))])
+  }
+
+  const handleSaveEdit = async () => {
+    if (!pedido) return
+    setSavingEdit(true)
+    await supabase.from('pedidos_solicitados').update({
+      empresa: editForm.empresa,
+      categoria: editForm.categoria,
+      fornecedor: editForm.fornecedor,
+      valor_pedido: parseFloat(editForm.valor_pedido) || pedido.valor_pedido,
+      observacao: editForm.observacao || null,
+    }).eq('id', pedidoId)
+    setSavingEdit(false)
+    setEditando(false)
+    load()
+  }
+
+  const handleReenviar = async () => {
+    if (!pedido || !user) return
+    setReenviando(true)
+    await supabase.from('pedidos_solicitados')
+      .update({ status: 'Aguardando Autorização' })
+      .eq('id', pedidoId)
+    await supabase.from('comentarios').insert({
+      pedido_id: pedidoId,
+      comentario: 'Pedido reenviado para aprovação após ajustes.',
+      usuario: user?.username ?? 'sistema',
+      data_comentario: new Date().toISOString(),
+      tipo_documento: null,
+    })
+    setReenviando(false)
+    load()
+  }
+
   if (loading) return <div className="card text-center py-16 text-slate-400">Carregando...</div>
   if (error || !pedido) return (
     <div className="card text-center py-12">
@@ -1147,6 +1220,7 @@ export default function AcompanharDetalhePage() {
           pedido.status === 'Autorizado' ? 'bg-green-100 text-green-700' :
           pedido.status === 'Não Autorizado' ? 'bg-red-100 text-red-700' :
           pedido.status === 'Cancelado' ? 'bg-slate-200 text-slate-600' :
+          pedido.status === 'Aguardando Ajuste' ? 'bg-orange-100 text-orange-700' :
           'bg-yellow-100 text-yellow-700'
         }`}>{pedido.status}</span>
       </div>
@@ -1180,6 +1254,98 @@ export default function AcompanharDetalhePage() {
           <FileText size={15} /> Documentos
         </button>
       </div>
+
+      {/* Banner de Ajuste */}
+      {pedido.status === 'Aguardando Ajuste' && (
+        <div className="border border-orange-200 bg-orange-50 rounded-xl p-5 space-y-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={20} className="text-orange-500 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-orange-800 mb-1">Este pedido aguarda ajustes solicitados pelo gestor</p>
+              <p className="text-xs text-orange-700">Edite os campos necessários abaixo e clique em "Reenviar para Aprovação".</p>
+            </div>
+          </div>
+
+          {/* Histórico de comentários de ajuste */}
+          {comentariosAjuste.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-orange-800 uppercase tracking-wide">Comentários do Gestor</p>
+              {comentariosAjuste.map(c => (
+                <div key={c.id} className="bg-white border border-orange-200 rounded-lg px-4 py-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-slate-700">{c.usuario}</span>
+                    <span className="text-xs text-slate-400">
+                      {new Date(c.data_comentario).toLocaleString('pt-BR')}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-800 whitespace-pre-wrap">{c.comentario}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Formulário de edição */}
+          {!editando ? (
+            <button onClick={() => setEditando(true)} className="btn-secondary gap-1.5 text-sm">
+              <Edit2 size={14} /> Editar Pedido
+            </button>
+          ) : (
+            <div className="bg-white border border-orange-200 rounded-lg p-4 space-y-3">
+              <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Editar Dados do Pedido</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Empresa</label>
+                  <select className="input" value={editForm.empresa}
+                    onChange={e => handleEmpresaChange(e.target.value)}>
+                    <option value="">Selecionar...</option>
+                    {editEmpresas.map(e => <option key={e} value={e}>{e}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Categoria</label>
+                  <select className="input" value={editForm.categoria}
+                    onChange={e => setEditFormAjuste(f => ({ ...f, categoria: e.target.value }))}>
+                    <option value="">Selecionar...</option>
+                    {editCategorias.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Fornecedor</label>
+                  <select className="input" value={editForm.fornecedor}
+                    onChange={e => setEditFormAjuste(f => ({ ...f, fornecedor: e.target.value }))}>
+                    <option value="">Selecionar...</option>
+                    {editFornecedores.map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Valor do Pedido (R$)</label>
+                  <input type="number" step="0.01" className="input" value={editForm.valor_pedido}
+                    onChange={e => setEditFormAjuste(f => ({ ...f, valor_pedido: e.target.value }))} />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="label">Observação</label>
+                  <textarea className="input resize-none h-24" value={editForm.observacao}
+                    onChange={e => setEditFormAjuste(f => ({ ...f, observacao: e.target.value }))} />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={handleSaveEdit} disabled={savingEdit} className="btn-primary gap-1.5 text-sm">
+                  {savingEdit ? <><RefreshCw size={13} className="animate-spin" /> Salvando...</> : <><Check size={13} /> Salvar Alterações</>}
+                </button>
+                <button onClick={() => setEditando(false)} className="btn-secondary text-sm">Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          {/* Botão reenviar */}
+          {!editando && (
+            <button onClick={handleReenviar} disabled={reenviando}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50">
+              {reenviando ? <><RefreshCw size={14} className="animate-spin" /> Reenviando...</> : <><Send size={14} /> Reenviar para Aprovação</>}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Info grid */}
       <div className="card">

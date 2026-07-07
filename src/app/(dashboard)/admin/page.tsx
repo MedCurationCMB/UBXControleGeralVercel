@@ -536,8 +536,68 @@ function EmailsTab() {
   )
 }
 
+// ---- Tab: Configurações ----
+function ConfiguracoesTab() {
+  const [controlarOrcamento, setControlarOrcamento] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  useEffect(() => {
+    supabase.from('config').select('valor').eq('chave', 'controla_orcamento').maybeSingle()
+      .then(({ data }) => setControlarOrcamento(data?.valor === 'true'))
+  }, [])
+
+  const handleToggle = async () => {
+    if (controlarOrcamento === null) return
+    const novoValor = !controlarOrcamento
+    setSaving(true)
+    setMsg(null)
+    await supabase.from('config').delete().eq('chave', 'controla_orcamento')
+    await supabase.from('config').insert({ chave: 'controla_orcamento', valor: novoValor ? 'true' : 'false' })
+    setControlarOrcamento(novoValor)
+    setSaving(false)
+    setMsg({ type: 'success', text: `Controle de orçamento ${novoValor ? 'ativado' : 'desativado'}.` })
+  }
+
+  if (controlarOrcamento === null) return <p className="text-slate-400 text-sm">Carregando...</p>
+
+  return (
+    <div className="max-w-md space-y-6">
+      <h2 className="text-base font-semibold text-slate-800">Configurações do Sistema</h2>
+
+      <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl bg-slate-50">
+        <div>
+          <p className="text-sm font-medium text-slate-800">Controle de Orçamento</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {controlarOrcamento
+              ? 'Pedidos são bloqueados quando o saldo orçamentário é insuficiente.'
+              : 'Pedidos são permitidos independentemente do saldo orçamentário.'}
+          </p>
+        </div>
+        <button
+          onClick={handleToggle}
+          disabled={saving}
+          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
+            controlarOrcamento ? 'bg-blue-600' : 'bg-slate-300'
+          }`}
+        >
+          <span
+            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+              controlarOrcamento ? 'translate-x-5' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+
+      {msg && (
+        <p className={`text-sm ${msg.type === 'success' ? 'text-green-700' : 'text-red-600'}`}>{msg.text}</p>
+      )}
+    </div>
+  )
+}
+
 // ---- Main Page ----
-const TABS = ['Gerenciar Logo', 'Gestão de Usuários', 'Assistente Virtual', 'Gestão de E-mails'] as const
+const TABS = ['Gerenciar Logo', 'Gestão de Usuários', 'Assistente Virtual', 'Gestão de E-mails', 'Configurações'] as const
 type Tab = typeof TABS[number]
 
 export default function AdminPage() {
@@ -592,6 +652,7 @@ export default function AdminPage() {
         {tab === 'Gestão de Usuários' && <UsuariosTab />}
         {tab === 'Assistente Virtual' && <AssistenteTab />}
         {tab === 'Gestão de E-mails' && <EmailsTab />}
+        {tab === 'Configurações' && <ConfiguracoesTab />}
       </div>
     </div>
   )
