@@ -327,10 +327,10 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
       if (!res.ok || !data.ok) throw new Error((data.error as string) ?? 'Erro ao gerar')
 
       // Trigger download of .rem file
-      const blob = new Blob([data.file_content], { type: 'text/plain' })
+      const blob = new Blob([data.file_content as string], { type: 'text/plain' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = url; a.download = data.file_name; a.click()
+      a.href = url; a.download = data.file_name as string; a.click()
       URL.revokeObjectURL(url)
 
       // Prepare data for PDF report
