@@ -235,8 +235,14 @@ export async function POST(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-  const { conta_id, transactions: txInputs }: { conta_id: number; transactions: TransactionInput[] } =
-    await req.json()
+  let conta_id: number, txInputs: TransactionInput[]
+  try {
+    const body = await req.json()
+    conta_id = body.conta_id
+    txInputs = body.transactions
+  } catch {
+    return NextResponse.json({ error: 'Body inválido ou vazio' }, { status: 400 })
+  }
 
   if (!conta_id || !txInputs?.length) {
     return NextResponse.json({ error: 'conta_id e transactions são obrigatórios' }, { status: 400 })

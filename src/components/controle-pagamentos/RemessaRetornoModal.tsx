@@ -317,8 +317,14 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
           })),
         }),
       })
-      const data = await res.json()
-      if (!res.ok || !data.ok) throw new Error(data.error ?? 'Erro ao gerar')
+      const rawText = await res.text()
+      let data: Record<string, unknown>
+      try {
+        data = JSON.parse(rawText)
+      } catch {
+        throw new Error(`Erro do servidor (${res.status}): ${rawText.slice(0, 300) || 'resposta vazia — possível timeout'}`)
+      }
+      if (!res.ok || !data.ok) throw new Error((data.error as string) ?? 'Erro ao gerar')
 
       // Trigger download of .rem file
       const blob = new Blob([data.file_content], { type: 'text/plain' })
