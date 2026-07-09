@@ -336,13 +336,14 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
       // Prepare data for PDF report
       const contaNome = contas.find(c => String(c.id) === contaId)?.nome_empresa ?? ''
       const seqNum = data.sequencial as number
-      const pdfFileName = data.file_name.replace(/\.rem$/i, '_relatorio.pdf')
+      const fileName = data.file_name as string
+      const pdfFileName = fileName.replace(/\.rem$/i, '_relatorio.pdf')
 
-      setGeradoNome(data.file_name)
+      setGeradoNome(fileName)
       setGeradoData({
-        fileName: data.file_name,
+        fileName,
         pdfFileName,
-        sequencial: seqNum,
+        sequencial: seqNum as number,
         nomeEmpresa: contaNome,
         rows: previewRows.map(r => ({
           pagamento_id: r.pagamento_id,
