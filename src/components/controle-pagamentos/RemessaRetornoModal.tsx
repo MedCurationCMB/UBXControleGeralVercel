@@ -253,6 +253,8 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
   // ─── Build preview ────────────────────────────────────────────────────────
 
   const buildPreview = () => {
+    setGeradoNome('')
+    setGeradoData(null)
     const rows: PreviewRow[] = []
     for (const id of selected) {
       const p = elegiveis.find(e => e.id === id)
@@ -797,27 +799,31 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
                           </table>
                         </div>
 
-                        {geradoNome && (
-                          <div className="mt-3 space-y-2">
-                            <p className="text-sm text-green-600">
-                              Arquivo <strong>{geradoNome}</strong> gerado e baixado com sucesso.
-                            </p>
-                            <button
-                              onClick={handleGerarPDF}
-                              disabled={generatingPdf}
-                              className="btn-secondary gap-2 text-sm">
-                              {generatingPdf
-                                ? <><RefreshCw size={14} className="animate-spin" /> Gerando PDF...</>
-                                : <><FileText size={14} /> Baixar Relatório PDF</>}
-                            </button>
-                          </div>
-                        )}
-
                         <button
                           onClick={handleGerar}
                           disabled={generating || !contaId}
                           className="btn-primary mt-3 gap-2 text-sm">
                           {generating ? <><RefreshCw size={14} className="animate-spin" /> Gerando...</> : <><Download size={14} /> Gerar Arquivo Remessa</>}
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Sucesso: arquivo remessa gerado — permanece visível mesmo após o preview ser limpo */}
+                  {geradoNome && (
+                    <>
+                      <hr className="border-slate-200" />
+                      <div className="space-y-2">
+                        <p className="text-sm text-green-600">
+                          Arquivo <strong>{geradoNome}</strong> gerado e baixado com sucesso.
+                        </p>
+                        <button
+                          onClick={handleGerarPDF}
+                          disabled={generatingPdf}
+                          className="btn-secondary gap-2 text-sm">
+                          {generatingPdf
+                            ? <><RefreshCw size={14} className="animate-spin" /> Gerando PDF...</>
+                            : <><FileText size={14} /> Baixar Relatório PDF</>}
                         </button>
                       </div>
                     </>
