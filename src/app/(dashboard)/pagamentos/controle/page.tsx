@@ -631,78 +631,34 @@ export default function ControlePage() {
     setResumoLoading(false)
   }, [filtroEmpresa, filtroCategoria, filtroStatusPag])
 
-  // Load paginated table rows
+  // Load paginated table rows (filtering, including Situação, happens server-side across the full dataset)
   const loadTable = useCallback(async () => {
     setTableLoading(true)
 
-    // Resolve pedido_ids for empresa/categoria filters (these fields live on pedidos_solicitados)
-    let pedidoIds: number[] | null = null
-    if (filtroEmpresa || filtroCategoria) {
-      let q = supabase.from('pedidos_solicitados').select('id')
-      if (filtroEmpresa) q = q.eq('empresa', filtroEmpresa)
-      if (filtroCategoria) q = q.eq('categoria', filtroCategoria)
-      const { data } = await q
-      pedidoIds = (data ?? []).map((p: { id: number }) => p.id)
-      if (pedidoIds.length === 0) {
-        setRows([])
-        setTotal(0)
-        setTableLoading(false)
-        return
-      }
+    const params = new URLSearchParams()
+    if (filtroEmpresa) params.set('empresa', filtroEmpresa)
+    if (filtroCategoria) params.set('categoria', filtroCategoria)
+    if (filtroStatusPag) params.set('status_pagamento', filtroStatusPag)
+    if (filtroSituacao) params.set('situacao', filtroSituacao)
+    params.set('page', String(page))
+    params.set('page_size', String(PAGE_SIZE))
+
+    try {
+      const res = await fetch(`/api/controle-pagamentos/listar?${params}`)
+      const data = await res.json()
+      setRows(data.rows ?? [])
+      setTotal(data.total ?? 0)
+    } catch {
+      setRows([])
+      setTotal(0)
     }
-
-    let q = supabase
-      .from('controle_pagamentos')
-      .select('*', { count: 'exact' })
-      .order('id', { ascending: false })
-      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
-
-    if (pedidoIds) q = q.in('pedido_id', pedidoIds)
-    if (filtroStatusPag) q = q.eq('status_pagamento', parseInt(filtroStatusPag))
-
-    const { data: ctrls, count } = await q
-    setTotal(count ?? 0)
-
-    const ctrlList = (ctrls ?? []) as Controle[]
-
-    // Enrich current page with pedido data
-    const uniquePedidoIds = [...new Set(ctrlList.filter(c => c.pedido_id).map(c => c.pedido_id as number))]
-    const pedidoMap: Record<number, Pedido> = {}
-    if (uniquePedidoIds.length > 0) {
-      const { data: peds } = await supabase
-        .from('pedidos_solicitados')
-        .select('id, empresa, categoria, fornecedor, valor_pedido, status, observacao, cancelado')
-        .in('id', uniquePedidoIds)
-      ;(peds ?? []).forEach((p: Pedido) => { pedidoMap[p.id] = p })
-    }
-
-    const enriched: Row[] = ctrlList.map(c => {
-      const ped = c.pedido_id ? pedidoMap[c.pedido_id] : undefined
-      return {
-        ...c,
-        empresa: ped?.empresa ?? '',
-        categoria: ped?.categoria ?? '',
-        fornecedor: ped?.fornecedor ?? '',
-        status_pedido: ped?.status ?? '',
-        observacao: ped?.observacao ?? null,
-        situacao: getSituacao(c),
-      }
-    })
-
-    setRows(enriched)
     setTableLoading(false)
-  }, [page, filtroEmpresa, filtroCategoria, filtroStatusPag])
+  }, [page, filtroEmpresa, filtroCategoria, filtroStatusPag, filtroSituacao])
 
   useEffect(() => { loadResumo() }, [loadResumo])
   useEffect(() => { loadTable() }, [loadTable])
 
   const reload = () => { loadResumo(); loadTable() }
-
-  // situacao filter is client-side on current page only
-  const visibleRows = useMemo(() => {
-    if (!filtroSituacao) return rows
-    return rows.filter(r => r.situacao === filtroSituacao)
-  }, [rows, filtroSituacao])
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
@@ -775,16 +731,9 @@ export default function ControlePage() {
           <p className="text-xs text-slate-500">
             {tableLoading
               ? 'Carregando...'
-              : filtroSituacao
-              ? `${visibleRows.length} de ${rows.length} na página com situação "${filtroSituacao}"`
-              : `${total.toLocaleString('pt-BR')} pagamento(s) — página ${page + 1} de ${Math.max(1, totalPages)}`
+              : `${total.toLocaleString('pt-BR')} pagamento(s)${filtroSituacao ? ` com situação "${filtroSituacao}"` : ''} — página ${page + 1} de ${Math.max(1, totalPages)}`
             }
           </p>
-          {filtroSituacao && (
-            <p className="text-xs text-amber-600 flex items-center gap-1">
-              <Info size={11} /> Filtro de situação aplicado à página atual
-            </p>
-          )}
         </div>
       </div>
 
@@ -821,7 +770,7 @@ export default function ControlePage() {
       {/* Table */}
       {tableLoading ? (
         <div className="card text-center py-12 text-slate-400">Carregando...</div>
-      ) : visibleRows.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div className="card text-center py-12 text-slate-400">Nenhum pagamento encontrado.</div>
       ) : (
         <div className="card p-0 overflow-hidden">
@@ -845,7 +794,7 @@ export default function ControlePage() {
                 </tr>
               </thead>
               <tbody>
-                {visibleRows.map(r => (
+                {rows.map(r => (
                   <tr key={r.id} className="table-row">
                     <td className="table-cell font-mono text-xs text-slate-400">#{r.id}</td>
                     <td className="table-cell font-mono text-xs text-slate-500">#{r.pedido_id}</td>
@@ -884,7 +833,7 @@ export default function ControlePage() {
             </table>
           </div>
 
-          {!filtroSituacao && totalPages > 1 && (
+          {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
               <button
                 onClick={() => setPage(p => Math.max(0, p - 1))}
