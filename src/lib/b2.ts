@@ -4,6 +4,7 @@
 const B2_API_URL = 'https://api.backblazeb2.com/b2api/v2'
 
 interface B2AuthResponse {
+  accountId: string
   authorizationToken: string
   apiUrl: string
   downloadUrl: string
@@ -62,7 +63,7 @@ async function getBucketId(): Promise<string> {
       Authorization: auth.authorizationToken,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ bucketName: process.env.B2_BUCKET_NAME }),
+    body: JSON.stringify({ accountId: auth.accountId, bucketName: process.env.B2_BUCKET_NAME }),
   })
 
   if (!res.ok) throw new Error(`B2 list_buckets falhou: ${res.statusText}`)
