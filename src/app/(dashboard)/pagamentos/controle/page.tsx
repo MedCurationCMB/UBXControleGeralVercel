@@ -48,6 +48,12 @@ const SITUACAO_BADGE: Record<string, string> = {
   'Sem vencimento': 'bg-slate-100 text-slate-500',
 }
 
+const STATUS_AUTORIZACAO_BADGE: Record<string, string> = {
+  'Autorizado': 'bg-green-100 text-green-700',
+  'Não Autorizado': 'bg-red-100 text-red-700',
+  'Aguardando Autorização': 'bg-yellow-100 text-yellow-700',
+}
+
 const PAGE_SIZE = 100
 
 // ---- Edit Modal ----
@@ -782,6 +788,7 @@ export default function ControlePage() {
                   <th className="table-cell font-medium">Pedido</th>
                   <th className="table-cell font-medium">Empresa / Categoria</th>
                   <th className="table-cell font-medium">Fornecedor</th>
+                  <th className="table-cell font-medium">Status Autorização</th>
                   <th className="table-cell font-medium">Descrição</th>
                   <th className="table-cell font-medium">Vencimento</th>
                   <th className="table-cell font-medium text-right">Valor a Pagar</th>
@@ -803,6 +810,11 @@ export default function ControlePage() {
                       <p className="text-xs text-slate-400 truncate max-w-[120px]">{r.categoria}</p>
                     </td>
                     <td className="table-cell text-slate-600 truncate max-w-[120px]">{r.fornecedor}</td>
+                    <td className="table-cell">
+                      <span className={`badge text-xs ${STATUS_AUTORIZACAO_BADGE[r.status_pedido] ?? 'bg-slate-100 text-slate-500'}`}>
+                        {r.status_pedido || '-'}
+                      </span>
+                    </td>
                     <td className="table-cell text-slate-500 max-w-[140px] truncate" title={r.observacao ?? ''}>
                       {r.observacao ?? '-'}
                     </td>
