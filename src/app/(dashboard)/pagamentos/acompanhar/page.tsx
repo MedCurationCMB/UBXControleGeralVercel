@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Search, Download, RefreshCw, ChevronRight, ChevronLeft, AlertTriangle } from 'lucide-react'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 
 interface Pedido {
   id: number; empresa: string; categoria: string; fornecedor: string
@@ -183,15 +184,13 @@ export default function AcompanharPage() {
               onKeyDown={handleSearchIdKeyDown}
             />
           </div>
-          <select
-            className="input"
+          <SearchableSelect
             value={filtroEmpresa}
-            onChange={e => setFiltroEmpresa(e.target.value)}
+            onChange={setFiltroEmpresa}
+            options={empresas}
+            placeholder="Todas as empresas"
             disabled={!!activeSearchId}
-          >
-            <option value="">Todas as empresas</option>
-            {empresas.map(e => <option key={e} value={e}>{e}</option>)}
-          </select>
+          />
           <select
             className="input"
             value={filtroCategoria}
@@ -201,15 +200,13 @@ export default function AcompanharPage() {
             <option value="">Todas as categorias</option>
             {categorias.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select
-            className="input"
+          <SearchableSelect
             value={filtroFornecedor}
-            onChange={e => setFiltroFornecedor(e.target.value)}
+            onChange={setFiltroFornecedor}
+            options={fornecedores}
+            placeholder="Todos os fornecedores"
             disabled={!!activeSearchId}
-          >
-            <option value="">Todos os fornecedores</option>
-            {fornecedores.map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
+          />
           <select
             className="input"
             value={filtroStatus}
