@@ -58,13 +58,13 @@ export default function AcompanharPage() {
   useEffect(() => {
     const fetchOpcoes = async () => {
       const [{ data: emp }, { data: cat }, { data: forn }] = await Promise.all([
-        supabase.from('pedidos_solicitados').select('empresa').order('empresa').limit(1000),
-        supabase.from('pedidos_solicitados').select('categoria').order('categoria').limit(1000),
-        supabase.from('pedidos_solicitados').select('fornecedor').order('fornecedor').limit(1000),
+        supabase.rpc('pedidos_solicitados_valores_distintos', { coluna: 'empresa' }),
+        supabase.rpc('pedidos_solicitados_valores_distintos', { coluna: 'categoria' }),
+        supabase.rpc('pedidos_solicitados_valores_distintos', { coluna: 'fornecedor' }),
       ])
-      setEmpresas([...new Set(emp?.map(r => r.empresa).filter(Boolean) ?? [])].sort())
-      setCategorias([...new Set(cat?.map(r => r.categoria).filter(Boolean) ?? [])].sort())
-      setFornecedores([...new Set(forn?.map(r => r.fornecedor).filter(Boolean) ?? [])].sort())
+      setEmpresas(emp?.map((r: { valor: string }) => r.valor) ?? [])
+      setCategorias(cat?.map((r: { valor: string }) => r.valor) ?? [])
+      setFornecedores(forn?.map((r: { valor: string }) => r.valor) ?? [])
     }
     fetchOpcoes()
   }, [])

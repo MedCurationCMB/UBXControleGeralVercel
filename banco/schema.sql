@@ -492,6 +492,26 @@ $$;
 ALTER FUNCTION "public"."limpar_anexo_controle_recebimentos"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."pedidos_solicitados_valores_distintos"("coluna" "text") RETURNS TABLE("valor" "text")
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  IF coluna = 'empresa' THEN
+    RETURN QUERY SELECT DISTINCT empresa FROM pedidos_solicitados WHERE empresa IS NOT NULL ORDER BY empresa;
+  ELSIF coluna = 'categoria' THEN
+    RETURN QUERY SELECT DISTINCT categoria FROM pedidos_solicitados WHERE categoria IS NOT NULL ORDER BY categoria;
+  ELSIF coluna = 'fornecedor' THEN
+    RETURN QUERY SELECT DISTINCT fornecedor FROM pedidos_solicitados WHERE fornecedor IS NOT NULL ORDER BY fornecedor;
+  ELSE
+    RAISE EXCEPTION 'coluna invalida: %', coluna;
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."pedidos_solicitados_valores_distintos"("coluna" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."sync_orcamento_analise"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
