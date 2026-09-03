@@ -671,6 +671,75 @@ export default function ControlePage() {
   const statusNome = (id: number | null) => statuses.find(s => s.id === id)?.nome_status ?? '-'
   const tipoNome = (id: number | null) => tipos.find(t => t.id === id)?.tipos ?? '-'
 
+  const [exporting, setExporting] = useState(false)
+
+  const exportarPagina = async () => {
+    setExporting(true)
+    try {
+      const ExcelJS = (await import('exceljs')).default
+      const workbook = new ExcelJS.Workbook()
+      const sheet = workbook.addWorksheet('Pagamentos')
+
+      sheet.columns = [
+        { header: 'ID', key: 'id', width: 10 },
+        { header: 'Pedido', key: 'pedido_id', width: 10 },
+        { header: 'Empresa', key: 'empresa', width: 24 },
+        { header: 'Categoria', key: 'categoria', width: 18 },
+        { header: 'Fornecedor', key: 'fornecedor', width: 26 },
+        { header: 'Status Autorização', key: 'status_pedido', width: 20 },
+        { header: 'Descrição', key: 'observacao', width: 26 },
+        { header: 'Vencimento', key: 'data_vencimento', width: 14 },
+        { header: 'Valor a Pagar', key: 'valor_pagar', width: 16 },
+        { header: 'Pagamento', key: 'data_pagamento', width: 14 },
+        { header: 'Valor Pago', key: 'valor_pagamento', width: 16 },
+        { header: 'Status', key: 'status_pagamento', width: 18 },
+        { header: 'Tipo', key: 'tipo_pagamento', width: 18 },
+        { header: 'Situação', key: 'situacao', width: 16 },
+      ]
+
+      const headerRow = sheet.getRow(1)
+      headerRow.font = { bold: true }
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }
+
+      rows.forEach(r => {
+        const row = sheet.addRow({
+          id: r.id,
+          pedido_id: r.pedido_id,
+          empresa: r.empresa,
+          categoria: r.categoria,
+          fornecedor: r.fornecedor,
+          status_pedido: r.status_pedido || '-',
+          observacao: r.observacao ?? '-',
+          data_vencimento: r.data_vencimento ? new Date(r.data_vencimento + 'T12:00:00') : null,
+          valor_pagar: r.valor_pagar,
+          data_pagamento: r.data_pagamento ? new Date(r.data_pagamento + 'T12:00:00') : null,
+          valor_pagamento: r.valor_pagamento,
+          status_pagamento: statusNome(r.status_pagamento),
+          tipo_pagamento: tipoNome(r.tipo_pagamento),
+          situacao: r.situacao,
+        })
+        row.getCell('data_vencimento').numFmt = 'dd/mm/yyyy'
+        row.getCell('data_pagamento').numFmt = 'dd/mm/yyyy'
+        row.getCell('valor_pagar').numFmt = '"R$" #,##0.00'
+        row.getCell('valor_pagamento').numFmt = '"R$" #,##0.00'
+      })
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([new Uint8Array(buffer as ArrayBuffer)], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      const url = URL.createObjectURL(blob)
+      const dataStr = new Date().toISOString().slice(0, 10)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `controle_pagamentos_pagina_${page + 1}_${dataStr}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -688,6 +757,14 @@ export default function ControlePage() {
           </button>
           <button onClick={() => setShowRemessa(true)} className="btn-secondary gap-1.5 text-sm">
             <FileOutput size={15} /> Remessa / Retorno
+          </button>
+          <button
+            onClick={exportarPagina}
+            disabled={exporting || tableLoading || rows.length === 0}
+            className="btn-secondary gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Exporta somente os registros exibidos nesta página"
+          >
+            <Download size={15} /> {exporting ? 'Exportando...' : 'Exportar Página (.xlsx)'}
           </button>
           <button onClick={reload} className="btn-secondary p-2" title="Atualizar">
             <RefreshCw size={16} className={(resumoLoading || tableLoading) ? 'animate-spin' : ''} />
