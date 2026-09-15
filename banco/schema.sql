@@ -135,10 +135,10 @@ CREATE OR REPLACE FUNCTION "public"."atualiza_status_cancelado"() RETURNS "trigg
     AS $$
 BEGIN
    IF NEW.cancelado = TRUE THEN
-       NEW.status = 'Não Autorizado';
-       
-       UPDATE pedidos_solicitados_fluxo 
-       SET status = 'Não Autorizado'
+       NEW.status = 'Cancelado';
+
+       UPDATE pedidos_solicitados_fluxo
+       SET status = 'Cancelado'
        WHERE pedido_id = NEW.id;
    END IF;
    RETURN NEW;
@@ -154,10 +154,10 @@ CREATE OR REPLACE FUNCTION "public"."atualiza_status_cancelado_receita"() RETURN
     AS $$
 BEGIN
    IF NEW.cancelado = TRUE THEN
-       NEW.status = 'Não Autorizado';
-       
-       UPDATE pedidos_solicitados_fluxo_receita 
-       SET status = 'Não Autorizado'
+       NEW.status = 'Cancelado';
+
+       UPDATE pedidos_solicitados_fluxo_receita
+       SET status = 'Cancelado'
        WHERE pedido_id = NEW.id;
    END IF;
    RETURN NEW;
