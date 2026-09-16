@@ -81,7 +81,8 @@ ALTER TYPE "public"."status_kanban" OWNER TO "postgres";
 CREATE TYPE "public"."status_pedido" AS ENUM (
     'Autorizado',
     'Não Autorizado',
-    'Aguardando Autorização'
+    'Aguardando Autorização',
+    'Cancelado'
 );
 
 
