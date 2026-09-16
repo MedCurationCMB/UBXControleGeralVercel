@@ -40,6 +40,33 @@ async function enrich(supabase: ReturnType<typeof createServerClient>, ctrls: Co
   })
 }
 
+async function fetchAllControles(
+  supabase: ReturnType<typeof createServerClient>,
+  pedidoIds: number[] | null,
+  status_pagamento: string
+) {
+  let offset = 0
+  const all: Controle[] = []
+  while (true) {
+    let q = supabase
+      .from('controle_pagamentos')
+      .select('*')
+      .order('id', { ascending: false })
+      .range(offset, offset + FETCH_PAGE - 1)
+
+    if (pedidoIds) q = q.in('pedido_id', pedidoIds)
+    if (status_pagamento) q = q.eq('status_pagamento', parseInt(status_pagamento))
+
+    const { data, error } = await q
+    if (error) throw new Error(error.message)
+    const batch = (data ?? []) as Controle[]
+    all.push(...batch)
+    if (batch.length < FETCH_PAGE) break
+    offset += FETCH_PAGE
+  }
+  return all
+}
+
 export async function GET(req: NextRequest) {
   const supabase = createServerClient()
   const { searchParams } = req.nextUrl
@@ -47,6 +74,7 @@ export async function GET(req: NextRequest) {
   const categoria = searchParams.get('categoria') || ''
   const status_pagamento = searchParams.get('status_pagamento') || ''
   const situacao = searchParams.get('situacao') || ''
+  const isExport = searchParams.get('export') === 'true'
   const page = parseInt(searchParams.get('page') || '0')
   const pageSize = parseInt(searchParams.get('page_size') || '100')
 
@@ -56,6 +84,19 @@ export async function GET(req: NextRequest) {
     if (pedidoIds.length === 0) {
       return NextResponse.json({ rows: [], total: 0 })
     }
+  }
+
+  // Export: return every row matching the filters, ignoring pagination.
+  if (isExport) {
+    let all: Controle[]
+    try {
+      all = await fetchAllControles(supabase, pedidoIds, status_pagamento)
+    } catch (error) {
+      return NextResponse.json({ error: (error as Error).message }, { status: 500 })
+    }
+    const filtered = situacao ? all.filter(c => getSituacao(c) === situacao) : all
+    const rows = await enrich(supabase, filtered)
+    return NextResponse.json({ rows, total: rows.length })
   }
 
   // Fast path: no situacao filter — paginate directly in the database.
@@ -77,24 +118,11 @@ export async function GET(req: NextRequest) {
   }
 
   // situacao is a computed field, so matching rows must be resolved before paginating.
-  let offset = 0
-  const all: Controle[] = []
-  while (true) {
-    let q = supabase
-      .from('controle_pagamentos')
-      .select('*')
-      .order('id', { ascending: false })
-      .range(offset, offset + FETCH_PAGE - 1)
-
-    if (pedidoIds) q = q.in('pedido_id', pedidoIds)
-    if (status_pagamento) q = q.eq('status_pagamento', parseInt(status_pagamento))
-
-    const { data, error } = await q
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    const batch = (data ?? []) as Controle[]
-    all.push(...batch)
-    if (batch.length < FETCH_PAGE) break
-    offset += FETCH_PAGE
+  let all: Controle[]
+  try {
+    all = await fetchAllControles(supabase, pedidoIds, status_pagamento)
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 })
   }
 
   const filtered = all.filter(c => getSituacao(c) === situacao)
