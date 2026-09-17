@@ -96,6 +96,10 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
   useEffect(() => {
     supabase.from('config').select('valor').eq('chave', 'fluxo_sistema').maybeSingle()
       .then(({ data }) => setFluxoSistema(data?.valor ?? null))
+
+    const handler = (e: Event) => setFluxoSistema((e as CustomEvent<string>).detail)
+    window.addEventListener('fluxo-sistema-changed', handler)
+    return () => window.removeEventListener('fluxo-sistema-changed', handler)
   }, [])
 
   const toggle = () => {

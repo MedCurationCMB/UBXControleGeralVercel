@@ -566,6 +566,7 @@ function ConfiguracoesTab() {
     setFluxo(novoFluxo)
     setSaving(false)
     setMsg({ type: 'success', text: `Fluxo ${novoFluxo} ativado.` })
+    window.dispatchEvent(new CustomEvent('fluxo-sistema-changed', { detail: novoFluxo }))
   }
 
   if (fluxo === null) return <p className="text-slate-400 text-sm">Carregando...</p>
