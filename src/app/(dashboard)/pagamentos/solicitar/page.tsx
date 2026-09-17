@@ -165,7 +165,9 @@ export default function SolicitarPage() {
   const [showImport, setShowImport] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const [controlarOrcamento, setControlarOrcamento] = useState(false)
+  const [fluxoSistema, setFluxoSistema] = useState<'1' | '2' | '3'>('2')
+  const [username, setUsername] = useState('')
+  const controlarOrcamento = fluxoSistema === '1'
 
   // Load reference data from orcamentos_usuarios
   useEffect(() => {
@@ -173,8 +175,10 @@ export default function SolicitarPage() {
       supabase.from('orcamentos_usuarios').select('empresa, categoria'),
       supabase.from('fornecedores').select('nome').order('nome'),
       supabase.from('tipos_documento').select('id').eq('tipo', 'Documentos da Solicitação').maybeSingle(),
+      supabase.from('config').select('valor').eq('chave', 'fluxo_sistema').maybeSingle(),
       supabase.from('config').select('valor').eq('chave', 'controla_orcamento').maybeSingle(),
-    ]).then(([{ data: oc }, { data: forns }, { data: tipoDoc }, { data: cfgOrc }]) => {
+      fetch('/api/auth/me').then(r => r.json()),
+    ]).then(([{ data: oc }, { data: forns }, { data: tipoDoc }, { data: cfgFluxo }, { data: cfgOrc }, u]) => {
       const emps = [...new Set((oc ?? []).map(r => r.empresa).filter(Boolean))].sort() as string[]
       const catMap: Record<string, string[]> = {}
       for (const row of (oc ?? [])) {
@@ -188,7 +192,8 @@ export default function SolicitarPage() {
       setCategoriasPorEmpresa(catMap)
       setFornecedores((forns ?? []).map(f => f.nome))
       if (tipoDoc) setTipoDocSolicitacao(tipoDoc.id)
-      setControlarOrcamento(cfgOrc?.valor === 'true')
+      setFluxoSistema((cfgFluxo?.valor as '1' | '2' | '3') || (cfgOrc?.valor === 'true' ? '1' : '2'))
+      setUsername(u?.username ?? '')
     })
   }, [])
 
@@ -341,6 +346,19 @@ export default function SolicitarPage() {
         valor_referente: m.valorReferente,
       }))
     )
+
+    // Fluxo 3: pedido já nasce autorizado, sem passar pela fila de autorização.
+    if (fluxoSistema === '3') {
+      const hoje = new Date().toISOString().split('T')[0]
+      await supabase.from('pedidos_solicitados').update({
+        status: 'Autorizado', data_autorizacao: hoje, usuario_autorizador: username,
+      }).eq('id', pedidoId)
+      await supabase.from('pedidos_solicitados_fluxo')
+        .update({ status: 'Autorizado' }).eq('pedido_id', pedidoId)
+      await supabase.from('controle_pagamentos').insert({
+        pedido_id: pedidoId, valor_pagar: valorTotal, status_pagamento: 1,
+      })
+    }
 
     const summary = { empresa, categoria, fornecedor, total: valorTotal }
 

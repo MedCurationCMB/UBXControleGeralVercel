@@ -537,56 +537,54 @@ function EmailsTab() {
 }
 
 // ---- Tab: Configurações ----
+type FluxoSistema = '1' | '2' | '3'
+
+const FLUXOS: { valor: FluxoSistema; titulo: string; desc: string }[] = [
+  { valor: '1', titulo: 'Fluxo 1', desc: 'Pedidos são bloqueados quando o saldo orçamentário é insuficiente.' },
+  { valor: '2', titulo: 'Fluxo 2', desc: 'Pedidos são permitidos independentemente do saldo orçamentário.' },
+  { valor: '3', titulo: 'Fluxo 3', desc: 'Pedidos já nascem autorizados e ignoram o saldo orçamentário.' },
+]
+
 function ConfiguracoesTab() {
-  const [controlarOrcamento, setControlarOrcamento] = useState<boolean | null>(null)
+  const [fluxo, setFluxo] = useState<FluxoSistema | null>(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
-    supabase.from('config').select('valor').eq('chave', 'controla_orcamento').maybeSingle()
-      .then(({ data }) => setControlarOrcamento(data?.valor === 'true'))
+    supabase.from('config').select('valor').eq('chave', 'fluxo_sistema').maybeSingle().then(async ({ data }) => {
+      if (data?.valor) { setFluxo(data.valor as FluxoSistema); return }
+      const { data: legacy } = await supabase.from('config').select('valor').eq('chave', 'controla_orcamento').maybeSingle()
+      setFluxo(legacy?.valor === 'true' ? '1' : '2')
+    })
   }, [])
 
-  const handleToggle = async () => {
-    if (controlarOrcamento === null) return
-    const novoValor = !controlarOrcamento
+  const handleChange = async (novoFluxo: FluxoSistema) => {
     setSaving(true)
     setMsg(null)
-    await supabase.from('config').delete().eq('chave', 'controla_orcamento')
-    await supabase.from('config').insert({ chave: 'controla_orcamento', valor: novoValor ? 'true' : 'false' })
-    setControlarOrcamento(novoValor)
+    await supabase.from('config').delete().eq('chave', 'fluxo_sistema')
+    await supabase.from('config').insert({ chave: 'fluxo_sistema', valor: novoFluxo })
+    setFluxo(novoFluxo)
     setSaving(false)
-    setMsg({ type: 'success', text: `Controle de orçamento ${novoValor ? 'ativado' : 'desativado'}.` })
+    setMsg({ type: 'success', text: `Fluxo ${novoFluxo} ativado.` })
   }
 
-  if (controlarOrcamento === null) return <p className="text-slate-400 text-sm">Carregando...</p>
+  if (fluxo === null) return <p className="text-slate-400 text-sm">Carregando...</p>
 
   return (
     <div className="max-w-md space-y-6">
       <h2 className="text-base font-semibold text-slate-800">Configurações do Sistema</h2>
 
-      <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl bg-slate-50">
-        <div>
-          <p className="text-sm font-medium text-slate-800">Controle de Orçamento</p>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {controlarOrcamento
-              ? 'Pedidos são bloqueados quando o saldo orçamentário é insuficiente.'
-              : 'Pedidos são permitidos independentemente do saldo orçamentário.'}
-          </p>
-        </div>
-        <button
-          onClick={handleToggle}
+      <div className="p-4 border border-slate-200 rounded-xl bg-slate-50 space-y-3">
+        <label className="label">Selecione o fluxo do sistema</label>
+        <select
+          className="input"
+          value={fluxo}
           disabled={saving}
-          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
-            controlarOrcamento ? 'bg-blue-600' : 'bg-slate-300'
-          }`}
+          onChange={e => handleChange(e.target.value as FluxoSistema)}
         >
-          <span
-            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-              controlarOrcamento ? 'translate-x-5' : 'translate-x-0'
-            }`}
-          />
-        </button>
+          {FLUXOS.map(f => <option key={f.valor} value={f.valor}>{f.titulo}</option>)}
+        </select>
+        <p className="text-xs text-slate-500">{FLUXOS.find(f => f.valor === fluxo)?.desc}</p>
       </div>
 
       {msg && (
