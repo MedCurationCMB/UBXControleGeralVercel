@@ -5,12 +5,13 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import type { TipoHierarquia } from '@/types/database'
 import {
   LayoutDashboard, FileText, CheckSquare, Clock, PlusSquare,
   CreditCard, FolderOpen, Users, Building2, Tag, List,
   FileSignature, TrendingUp, TrendingDown, Settings, ShieldCheck,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Receipt,
 } from 'lucide-react'
 
 interface NavItem {
@@ -18,6 +19,7 @@ interface NavItem {
   href: string
   icon: React.ElementType
   adminOnly?: boolean
+  flow3Only?: boolean
 }
 
 interface NavGroup {
@@ -39,6 +41,7 @@ const navGroups: NavGroup[] = [
       { label: 'Autorizar Pedidos', href: '/pagamentos/autorizar', icon: CheckSquare, adminOnly: true },
       { label: 'Acompanhar', href: '/pagamentos/acompanhar', icon: Clock },
       { label: 'Solicitar', href: '/pagamentos/solicitar', icon: PlusSquare },
+      { label: 'Lançar Conta a Pagar', href: '/pagamentos/lancar-conta', icon: Receipt, flow3Only: true },
       { label: 'Controle', href: '/pagamentos/controle', icon: CreditCard },
       { label: 'Documentos', href: '/pagamentos/documentos', icon: FolderOpen },
       { label: 'Fornecedores', href: '/pagamentos/fornecedores', icon: Users },
@@ -83,10 +86,16 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
   const pathname = usePathname()
   const isAdminOrOwner = hierarquia === 'admin' || hierarquia === 'owner'
   const [collapsed, setCollapsed] = useState(true)
+  const [fluxoSistema, setFluxoSistema] = useState<string | null>(null)
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed')
     if (saved !== null) setCollapsed(saved === 'true')
+  }, [])
+
+  useEffect(() => {
+    supabase.from('config').select('valor').eq('chave', 'fluxo_sistema').maybeSingle()
+      .then(({ data }) => setFluxoSistema(data?.valor ?? null))
   }, [])
 
   const toggle = () => {
@@ -138,7 +147,7 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
               : <p className="sidebar-link-group">{group.title}</p>
             }
             {group.items
-              .filter((item) => !item.adminOnly || isAdminOrOwner)
+              .filter((item) => (!item.adminOnly || isAdminOrOwner) && (!item.flow3Only || fluxoSistema === '3'))
               .map((item) => {
                 const Icon = item.icon
                 const isActive =
