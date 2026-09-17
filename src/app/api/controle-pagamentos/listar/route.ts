@@ -19,11 +19,12 @@ const FETCH_PAGE = 1000
 async function enrich(supabase: ReturnType<typeof createServerClient>, ctrls: Controle[]) {
   const uniquePedidoIds = [...new Set(ctrls.filter(c => c.pedido_id).map(c => c.pedido_id as number))]
   const pedidoMap: Record<number, Pedido> = {}
-  if (uniquePedidoIds.length > 0) {
+  for (let i = 0; i < uniquePedidoIds.length; i += FETCH_PAGE) {
+    const chunk = uniquePedidoIds.slice(i, i + FETCH_PAGE)
     const { data: peds } = await supabase
       .from('pedidos_solicitados')
       .select('id, empresa, categoria, fornecedor, valor_pedido, status, observacao, cancelado')
-      .in('id', uniquePedidoIds)
+      .in('id', chunk)
     ;(peds ?? []).forEach((p: Pedido) => { pedidoMap[p.id] = p })
   }
   return ctrls.map(c => {
