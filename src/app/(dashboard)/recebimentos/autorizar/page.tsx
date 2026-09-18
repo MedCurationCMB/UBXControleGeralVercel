@@ -101,7 +101,7 @@ export default function AutorizarRecebimentosPage() {
         if (!ex) {
           const p = pedidos.find(p => p.id === id)
           await supabase.from('controle_recebimento').insert({
-            pedido_id: id, valor_pagar: p?.valor_pedido, status_pagamento: 1,
+            pedido_id: id, valor_pagar: p?.valor_pedido, status_recebimento: 1,
           })
         }
       }

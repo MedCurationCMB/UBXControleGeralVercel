@@ -26,6 +26,13 @@ interface SaldoMes {
   saldo: number
 }
 
+interface Requisicao {
+  id: number
+  empresa: string
+  categoria: string
+  descricao: string
+}
+
 // ---- Bulk Import Modal ----
 function ImportModal({ onClose }: { onClose: () => void }) {
   const [file, setFile] = useState<File | null>(null)
@@ -171,12 +178,24 @@ export default function SolicitarRecebimentoPage() {
   const [showImport, setShowImport] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const [fluxoSistema, setFluxoSistema] = useState<'1' | '2' | '3' | '4' | '5'>('1')
+  const controlarOrcamento = fluxoSistema === '1' || fluxoSistema === '4'
+  const usaRequisicao = fluxoSistema === '4' || fluxoSistema === '5'
+
+  // Fluxo 4/5: pedido precisa ser vinculado a uma requisição já autorizada
+  const [requisicoesAutorizadas, setRequisicoesAutorizadas] = useState<Requisicao[]>([])
+  const [requisicoesUsadas, setRequisicoesUsadas] = useState<Set<number>>(new Set())
+  const [requisicaoId, setRequisicaoId] = useState<number | ''>('')
+
   useEffect(() => {
     Promise.all([
       supabase.from('orcamentos_usuarios_receita').select('empresa, categoria'),
       supabase.from('clientes').select('nome').order('nome'),
       supabase.from('tipos_documento').select('id').eq('tipo', 'Documentos da Solicitação').maybeSingle(),
-    ]).then(([{ data: oc }, { data: clis }, { data: tipoDoc }]) => {
+      supabase.from('config').select('valor').eq('chave', 'fluxo_sistema_receita').maybeSingle(),
+      supabase.from('requisicoes_receita').select('id, empresa, categoria, descricao').eq('status', 'Autorizado'),
+      supabase.from('pedidos_solicitados_receita').select('requisicao_id').not('requisicao_id', 'is', null),
+    ]).then(([{ data: oc }, { data: clis }, { data: tipoDoc }, { data: cfgFluxo }, { data: reqs }, { data: usadas }]) => {
       const emps = [...new Set((oc ?? []).map(r => r.empresa).filter(Boolean))].sort() as string[]
       const catMap: Record<string, string[]> = {}
       for (const row of (oc ?? [])) {
@@ -190,6 +209,9 @@ export default function SolicitarRecebimentoPage() {
       setCategoriasPorEmpresa(catMap)
       setClientes((clis ?? []).map(c => c.nome))
       if (tipoDoc) setTipoDocSolicitacao(tipoDoc.id)
+      setFluxoSistema((cfgFluxo?.valor as '1' | '2' | '3' | '4' | '5') || '1')
+      setRequisicoesAutorizadas(reqs ?? [])
+      setRequisicoesUsadas(new Set((usadas ?? []).map(u => u.requisicao_id as number)))
     })
   }, [])
 
@@ -225,6 +247,7 @@ export default function SolicitarRecebimentoPage() {
     if (!empresa) { setError('Selecione a empresa'); return }
     if (!categoria) { setError('Selecione a categoria'); return }
     if (!cliente) { setError('Selecione o cliente'); return }
+    if (usaRequisicao && requisicaoId === '') { setError('Selecione a requisição'); return }
 
     setSaving(true)
 
@@ -239,14 +262,23 @@ export default function SolicitarRecebimentoPage() {
         arquivo_texto: [],
         arquivos_pdf_ids: [],
         status: 'Aguardando Autorização',
+        requisicao_id: usaRequisicao ? requisicaoId : null,
       })
       .select('id')
       .single()
 
     if (errPedido || !pedido) {
       setSaving(false)
-      setError(errPedido?.message ?? 'Erro ao criar pedido')
+      setError(
+        errPedido?.code === '23505'
+          ? 'Esta requisição já foi utilizada por outro pedido. Selecione outra.'
+          : errPedido?.message ?? 'Erro ao criar pedido'
+      )
       return
+    }
+
+    if (usaRequisicao && requisicaoId !== '') {
+      setRequisicoesUsadas(prev => new Set(prev).add(requisicaoId))
     }
 
     if (files.length > 0) {
@@ -288,26 +320,28 @@ export default function SolicitarRecebimentoPage() {
       setError(`Período ${addMes}/${addAno} já adicionado.`); return
     }
 
-    setAddingMes(true)
-    const { data: saldoData } = await supabase
-      .from('controle_orcamento_receita')
-      .select('valor_orcamento, valor_pedidos_solicitados')
-      .eq('empresa', empresa)
-      .eq('categoria', categoria)
-      .eq('mes', mesNum)
-      .eq('ano', anoNum)
-      .maybeSingle()
+    if (controlarOrcamento) {
+      setAddingMes(true)
+      const { data: saldoData } = await supabase
+        .from('controle_orcamento_receita')
+        .select('valor_orcamento, valor_pedidos_solicitados')
+        .eq('empresa', empresa)
+        .eq('categoria', categoria)
+        .eq('mes', mesNum)
+        .eq('ano', anoNum)
+        .maybeSingle()
 
-    setAddingMes(false)
+      setAddingMes(false)
 
-    if (!saldoData) {
-      setError(`Não existe orçamento para ${addMes}/${anoNum}.`); return
-    }
+      if (!saldoData) {
+        setError(`Não existe orçamento para ${addMes}/${anoNum}.`); return
+      }
 
-    const saldoAtual = saldoData.valor_orcamento - saldoData.valor_pedidos_solicitados
-    if (valor > saldoAtual) {
-      setError(`Valor ${fmtMoeda(valor)} excede o saldo disponível de ${fmtMoeda(saldoAtual)} para ${addMes}/${anoNum}.`)
-      return
+      const saldoAtual = saldoData.valor_orcamento - saldoData.valor_pedidos_solicitados
+      if (valor > saldoAtual) {
+        setError(`Valor ${fmtMoeda(valor)} excede o saldo disponível de ${fmtMoeda(saldoAtual)} para ${addMes}/${anoNum}.`)
+        return
+      }
     }
 
     setError('')
@@ -359,6 +393,7 @@ export default function SolicitarRecebimentoPage() {
     setAddMes('')
     setAddAno('')
     setAddValor('')
+    setRequisicaoId('')
     setError('')
     if (fileRef.current) fileRef.current.value = ''
 
@@ -367,12 +402,15 @@ export default function SolicitarRecebimentoPage() {
   }
 
   const categorias = categoriasPorEmpresa[empresa] ?? []
+  const requisicoesDisponiveis = requisicoesAutorizadas.filter(
+    r => r.empresa === empresa && !requisicoesUsadas.has(r.id)
+  )
   const valorTotal = mesesSelecionados.reduce((s, m) => s + m.valorReferente, 0)
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="page-title">Solicitar Pedido</h1>
+        <h1 className="page-title">Fazer Pedido</h1>
         <p className="page-subtitle">Registrar uma nova solicitação de recebimento</p>
       </div>
 
@@ -403,24 +441,45 @@ export default function SolicitarRecebimentoPage() {
               <label className="label">Empresa *</label>
               <select
                 className="input" value={empresa}
-                onChange={e => { setEmpresa(e.target.value); setCategoria('') }}
+                onChange={e => { setEmpresa(e.target.value); setCategoria(''); setRequisicaoId('') }}
               >
                 <option value="">Selecionar...</option>
                 {empresas.map(e => <option key={e} value={e}>{e}</option>)}
               </select>
             </div>
 
-            <div>
-              <label className="label">Categoria *</label>
-              <select
-                className="input" value={categoria}
-                onChange={e => setCategoria(e.target.value)}
-                disabled={!empresa}
-              >
-                <option value="">Selecionar...</option>
-                {categorias.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
+            {usaRequisicao ? (
+              <div>
+                <label className="label">Requisição *</label>
+                <select
+                  className="input" value={requisicaoId}
+                  onChange={e => {
+                    const id = e.target.value ? Number(e.target.value) : ''
+                    setRequisicaoId(id)
+                    const req = requisicoesDisponiveis.find(r => r.id === id)
+                    setCategoria(req?.categoria ?? '')
+                  }}
+                  disabled={!empresa}
+                >
+                  <option value="">Selecionar...</option>
+                  {requisicoesDisponiveis.map(r => (
+                    <option key={r.id} value={r.id}>#{r.id} · {r.categoria} · {r.descricao}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="label">Categoria *</label>
+                <select
+                  className="input" value={categoria}
+                  onChange={e => setCategoria(e.target.value)}
+                  disabled={!empresa}
+                >
+                  <option value="">Selecionar...</option>
+                  {categorias.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            )}
 
             <div className="md:col-span-2">
               <label className="label">Cliente *</label>

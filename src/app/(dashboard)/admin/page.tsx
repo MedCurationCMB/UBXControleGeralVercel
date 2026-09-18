@@ -547,52 +547,77 @@ const FLUXOS: { valor: FluxoSistema; titulo: string; desc: string }[] = [
   { valor: '5', titulo: 'Fluxo 5', desc: 'Todo pedido precisa ser vinculado a uma requisição já autorizada. Ignora o saldo orçamentário.' },
 ]
 
-function ConfiguracoesTab() {
+function FluxoSelector({
+  titulo, chave, eventoNome, legacyChave, fallbackSemConfig,
+}: {
+  titulo: string; chave: string; eventoNome: string
+  legacyChave?: string; fallbackSemConfig: FluxoSistema
+}) {
   const [fluxo, setFluxo] = useState<FluxoSistema | null>(null)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
-    supabase.from('config').select('valor').eq('chave', 'fluxo_sistema').maybeSingle().then(async ({ data }) => {
+    supabase.from('config').select('valor').eq('chave', chave).maybeSingle().then(async ({ data }) => {
       if (data?.valor) { setFluxo(data.valor as FluxoSistema); return }
-      const { data: legacy } = await supabase.from('config').select('valor').eq('chave', 'controla_orcamento').maybeSingle()
-      setFluxo(legacy?.valor === 'true' ? '1' : '2')
+      if (legacyChave) {
+        const { data: legacy } = await supabase.from('config').select('valor').eq('chave', legacyChave).maybeSingle()
+        setFluxo(legacy?.valor === 'true' ? '1' : '2')
+        return
+      }
+      setFluxo(fallbackSemConfig)
     })
-  }, [])
+  }, [chave, legacyChave, fallbackSemConfig])
 
   const handleChange = async (novoFluxo: FluxoSistema) => {
     setSaving(true)
     setMsg(null)
-    await supabase.from('config').delete().eq('chave', 'fluxo_sistema')
-    await supabase.from('config').insert({ chave: 'fluxo_sistema', valor: novoFluxo })
+    await supabase.from('config').delete().eq('chave', chave)
+    await supabase.from('config').insert({ chave, valor: novoFluxo })
     setFluxo(novoFluxo)
     setSaving(false)
     setMsg({ type: 'success', text: `Fluxo ${novoFluxo} ativado.` })
-    window.dispatchEvent(new CustomEvent('fluxo-sistema-changed', { detail: novoFluxo }))
+    window.dispatchEvent(new CustomEvent(eventoNome, { detail: novoFluxo }))
   }
 
   if (fluxo === null) return <p className="text-slate-400 text-sm">Carregando...</p>
 
   return (
-    <div className="max-w-md space-y-6">
-      <h2 className="text-base font-semibold text-slate-800">Configurações do Sistema</h2>
-
-      <div className="p-4 border border-slate-200 rounded-xl bg-slate-50 space-y-3">
-        <label className="label">Selecione o fluxo do sistema</label>
-        <select
-          className="input"
-          value={fluxo}
-          disabled={saving}
-          onChange={e => handleChange(e.target.value as FluxoSistema)}
-        >
-          {FLUXOS.map(f => <option key={f.valor} value={f.valor}>{f.titulo}</option>)}
-        </select>
-        <p className="text-xs text-slate-500">{FLUXOS.find(f => f.valor === fluxo)?.desc}</p>
-      </div>
-
+    <div className="p-4 border border-slate-200 rounded-xl bg-slate-50 space-y-3">
+      <label className="label">{titulo}</label>
+      <select
+        className="input"
+        value={fluxo}
+        disabled={saving}
+        onChange={e => handleChange(e.target.value as FluxoSistema)}
+      >
+        {FLUXOS.map(f => <option key={f.valor} value={f.valor}>{f.titulo}</option>)}
+      </select>
+      <p className="text-xs text-slate-500">{FLUXOS.find(f => f.valor === fluxo)?.desc}</p>
       {msg && (
         <p className={`text-sm ${msg.type === 'success' ? 'text-green-700' : 'text-red-600'}`}>{msg.text}</p>
       )}
+    </div>
+  )
+}
+
+function ConfiguracoesTab() {
+  return (
+    <div className="max-w-md space-y-6">
+      <h2 className="text-base font-semibold text-slate-800">Configurações do Sistema</h2>
+      <FluxoSelector
+        titulo="Selecione o fluxo do sistema (Pagamentos)"
+        chave="fluxo_sistema"
+        eventoNome="fluxo-sistema-changed"
+        legacyChave="controla_orcamento"
+        fallbackSemConfig="2"
+      />
+      <FluxoSelector
+        titulo="Selecione o fluxo do sistema (Recebimentos)"
+        chave="fluxo_sistema_receita"
+        eventoNome="fluxo-sistema-receita-changed"
+        fallbackSemConfig="1"
+      />
     </div>
   )
 }

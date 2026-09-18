@@ -20,6 +20,7 @@ interface NavItem {
   icon: React.ElementType
   adminOnly?: boolean
   flowOnly?: ('3' | '4' | '5')[]
+  flowOnlyReceita?: ('3' | '4' | '5')[]
 }
 
 interface NavGroup {
@@ -61,7 +62,11 @@ const navGroups: NavGroup[] = [
       { label: 'Visão Geral', href: '/recebimentos', icon: TrendingUp },
       { label: 'Autorizar Pedidos', href: '/recebimentos/autorizar', icon: CheckSquare, adminOnly: true },
       { label: 'Acompanhar', href: '/recebimentos/acompanhar', icon: Clock },
-      { label: 'Solicitar', href: '/recebimentos/solicitar', icon: PlusSquare },
+      { label: 'Fazer Pedido', href: '/recebimentos/solicitar', icon: PlusSquare },
+      { label: 'Lançar Conta a Receber', href: '/recebimentos/lancar-conta', icon: Receipt, flowOnlyReceita: ['3'] },
+      { label: 'Fazer Requisição', href: '/recebimentos/requisicoes', icon: ClipboardList, flowOnlyReceita: ['4', '5'] },
+      { label: 'Requisições', href: '/recebimentos/acompanhar-requisicoes', icon: Clock, flowOnlyReceita: ['4', '5'] },
+      { label: 'Autorizar Requisições', href: '/recebimentos/autorizar-requisicoes', icon: ClipboardCheck, adminOnly: true, flowOnlyReceita: ['4', '5'] },
       { label: 'Controle', href: '/recebimentos/controle', icon: CreditCard },
       { label: 'Documentos', href: '/recebimentos/documentos', icon: FolderOpen },
       { label: 'Clientes', href: '/recebimentos/clientes', icon: Users },
@@ -90,6 +95,7 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
   const isAdminOrOwner = hierarquia === 'admin' || hierarquia === 'owner'
   const [collapsed, setCollapsed] = useState(true)
   const [fluxoSistema, setFluxoSistema] = useState<string | null>(null)
+  const [fluxoSistemaReceita, setFluxoSistemaReceita] = useState<string | null>(null)
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed')
@@ -99,10 +105,17 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
   useEffect(() => {
     supabase.from('config').select('valor').eq('chave', 'fluxo_sistema').maybeSingle()
       .then(({ data }) => setFluxoSistema(data?.valor ?? null))
+    supabase.from('config').select('valor').eq('chave', 'fluxo_sistema_receita').maybeSingle()
+      .then(({ data }) => setFluxoSistemaReceita(data?.valor ?? null))
 
     const handler = (e: Event) => setFluxoSistema((e as CustomEvent<string>).detail)
+    const handlerReceita = (e: Event) => setFluxoSistemaReceita((e as CustomEvent<string>).detail)
     window.addEventListener('fluxo-sistema-changed', handler)
-    return () => window.removeEventListener('fluxo-sistema-changed', handler)
+    window.addEventListener('fluxo-sistema-receita-changed', handlerReceita)
+    return () => {
+      window.removeEventListener('fluxo-sistema-changed', handler)
+      window.removeEventListener('fluxo-sistema-receita-changed', handlerReceita)
+    }
   }, [])
 
   const toggle = () => {
@@ -154,7 +167,11 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
               : <p className="sidebar-link-group">{group.title}</p>
             }
             {group.items
-              .filter((item) => (!item.adminOnly || isAdminOrOwner) && (!item.flowOnly || item.flowOnly.includes(fluxoSistema as '3' | '4' | '5')))
+              .filter((item) =>
+                (!item.adminOnly || isAdminOrOwner) &&
+                (!item.flowOnly || item.flowOnly.includes(fluxoSistema as '3' | '4' | '5')) &&
+                (!item.flowOnlyReceita || item.flowOnlyReceita.includes(fluxoSistemaReceita as '3' | '4' | '5'))
+              )
               .map((item) => {
                 const Icon = item.icon
                 const isActive =

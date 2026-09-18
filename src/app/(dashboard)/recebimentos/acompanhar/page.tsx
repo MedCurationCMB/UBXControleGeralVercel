@@ -3,7 +3,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Search, Download, RefreshCw, ChevronRight, ChevronLeft, AlertTriangle } from 'lucide-react'
+import {
+  Search, Download, RefreshCw, ChevronRight, ChevronLeft, AlertTriangle,
+  List, LayoutGrid, Info,
+} from 'lucide-react'
 
 interface Pedido {
   id: number; empresa: string; categoria: string; cliente: string
@@ -11,7 +14,12 @@ interface Pedido {
   data_solicitacao: string; cancelado: boolean
 }
 
+interface ControleInfo {
+  valor_pagar: number | null; valor_pagamento: number | null
+}
+
 const PAGE_SIZE = 100
+const KANBAN_LIMIT = 300
 
 const STATUS_OPTIONS = [
   'Aguardando Autorização',
@@ -30,12 +38,45 @@ const STATUS_BADGE: Record<string, string> = {
 const fmtMoeda = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtData = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
 
+type EstagioPedido = 'aguardando_autorizacao' | 'nao_autorizado' | 'aguardando_pagamento' | 'pago' | 'cancelado'
+
+const COLUNAS_PEDIDO: { key: EstagioPedido; titulo: string }[] = [
+  { key: 'aguardando_autorizacao', titulo: 'Aguardando Autorização' },
+  { key: 'nao_autorizado', titulo: 'Não Autorizado' },
+  { key: 'aguardando_pagamento', titulo: 'Autorizado — Aguardando Recebimento' },
+  { key: 'pago', titulo: 'Recebido' },
+  { key: 'cancelado', titulo: 'Cancelado' },
+]
+
+// Enquanto o pedido não é autorizado, ele pode transitar livremente entre essas 2 colunas.
+const COLUNAS_LIVRES: EstagioPedido[] = ['aguardando_autorizacao', 'nao_autorizado']
+
+function getEstagioPedido(p: Pedido, controles: ControleInfo[]): EstagioPedido {
+  if (p.cancelado) return 'cancelado'
+  if (p.status === 'Aguardando Autorização') return 'aguardando_autorizacao'
+  if (p.status === 'Não Autorizado') return 'nao_autorizado'
+  const pago = controles.length > 0 && controles.every(c =>
+    c.valor_pagamento != null && c.valor_pagar != null && c.valor_pagamento >= c.valor_pagar
+  )
+  return pago ? 'pago' : 'aguardando_pagamento'
+}
+
 export default function AcompanharRecebimentosPage() {
   const router = useRouter()
+  const [view, setView] = useState<'lista' | 'kanban'>('lista')
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
+
+  const [isAdminOrOwner, setIsAdminOrOwner] = useState(false)
+  const [username, setUsername] = useState('')
+
+  // Kanban
+  const [kanbanPedidos, setKanbanPedidos] = useState<Pedido[]>([])
+  const [controlesPorPedido, setControlesPorPedido] = useState<Record<number, ControleInfo[]>>({})
+  const [kanbanLoading, setKanbanLoading] = useState(true)
+  const [draggingId, setDraggingId] = useState<number | null>(null)
 
   const [empresas, setEmpresas] = useState<string[]>([])
   const [categorias, setCategorias] = useState<string[]>([])
@@ -51,14 +92,17 @@ export default function AcompanharRecebimentosPage() {
 
   useEffect(() => {
     const fetchOpcoes = async () => {
-      const [{ data: emp }, { data: cat }, { data: cli }] = await Promise.all([
+      const [{ data: emp }, { data: cat }, { data: cli }, u] = await Promise.all([
         supabase.from('pedidos_solicitados_receita').select('empresa').order('empresa').limit(1000),
         supabase.from('pedidos_solicitados_receita').select('categoria').order('categoria').limit(1000),
         supabase.from('pedidos_solicitados_receita').select('cliente').order('cliente').limit(1000),
+        fetch('/api/auth/me').then(r => r.json()),
       ])
       setEmpresas([...new Set(emp?.map(r => r.empresa).filter(Boolean) ?? [])].sort())
       setCategorias([...new Set(cat?.map(r => r.categoria).filter(Boolean) ?? [])].sort())
       setClientes([...new Set(cli?.map(r => r.cliente).filter(Boolean) ?? [])].sort())
+      setIsAdminOrOwner(u?.hierarquia === 'admin' || u?.hierarquia === 'owner')
+      setUsername(u?.username ?? '')
     }
     fetchOpcoes()
   }, [])
@@ -113,7 +157,42 @@ export default function AcompanharRecebimentosPage() {
     setLoading(false)
   }, [page, activeSearchId, filtroEmpresa, filtroCategoria, filtroCliente, filtroStatus])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (view === 'lista') load() }, [view, load])
+
+  const loadKanban = useCallback(async () => {
+    setKanbanLoading(true)
+    let query = supabase
+      .from('pedidos_solicitados_receita')
+      .select('id, empresa, categoria, cliente, valor_pedido, status, emergencia, data_solicitacao, cancelado')
+      .order('id', { ascending: false })
+      .limit(KANBAN_LIMIT)
+
+    if (filtroEmpresa)   query = query.eq('empresa', filtroEmpresa)
+    if (filtroCategoria) query = query.eq('categoria', filtroCategoria)
+    if (filtroCliente)   query = query.eq('cliente', filtroCliente)
+
+    const { data } = await query
+    setKanbanPedidos(data ?? [])
+
+    const ids = (data ?? []).map(p => p.id)
+    if (ids.length > 0) {
+      const { data: controles } = await supabase
+        .from('controle_recebimento')
+        .select('pedido_id, valor_pagar, valor_pagamento')
+        .in('pedido_id', ids)
+      const map: Record<number, ControleInfo[]> = {}
+      for (const c of (controles ?? [])) {
+        if (!map[c.pedido_id]) map[c.pedido_id] = []
+        map[c.pedido_id].push({ valor_pagar: c.valor_pagar, valor_pagamento: c.valor_pagamento })
+      }
+      setControlesPorPedido(map)
+    } else {
+      setControlesPorPedido({})
+    }
+    setKanbanLoading(false)
+  }, [filtroEmpresa, filtroCategoria, filtroCliente])
+
+  useEffect(() => { if (view === 'kanban') loadKanban() }, [view, loadKanban])
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
@@ -141,6 +220,30 @@ export default function AcompanharRecebimentosPage() {
 
   const filtersActive = !!(activeSearchId || filtroEmpresa || filtroCategoria || filtroCliente || filtroStatus)
 
+  const handleMudarStatusPedido = async (id: number, novoStatus: 'Aguardando Autorização' | 'Autorizado' | 'Não Autorizado') => {
+    const hoje = new Date().toISOString().split('T')[0]
+    await supabase.from('pedidos_solicitados_receita').update({
+      status: novoStatus,
+      data_autorizacao: novoStatus === 'Aguardando Autorização' ? null : hoje,
+      usuario_autorizador: novoStatus === 'Aguardando Autorização' ? null : username,
+    }).eq('id', id)
+    await supabase.from('pedidos_solicitados_fluxo_receita').update({ status: novoStatus }).eq('pedido_id', id)
+
+    if (novoStatus === 'Autorizado') {
+      const { data: existente } = await supabase.from('controle_recebimento').select('id').eq('pedido_id', id).maybeSingle()
+      if (!existente) {
+        const pedido = kanbanPedidos.find(p => p.id === id)
+        await supabase.from('controle_recebimento').insert({ pedido_id: id, valor_pagar: pedido?.valor_pedido, status_recebimento: 1 })
+      }
+    }
+    loadKanban()
+  }
+
+  const comEstagio = kanbanPedidos.map(p => ({
+    pedido: p,
+    estagio: getEstagioPedido(p, controlesPorPedido[p.id] ?? []),
+  }))
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -149,11 +252,27 @@ export default function AcompanharRecebimentosPage() {
           <p className="page-subtitle">Todos os pedidos de recebimento solicitados</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={exportCSV} className="btn-secondary gap-1.5 text-sm">
-            <Download size={15} /> Exportar CSV
-          </button>
-          <button onClick={load} className="btn-secondary p-2" title="Atualizar">
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+            <button
+              onClick={() => setView('lista')}
+              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 ${view === 'lista' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              <List size={14} /> Lista
+            </button>
+            <button
+              onClick={() => setView('kanban')}
+              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 ${view === 'kanban' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              <LayoutGrid size={14} /> Kanban
+            </button>
+          </div>
+          {view === 'lista' && (
+            <button onClick={exportCSV} className="btn-secondary gap-1.5 text-sm">
+              <Download size={15} /> Exportar CSV
+            </button>
+          )}
+          <button onClick={view === 'lista' ? load : loadKanban} className="btn-secondary p-2" title="Atualizar">
+            <RefreshCw size={16} className={(view === 'lista' ? loading : kanbanLoading) ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
@@ -171,6 +290,7 @@ export default function AcompanharRecebimentosPage() {
               value={searchId}
               onChange={e => setSearchId(e.target.value)}
               onKeyDown={handleSearchIdKeyDown}
+              disabled={view === 'kanban'}
             />
           </div>
           <select className="input" value={filtroEmpresa}
@@ -188,110 +308,194 @@ export default function AcompanharRecebimentosPage() {
             <option value="">Todos os clientes</option>
             {clientes.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select className="input" value={filtroStatus}
-            onChange={e => setFiltroStatus(e.target.value)} disabled={!!activeSearchId}>
-            <option value="">Todos os status</option>
-            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
-          <p className="text-sm text-slate-500">
-            {loading
-              ? 'Carregando...'
-              : activeSearchId
-              ? `${pedidos.length} resultado(s) para ID #${activeSearchId}`
-              : `${total.toLocaleString('pt-BR')} pedido(s)${filtersActive ? ' encontrado(s)' : ' no total'} — página ${page + 1} de ${Math.max(1, totalPages)}`
-            }
-          </p>
-          {activeSearchId && (
-            <button onClick={clearIdSearch} className="text-xs text-blue-600 hover:underline">
-              Limpar busca por ID
-            </button>
+          {view === 'lista' && (
+            <select className="input" value={filtroStatus}
+              onChange={e => setFiltroStatus(e.target.value)} disabled={!!activeSearchId}>
+              <option value="">Todos os status</option>
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
           )}
         </div>
+
+        {view === 'lista' && (
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+            <p className="text-sm text-slate-500">
+              {loading
+                ? 'Carregando...'
+                : activeSearchId
+                ? `${pedidos.length} resultado(s) para ID #${activeSearchId}`
+                : `${total.toLocaleString('pt-BR')} pedido(s)${filtersActive ? ' encontrado(s)' : ' no total'} — página ${page + 1} de ${Math.max(1, totalPages)}`
+              }
+            </p>
+            {activeSearchId && (
+              <button onClick={clearIdSearch} className="text-xs text-blue-600 hover:underline">
+                Limpar busca por ID
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {loading && <div className="card text-center py-12 text-slate-400">Carregando...</div>}
+      {view === 'lista' ? (
+        <>
+          {loading && <div className="card text-center py-12 text-slate-400">Carregando...</div>}
 
-      {!loading && pedidos.length === 0 && (
-        <div className="card text-center py-12">
-          <Search size={36} className="mx-auto text-slate-300 mb-3" />
-          <p className="text-slate-500">Nenhum pedido encontrado</p>
-        </div>
-      )}
-
-      {!loading && pedidos.length > 0 && (
-        <div className="card p-0 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="table-header">
-                  <th className="table-cell font-medium">ID</th>
-                  <th className="table-cell font-medium">Empresa</th>
-                  <th className="table-cell font-medium">Categoria</th>
-                  <th className="table-cell font-medium">Cliente</th>
-                  <th className="table-cell font-medium text-right">Valor</th>
-                  <th className="table-cell font-medium">Status</th>
-                  <th className="table-cell font-medium">Solicitação</th>
-                  <th className="table-cell font-medium w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {pedidos.map(p => (
-                  <tr
-                    key={p.id}
-                    className={`table-row cursor-pointer hover:bg-slate-50 ${p.cancelado ? 'opacity-60' : ''}`}
-                    onClick={() => router.push(`/recebimentos/acompanhar/${p.id}`)}
-                  >
-                    <td className="table-cell font-mono text-xs text-slate-500">
-                      <div className="flex items-center gap-1">
-                        #{p.id}
-                        {p.emergencia && <AlertTriangle size={11} className="text-orange-500 shrink-0" />}
-                      </div>
-                    </td>
-                    <td className="table-cell font-medium max-w-[140px] truncate">{p.empresa}</td>
-                    <td className="table-cell text-slate-600 max-w-[120px] truncate">{p.categoria}</td>
-                    <td className="table-cell text-slate-600 max-w-[140px] truncate">{p.cliente}</td>
-                    <td className="table-cell text-right font-medium">{fmtMoeda(p.valor_pedido)}</td>
-                    <td className="table-cell">
-                      <span className={`badge ${STATUS_BADGE[p.cancelado ? 'Cancelado' : p.status] ?? 'bg-slate-100 text-slate-600'}`}>
-                        {p.cancelado ? 'Cancelado' : p.status}
-                      </span>
-                    </td>
-                    <td className="table-cell text-slate-500">{fmtData(p.data_solicitacao)}</td>
-                    <td className="table-cell">
-                      <ChevronRight size={14} className="text-slate-400" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {!activeSearchId && totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
-              <button
-                onClick={() => setPage(p => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft size={14} /> Anterior
-              </button>
-              <span className="text-sm text-slate-600">
-                Página <span className="font-semibold">{page + 1}</span> de{' '}
-                <span className="font-semibold">{totalPages}</span>
-              </span>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                disabled={page >= totalPages - 1}
-                className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Próximo <ChevronRight size={14} />
-              </button>
+          {!loading && pedidos.length === 0 && (
+            <div className="card text-center py-12">
+              <Search size={36} className="mx-auto text-slate-300 mb-3" />
+              <p className="text-slate-500">Nenhum pedido encontrado</p>
             </div>
           )}
-        </div>
+
+          {!loading && pedidos.length > 0 && (
+            <div className="card p-0 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="table-header">
+                      <th className="table-cell font-medium">ID</th>
+                      <th className="table-cell font-medium">Empresa</th>
+                      <th className="table-cell font-medium">Categoria</th>
+                      <th className="table-cell font-medium">Cliente</th>
+                      <th className="table-cell font-medium text-right">Valor</th>
+                      <th className="table-cell font-medium">Status</th>
+                      <th className="table-cell font-medium">Solicitação</th>
+                      <th className="table-cell font-medium w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pedidos.map(p => (
+                      <tr
+                        key={p.id}
+                        className={`table-row cursor-pointer hover:bg-slate-50 ${p.cancelado ? 'opacity-60' : ''}`}
+                        onClick={() => router.push(`/recebimentos/acompanhar/${p.id}`)}
+                      >
+                        <td className="table-cell font-mono text-xs text-slate-500">
+                          <div className="flex items-center gap-1">
+                            #{p.id}
+                            {p.emergencia && <AlertTriangle size={11} className="text-orange-500 shrink-0" />}
+                          </div>
+                        </td>
+                        <td className="table-cell font-medium max-w-[140px] truncate">{p.empresa}</td>
+                        <td className="table-cell text-slate-600 max-w-[120px] truncate">{p.categoria}</td>
+                        <td className="table-cell text-slate-600 max-w-[140px] truncate">{p.cliente}</td>
+                        <td className="table-cell text-right font-medium">{fmtMoeda(p.valor_pedido)}</td>
+                        <td className="table-cell">
+                          <span className={`badge ${STATUS_BADGE[p.cancelado ? 'Cancelado' : p.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                            {p.cancelado ? 'Cancelado' : p.status}
+                          </span>
+                        </td>
+                        <td className="table-cell text-slate-500">{fmtData(p.data_solicitacao)}</td>
+                        <td className="table-cell">
+                          <ChevronRight size={14} className="text-slate-400" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {!activeSearchId && totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
+                  <button
+                    onClick={() => setPage(p => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                    className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft size={14} /> Anterior
+                  </button>
+                  <span className="text-sm text-slate-600">
+                    Página <span className="font-semibold">{page + 1}</span> de{' '}
+                    <span className="font-semibold">{totalPages}</span>
+                  </span>
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={page >= totalPages - 1}
+                    className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Próximo <ChevronRight size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700">
+            <Info size={15} className="mt-0.5 shrink-0" />
+            <p>
+              Enquanto não é autorizado, o card pode ser movido livremente entre <strong>Aguardando Autorização</strong> e{' '}
+              <strong>Não Autorizado</strong>, ou arrastado para <strong>Autorizado — Aguardando Recebimento</strong> para
+              autorizar (isso já cria a conta a receber). A partir daí o card trava — o recebimento é controlado em
+              Controle de Recebimentos, e cancelamento continua sendo feito pelo detalhe do pedido. Mostrando os{' '}
+              {KANBAN_LIMIT} pedidos mais recentes; use os filtros para refinar.
+            </p>
+          </div>
+
+          {kanbanLoading ? (
+            <div className="card text-center py-12 text-slate-400">Carregando...</div>
+          ) : kanbanPedidos.length === 0 ? (
+            <div className="card text-center py-12">
+              <Search size={36} className="mx-auto text-slate-300 mb-3" />
+              <p className="text-slate-500">Nenhum pedido encontrado</p>
+            </div>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {COLUNAS_PEDIDO.map(col => {
+                const cards = comEstagio.filter(c => c.estagio === col.key)
+                const podeReceberDrop = isAdminOrOwner && (COLUNAS_LIVRES.includes(col.key) || col.key === 'aguardando_pagamento')
+                return (
+                  <div
+                    key={col.key}
+                    className="flex-shrink-0 w-64 bg-slate-50 rounded-lg border border-slate-200"
+                    onDragOver={podeReceberDrop ? e => e.preventDefault() : undefined}
+                    onDrop={podeReceberDrop ? e => {
+                      e.preventDefault()
+                      if (draggingId == null) return
+                      if (col.key === 'aguardando_pagamento') {
+                        handleMudarStatusPedido(draggingId, 'Autorizado')
+                      } else if (col.key === 'nao_autorizado') {
+                        handleMudarStatusPedido(draggingId, 'Não Autorizado')
+                      } else if (col.key === 'aguardando_autorizacao') {
+                        handleMudarStatusPedido(draggingId, 'Aguardando Autorização')
+                      }
+                      setDraggingId(null)
+                    } : undefined}
+                  >
+                    <div className="px-3 py-2.5 border-b border-slate-200">
+                      <p className="text-xs font-semibold text-slate-600">{col.titulo}</p>
+                      <p className="text-xs text-slate-400">{cards.length} pedido(s)</p>
+                    </div>
+                    <div className="p-2 space-y-2 min-h-[80px]">
+                      {cards.map(({ pedido: p }) => {
+                        const arrastavel = isAdminOrOwner && COLUNAS_LIVRES.includes(col.key)
+                        return (
+                          <div
+                            key={p.id}
+                            draggable={arrastavel}
+                            onDragStart={arrastavel ? () => setDraggingId(p.id) : undefined}
+                            onDragEnd={() => setDraggingId(null)}
+                            onClick={() => router.push(`/recebimentos/acompanhar/${p.id}`)}
+                            className={`bg-white rounded-md border border-slate-200 p-2.5 text-sm shadow-sm hover:shadow cursor-pointer ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''} ${draggingId === p.id ? 'opacity-40' : ''}`}
+                          >
+                            <div className="flex items-center gap-1">
+                              <p className="font-mono text-xs text-slate-400">#{p.id}</p>
+                              {p.emergencia && <AlertTriangle size={11} className="text-orange-500 shrink-0" />}
+                            </div>
+                            <p className="font-medium text-slate-800 truncate">{p.empresa}</p>
+                            <p className="text-xs text-slate-500 truncate">{p.categoria} · {p.cliente}</p>
+                            <p className="text-xs font-semibold text-slate-700 mt-1">{fmtMoeda(p.valor_pedido)}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

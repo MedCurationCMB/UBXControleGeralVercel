@@ -33,7 +33,7 @@ interface TipoDoc { id: number; tipo: string }
 interface Recebimento {
   id: number; pedido_id: number; data_vencimento: string | null; valor_pagar: number
   data_pagamento: string | null; valor_pagamento: number | null
-  status_pagamento: number | null; tipo_pagamento: number | null; anexo_url: string | null
+  status_recebimento: number | null; tipo_recebimento: number | null; anexo_url: string | null
 }
 interface RecebimentoStatus { id: number; nome_status: string }
 interface TipoRecebimento { id: number; tipos: string }
@@ -103,7 +103,7 @@ function ControleRecebimentosModal({
   const tiposMap = Object.fromEntries(tiposList.map(t => [t.id, t.tipos]))
 
   const recsFiltrados = bulkFilterStatus
-    ? recebimentos.filter(r => r.status_pagamento === Number(bulkFilterStatus))
+    ? recebimentos.filter(r => r.status_recebimento === Number(bulkFilterStatus))
     : recebimentos
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -114,7 +114,7 @@ function ControleRecebimentosModal({
       pedido_id: pedidoId,
       data_vencimento: dataVenc || null,
       valor_pagar: parseFloat(valorPagar),
-      tipo_pagamento: tipoAdd,
+      tipo_recebimento: tipoAdd,
     })
     setDataVenc(new Date().toISOString().split('T')[0])
     setValorPagar('')
@@ -128,8 +128,8 @@ function ControleRecebimentosModal({
     setEditForm({
       data_pagamento: r.data_pagamento,
       valor_pagamento: r.valor_pagamento,
-      status_pagamento: r.status_pagamento,
-      tipo_pagamento: r.tipo_pagamento,
+      status_recebimento: r.status_recebimento,
+      tipo_recebimento: r.tipo_recebimento,
     })
   }
 
@@ -144,7 +144,7 @@ function ControleRecebimentosModal({
     if (!bulkNewStatus || bulkSelected.size === 0) return
     setBulkApplying(true)
     await supabase.from('controle_recebimento')
-      .update({ status_pagamento: bulkNewStatus })
+      .update({ status_recebimento: bulkNewStatus })
       .in('id', [...bulkSelected])
     setBulkSelected(new Set())
     setBulkApplying(false)
@@ -242,15 +242,15 @@ function ControleRecebimentosModal({
                         <td className="table-cell">{fmtData(r.data_vencimento)}</td>
                         <td className="table-cell text-right">{fmtMoeda(r.valor_pagar)}</td>
                         <td className="table-cell">
-                          <select className="input text-xs py-0.5 px-1" value={editForm.status_pagamento ?? ''}
-                            onChange={e => setEditForm(f => ({ ...f, status_pagamento: e.target.value ? Number(e.target.value) : null }))}>
+                          <select className="input text-xs py-0.5 px-1" value={editForm.status_recebimento ?? ''}
+                            onChange={e => setEditForm(f => ({ ...f, status_recebimento: e.target.value ? Number(e.target.value) : null }))}>
                             <option value="">—</option>
                             {statusList.map(s => <option key={s.id} value={s.id}>{s.nome_status}</option>)}
                           </select>
                         </td>
                         <td className="table-cell">
-                          <select className="input text-xs py-0.5 px-1" value={editForm.tipo_pagamento ?? ''}
-                            onChange={e => setEditForm(f => ({ ...f, tipo_pagamento: e.target.value ? Number(e.target.value) : null }))}>
+                          <select className="input text-xs py-0.5 px-1" value={editForm.tipo_recebimento ?? ''}
+                            onChange={e => setEditForm(f => ({ ...f, tipo_recebimento: e.target.value ? Number(e.target.value) : null }))}>
                             <option value="">—</option>
                             {tiposList.map(t => <option key={t.id} value={t.id}>{t.tipos}</option>)}
                           </select>
@@ -277,11 +277,11 @@ function ControleRecebimentosModal({
                         <td className="table-cell">{fmtData(r.data_vencimento)}</td>
                         <td className="table-cell text-right font-medium">{fmtMoeda(r.valor_pagar)}</td>
                         <td className="table-cell">
-                          <span className={`badge text-xs ${r.status_pagamento ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
-                            {r.status_pagamento ? statusMap[r.status_pagamento] ?? '?' : '—'}
+                          <span className={`badge text-xs ${r.status_recebimento ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                            {r.status_recebimento ? statusMap[r.status_recebimento] ?? '?' : '—'}
                           </span>
                         </td>
-                        <td className="table-cell text-slate-600">{r.tipo_pagamento ? tiposMap[r.tipo_pagamento] ?? '?' : '—'}</td>
+                        <td className="table-cell text-slate-600">{r.tipo_recebimento ? tiposMap[r.tipo_recebimento] ?? '?' : '—'}</td>
                         <td className="table-cell">{fmtData(r.data_pagamento)}</td>
                         <td className="table-cell text-right">{fmtMoeda(r.valor_pagamento)}</td>
                         <td className="table-cell">
@@ -334,7 +334,7 @@ function ControleRecebimentosModal({
                       checked={bulkSelected.has(r.id)}
                       onChange={() => setBulkSelected(prev => { const n = new Set(prev); n.has(r.id) ? n.delete(r.id) : n.add(r.id); return n })} />
                     <span className="text-sm flex-1">#{r.id} — {fmtData(r.data_vencimento)} — {fmtMoeda(r.valor_pagar)}</span>
-                    <span className="text-xs text-slate-500">{r.status_pagamento ? statusMap[r.status_pagamento] : 'Sem status'}</span>
+                    <span className="text-xs text-slate-500">{r.status_recebimento ? statusMap[r.status_recebimento] : 'Sem status'}</span>
                   </label>
                 ))}
               </div>
