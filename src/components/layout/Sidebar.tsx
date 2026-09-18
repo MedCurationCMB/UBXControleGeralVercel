@@ -19,7 +19,7 @@ interface NavItem {
   href: string
   icon: React.ElementType
   adminOnly?: boolean
-  flowOnly?: '3' | '4'
+  flowOnly?: ('3' | '4' | '5')[]
 }
 
 interface NavGroup {
@@ -40,10 +40,11 @@ const navGroups: NavGroup[] = [
       { label: 'Visão Geral', href: '/pagamentos', icon: TrendingDown },
       { label: 'Autorizar Pedidos', href: '/pagamentos/autorizar', icon: CheckSquare, adminOnly: true },
       { label: 'Acompanhar', href: '/pagamentos/acompanhar', icon: Clock },
-      { label: 'Solicitar', href: '/pagamentos/solicitar', icon: PlusSquare },
-      { label: 'Lançar Conta a Pagar', href: '/pagamentos/lancar-conta', icon: Receipt, flowOnly: '3' },
-      { label: 'Requisitar', href: '/pagamentos/requisicoes', icon: ClipboardList, flowOnly: '4' },
-      { label: 'Autorizar Requisições', href: '/pagamentos/autorizar-requisicoes', icon: ClipboardCheck, adminOnly: true, flowOnly: '4' },
+      { label: 'Fazer Pedido', href: '/pagamentos/solicitar', icon: PlusSquare },
+      { label: 'Lançar Conta a Pagar', href: '/pagamentos/lancar-conta', icon: Receipt, flowOnly: ['3'] },
+      { label: 'Fazer Requisição', href: '/pagamentos/requisicoes', icon: ClipboardList, flowOnly: ['4', '5'] },
+      { label: 'Requisições', href: '/pagamentos/acompanhar-requisicoes', icon: Clock, flowOnly: ['4', '5'] },
+      { label: 'Autorizar Requisições', href: '/pagamentos/autorizar-requisicoes', icon: ClipboardCheck, adminOnly: true, flowOnly: ['4', '5'] },
       { label: 'Controle', href: '/pagamentos/controle', icon: CreditCard },
       { label: 'Documentos', href: '/pagamentos/documentos', icon: FolderOpen },
       { label: 'Fornecedores', href: '/pagamentos/fornecedores', icon: Users },
@@ -153,7 +154,7 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
               : <p className="sidebar-link-group">{group.title}</p>
             }
             {group.items
-              .filter((item) => (!item.adminOnly || isAdminOrOwner) && (!item.flowOnly || fluxoSistema === item.flowOnly))
+              .filter((item) => (!item.adminOnly || isAdminOrOwner) && (!item.flowOnly || item.flowOnly.includes(fluxoSistema as '3' | '4' | '5')))
               .map((item) => {
                 const Icon = item.icon
                 const isActive =

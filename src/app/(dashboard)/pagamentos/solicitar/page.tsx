@@ -172,10 +172,11 @@ export default function SolicitarPage() {
   const [showImport, setShowImport] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const [fluxoSistema, setFluxoSistema] = useState<'1' | '2' | '3' | '4'>('2')
+  const [fluxoSistema, setFluxoSistema] = useState<'1' | '2' | '3' | '4' | '5'>('2')
   const controlarOrcamento = fluxoSistema === '1' || fluxoSistema === '4'
+  const usaRequisicao = fluxoSistema === '4' || fluxoSistema === '5'
 
-  // Fluxo 4: pedido precisa ser vinculado a uma requisição já autorizada
+  // Fluxo 4/5: pedido precisa ser vinculado a uma requisição já autorizada
   const [requisicoesAutorizadas, setRequisicoesAutorizadas] = useState<Requisicao[]>([])
   const [requisicoesUsadas, setRequisicoesUsadas] = useState<Set<number>>(new Set())
   const [requisicaoId, setRequisicaoId] = useState<number | ''>('')
@@ -204,7 +205,7 @@ export default function SolicitarPage() {
       setCategoriasPorEmpresa(catMap)
       setFornecedores((forns ?? []).map(f => f.nome))
       if (tipoDoc) setTipoDocSolicitacao(tipoDoc.id)
-      setFluxoSistema((cfgFluxo?.valor as '1' | '2' | '3' | '4') || (cfgOrc?.valor === 'true' ? '1' : '2'))
+      setFluxoSistema((cfgFluxo?.valor as '1' | '2' | '3' | '4' | '5') || (cfgOrc?.valor === 'true' ? '1' : '2'))
       setRequisicoesAutorizadas(reqs ?? [])
       setRequisicoesUsadas(new Set((usadas ?? []).map(u => u.requisicao_id as number)))
     })
@@ -242,7 +243,7 @@ export default function SolicitarPage() {
     if (!empresa) { setError('Selecione a empresa'); return }
     if (!categoria) { setError('Selecione a categoria'); return }
     if (!fornecedor) { setError('Selecione o fornecedor'); return }
-    if (fluxoSistema === '4' && requisicaoId === '') { setError('Selecione a requisição'); return }
+    if (usaRequisicao && requisicaoId === '') { setError('Selecione a requisição'); return }
 
     setSaving(true)
 
@@ -257,7 +258,7 @@ export default function SolicitarPage() {
         arquivo_texto: [],
         arquivos_pdf_ids: [],
         status: 'Aguardando Autorização',
-        requisicao_id: fluxoSistema === '4' ? requisicaoId : null,
+        requisicao_id: usaRequisicao ? requisicaoId : null,
       })
       .select('id')
       .single()
@@ -272,7 +273,7 @@ export default function SolicitarPage() {
       return
     }
 
-    if (fluxoSistema === '4' && requisicaoId !== '') {
+    if (usaRequisicao && requisicaoId !== '') {
       setRequisicoesUsadas(prev => new Set(prev).add(requisicaoId))
     }
 
@@ -404,7 +405,7 @@ export default function SolicitarPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="page-title">Solicitar Pedido</h1>
+        <h1 className="page-title">Fazer Pedido</h1>
         <p className="page-subtitle">Registrar uma nova solicitação de pagamento</p>
       </div>
 
@@ -442,7 +443,7 @@ export default function SolicitarPage() {
               </select>
             </div>
 
-            {fluxoSistema === '4' ? (
+            {usaRequisicao ? (
               <div>
                 <label className="label">Requisição *</label>
                 <select

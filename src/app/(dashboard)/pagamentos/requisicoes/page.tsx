@@ -4,26 +4,11 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { CheckCircle, Info } from 'lucide-react'
 
-interface Requisicao {
-  id: number; empresa: string; categoria: string; descricao: string
-  status: string; data_solicitacao: string
-}
-
-const fmtData = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
-
-const STATUS_BADGE: Record<string, string> = {
-  'Autorizado': 'bg-green-100 text-green-700',
-  'Não Autorizado': 'bg-red-100 text-red-700',
-  'Aguardando Autorização': 'bg-amber-100 text-amber-700',
-}
-
 export default function RequisicoesPage() {
   const [fluxoAtivo, setFluxoAtivo] = useState<boolean | null>(null)
 
   const [empresas, setEmpresas] = useState<string[]>([])
   const [categoriasPorEmpresa, setCategoriasPorEmpresa] = useState<Record<string, string[]>>({})
-  const [requisicoes, setRequisicoes] = useState<Requisicao[]>([])
-  const [loading, setLoading] = useState(true)
 
   const [empresa, setEmpresa] = useState('')
   const [categoria, setCategoria] = useState('')
@@ -34,13 +19,11 @@ export default function RequisicoesPage() {
   const [successInfo, setSuccessInfo] = useState<{ empresa: string; categoria: string } | null>(null)
 
   const load = useCallback(async () => {
-    setLoading(true)
-    const [{ data: cfg }, { data: cats }, { data: reqs }] = await Promise.all([
+    const [{ data: cfg }, { data: cats }] = await Promise.all([
       supabase.from('config').select('valor').eq('chave', 'fluxo_sistema').maybeSingle(),
       supabase.from('categorias').select('empresa, categoria').order('empresa').order('categoria'),
-      supabase.from('requisicoes').select('id, empresa, categoria, descricao, status, data_solicitacao').order('id', { ascending: false }),
     ])
-    setFluxoAtivo(cfg?.valor === '4')
+    setFluxoAtivo(cfg?.valor === '4' || cfg?.valor === '5')
     const emps = [...new Set((cats ?? []).map(r => r.empresa).filter(Boolean))].sort() as string[]
     const catMap: Record<string, string[]> = {}
     for (const row of (cats ?? [])) {
@@ -51,8 +34,6 @@ export default function RequisicoesPage() {
     }
     setEmpresas(emps)
     setCategoriasPorEmpresa(catMap)
-    setRequisicoes(reqs ?? [])
-    setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -80,7 +61,6 @@ export default function RequisicoesPage() {
     setCategoria('')
     setDescricao('')
     setTimeout(() => setSuccessInfo(null), 6000)
-    load()
   }
 
   if (fluxoAtivo === null) {
@@ -92,7 +72,7 @@ export default function RequisicoesPage() {
       <div className="card flex items-start gap-2 p-4 bg-amber-50 border border-amber-200 text-amber-800">
         <Info size={16} className="mt-0.5 shrink-0" />
         <p className="text-sm">
-          Esta tela só está disponível quando o Fluxo 4 está ativo. Ative-o em Painel Administrativo → Configurações.
+          Esta tela só está disponível quando o Fluxo 4 ou o Fluxo 5 está ativo. Ative em Painel Administrativo → Configurações.
         </p>
       </div>
     )
@@ -101,7 +81,7 @@ export default function RequisicoesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="page-title">Requisitar</h1>
+        <h1 className="page-title">Fazer Requisição</h1>
         <p className="page-subtitle">Solicite uma requisição para depois vincular a um pedido</p>
       </div>
 
@@ -157,44 +137,6 @@ export default function RequisicoesPage() {
           {saving ? 'Enviando...' : 'Enviar Requisição'}
         </button>
       </form>
-
-      <div className="card">
-        <h2 className="text-sm font-semibold text-slate-700 mb-4">Minhas Requisições</h2>
-        {loading ? (
-          <p className="text-slate-400 text-sm text-center py-6">Carregando...</p>
-        ) : requisicoes.length === 0 ? (
-          <p className="text-slate-400 text-sm text-center py-6">Nenhuma requisição cadastrada.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="table-header">
-                <tr>
-                  <th className="table-cell text-left">#</th>
-                  <th className="table-cell text-left">Empresa</th>
-                  <th className="table-cell text-left">Categoria</th>
-                  <th className="table-cell text-left">Descrição</th>
-                  <th className="table-cell text-left">Data</th>
-                  <th className="table-cell text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requisicoes.map(r => (
-                  <tr key={r.id} className="table-row">
-                    <td className="table-cell">#{r.id}</td>
-                    <td className="table-cell">{r.empresa}</td>
-                    <td className="table-cell">{r.categoria}</td>
-                    <td className="table-cell max-w-xs truncate" title={r.descricao}>{r.descricao}</td>
-                    <td className="table-cell">{fmtData(r.data_solicitacao)}</td>
-                    <td className="table-cell text-center">
-                      <span className={`badge ${STATUS_BADGE[r.status] ?? 'bg-slate-100 text-slate-500'}`}>{r.status}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </div>
   )
 }
