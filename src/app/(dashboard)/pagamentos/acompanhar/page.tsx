@@ -3,7 +3,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Search, Download, RefreshCw, ChevronRight, ChevronLeft, AlertTriangle } from 'lucide-react'
+import {
+  Search, Download, RefreshCw, ChevronRight, ChevronLeft, AlertTriangle,
+  List, LayoutGrid, Info, X,
+} from 'lucide-react'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 
 interface Pedido {
@@ -12,7 +15,12 @@ interface Pedido {
   data_solicitacao: string; cancelado: boolean
 }
 
+interface ControleInfo {
+  valor_pagar: number | null; valor_pagamento: number | null
+}
+
 const PAGE_SIZE = 100
+const KANBAN_LIMIT = 300
 
 const STATUS_OPTIONS = [
   'Aguardando Autorização',
@@ -33,12 +41,49 @@ const STATUS_BADGE: Record<string, string> = {
 const fmtMoeda = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtData = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
 
+type EstagioPedido = 'aguardando_autorizacao' | 'aguardando_ajuste' | 'nao_autorizado'
+  | 'aguardando_pagamento' | 'pago' | 'cancelado'
+
+const COLUNAS_PEDIDO: { key: EstagioPedido; titulo: string }[] = [
+  { key: 'aguardando_autorizacao', titulo: 'Aguardando Autorização' },
+  { key: 'aguardando_ajuste', titulo: 'Aguardando Ajuste' },
+  { key: 'nao_autorizado', titulo: 'Não Autorizado' },
+  { key: 'aguardando_pagamento', titulo: 'Autorizado — Aguardando Pagamento' },
+  { key: 'pago', titulo: 'Pago' },
+  { key: 'cancelado', titulo: 'Cancelado' },
+]
+
+// Enquanto o pedido não é autorizado, ele pode transitar livremente entre essas 3 colunas.
+const COLUNAS_LIVRES: EstagioPedido[] = ['aguardando_autorizacao', 'aguardando_ajuste', 'nao_autorizado']
+
+function getEstagioPedido(p: Pedido, controles: ControleInfo[]): EstagioPedido {
+  if (p.cancelado) return 'cancelado'
+  if (p.status === 'Aguardando Autorização') return 'aguardando_autorizacao'
+  if (p.status === 'Aguardando Ajuste') return 'aguardando_ajuste'
+  if (p.status === 'Não Autorizado') return 'nao_autorizado'
+  const pago = controles.length > 0 && controles.every(c =>
+    c.valor_pagamento != null && c.valor_pagar != null && c.valor_pagamento >= c.valor_pagar
+  )
+  return pago ? 'pago' : 'aguardando_pagamento'
+}
+
 export default function AcompanharPage() {
   const router = useRouter()
+  const [view, setView] = useState<'lista' | 'kanban'>('lista')
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(0)
+
+  const [isAdminOrOwner, setIsAdminOrOwner] = useState(false)
+  const [username, setUsername] = useState('')
+
+  // Kanban
+  const [kanbanPedidos, setKanbanPedidos] = useState<Pedido[]>([])
+  const [controlesPorPedido, setControlesPorPedido] = useState<Record<number, ControleInfo[]>>({})
+  const [kanbanLoading, setKanbanLoading] = useState(true)
+  const [draggingId, setDraggingId] = useState<number | null>(null)
+  const [ajusteModal, setAjusteModal] = useState<{ id: number; comentario: string; processing: boolean; error: string } | null>(null)
 
   // Dropdown options (fetched once)
   const [empresas, setEmpresas] = useState<string[]>([])
@@ -55,17 +100,20 @@ export default function AcompanharPage() {
   const [filtroFornecedor, setFiltroFornecedor] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
 
-  // Fetch distinct option values once on mount
+  // Fetch distinct option values + current user once on mount
   useEffect(() => {
     const fetchOpcoes = async () => {
-      const [{ data: emp }, { data: cat }, { data: forn }] = await Promise.all([
+      const [{ data: emp }, { data: cat }, { data: forn }, u] = await Promise.all([
         supabase.rpc('pedidos_solicitados_valores_distintos', { coluna: 'empresa' }),
         supabase.rpc('pedidos_solicitados_valores_distintos', { coluna: 'categoria' }),
         supabase.rpc('pedidos_solicitados_valores_distintos', { coluna: 'fornecedor' }),
+        fetch('/api/auth/me').then(r => r.json()),
       ])
       setEmpresas(emp?.map((r: { valor: string }) => r.valor) ?? [])
       setCategorias(cat?.map((r: { valor: string }) => r.valor) ?? [])
       setFornecedores(forn?.map((r: { valor: string }) => r.valor) ?? [])
+      setIsAdminOrOwner(u?.hierarquia === 'admin' || u?.hierarquia === 'owner')
+      setUsername(u?.username ?? '')
     }
     fetchOpcoes()
   }, [])
@@ -122,7 +170,42 @@ export default function AcompanharPage() {
     setLoading(false)
   }, [page, activeSearchId, filtroEmpresa, filtroCategoria, filtroFornecedor, filtroStatus])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (view === 'lista') load() }, [view, load])
+
+  const loadKanban = useCallback(async () => {
+    setKanbanLoading(true)
+    let query = supabase
+      .from('pedidos_solicitados')
+      .select('id, empresa, categoria, fornecedor, valor_pedido, status, emergencia, data_solicitacao, cancelado')
+      .order('id', { ascending: false })
+      .limit(KANBAN_LIMIT)
+
+    if (filtroEmpresa)    query = query.eq('empresa', filtroEmpresa)
+    if (filtroCategoria)  query = query.eq('categoria', filtroCategoria)
+    if (filtroFornecedor) query = query.eq('fornecedor', filtroFornecedor)
+
+    const { data } = await query
+    setKanbanPedidos(data ?? [])
+
+    const ids = (data ?? []).map(p => p.id)
+    if (ids.length > 0) {
+      const { data: controles } = await supabase
+        .from('controle_pagamentos')
+        .select('pedido_id, valor_pagar, valor_pagamento')
+        .in('pedido_id', ids)
+      const map: Record<number, ControleInfo[]> = {}
+      for (const c of (controles ?? [])) {
+        if (!map[c.pedido_id]) map[c.pedido_id] = []
+        map[c.pedido_id].push({ valor_pagar: c.valor_pagar, valor_pagamento: c.valor_pagamento })
+      }
+      setControlesPorPedido(map)
+    } else {
+      setControlesPorPedido({})
+    }
+    setKanbanLoading(false)
+  }, [filtroEmpresa, filtroCategoria, filtroFornecedor])
+
+  useEffect(() => { if (view === 'kanban') loadKanban() }, [view, loadKanban])
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
@@ -152,6 +235,46 @@ export default function AcompanharPage() {
 
   const filtersActive = !!(activeSearchId || filtroEmpresa || filtroCategoria || filtroFornecedor || filtroStatus)
 
+  const handleMudarStatusPedido = async (id: number, novoStatus: 'Aguardando Autorização' | 'Autorizado' | 'Não Autorizado') => {
+    const hoje = new Date().toISOString().split('T')[0]
+    await supabase.from('pedidos_solicitados').update({
+      status: novoStatus,
+      data_autorizacao: novoStatus === 'Aguardando Autorização' ? null : hoje,
+      usuario_autorizador: novoStatus === 'Aguardando Autorização' ? null : username,
+    }).eq('id', id)
+    await supabase.from('pedidos_solicitados_fluxo').update({ status: novoStatus }).eq('pedido_id', id)
+
+    if (novoStatus === 'Autorizado') {
+      const { data: existente } = await supabase.from('controle_pagamentos').select('id').eq('pedido_id', id).maybeSingle()
+      if (!existente) {
+        const pedido = kanbanPedidos.find(p => p.id === id)
+        await supabase.from('controle_pagamentos').insert({ pedido_id: id, valor_pagar: pedido?.valor_pedido, status_pagamento: 1 })
+      }
+    }
+    loadKanban()
+  }
+
+  const handleAjusteConfirm = async () => {
+    if (!ajusteModal || !ajusteModal.comentario.trim()) {
+      setAjusteModal(m => m ? { ...m, error: 'O comentário é obrigatório.' } : m)
+      return
+    }
+    setAjusteModal(m => m ? { ...m, processing: true, error: '' } : m)
+    await supabase.from('pedidos_solicitados').update({ status: 'Aguardando Ajuste' }).eq('id', ajusteModal.id)
+    await supabase.from('pedidos_solicitados_fluxo').update({ status: 'Aguardando Ajuste' }).eq('pedido_id', ajusteModal.id)
+    await supabase.from('comentarios').insert({
+      pedido_id: ajusteModal.id, comentario: ajusteModal.comentario.trim(),
+      usuario: username, data_comentario: new Date().toISOString(), tipo_documento: null,
+    })
+    setAjusteModal(null)
+    loadKanban()
+  }
+
+  const comEstagio = kanbanPedidos.map(p => ({
+    pedido: p,
+    estagio: getEstagioPedido(p, controlesPorPedido[p.id] ?? []),
+  }))
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -160,11 +283,27 @@ export default function AcompanharPage() {
           <p className="page-subtitle">Todos os pedidos solicitados</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={exportCSV} className="btn-secondary gap-1.5 text-sm">
-            <Download size={15} /> Exportar CSV
-          </button>
-          <button onClick={load} className="btn-secondary p-2" title="Atualizar">
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+            <button
+              onClick={() => setView('lista')}
+              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 ${view === 'lista' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              <List size={14} /> Lista
+            </button>
+            <button
+              onClick={() => setView('kanban')}
+              className={`px-3 py-1.5 text-sm flex items-center gap-1.5 ${view === 'kanban' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              <LayoutGrid size={14} /> Kanban
+            </button>
+          </div>
+          {view === 'lista' && (
+            <button onClick={exportCSV} className="btn-secondary gap-1.5 text-sm">
+              <Download size={15} /> Exportar CSV
+            </button>
+          )}
+          <button onClick={view === 'lista' ? load : loadKanban} className="btn-secondary p-2" title="Atualizar">
+            <RefreshCw size={16} className={(view === 'lista' ? loading : kanbanLoading) ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
@@ -182,6 +321,7 @@ export default function AcompanharPage() {
               value={searchId}
               onChange={e => setSearchId(e.target.value)}
               onKeyDown={handleSearchIdKeyDown}
+              disabled={view === 'kanban'}
             />
           </div>
           <SearchableSelect
@@ -207,117 +347,235 @@ export default function AcompanharPage() {
             placeholder="Todos os fornecedores"
             disabled={!!activeSearchId}
           />
-          <select
-            className="input"
-            value={filtroStatus}
-            onChange={e => setFiltroStatus(e.target.value)}
-            disabled={!!activeSearchId}
-          >
-            <option value="">Todos os status</option>
-            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
-          <p className="text-sm text-slate-500">
-            {loading
-              ? 'Carregando...'
-              : activeSearchId
-              ? `${pedidos.length} resultado(s) para ID #${activeSearchId}`
-              : `${total.toLocaleString('pt-BR')} pedido(s)${filtersActive ? ' encontrado(s)' : ' no total'} — página ${page + 1} de ${Math.max(1, totalPages)}`
-            }
-          </p>
-          {activeSearchId && (
-            <button onClick={clearIdSearch} className="text-xs text-blue-600 hover:underline">
-              Limpar busca por ID
-            </button>
+          {view === 'lista' && (
+            <select
+              className="input"
+              value={filtroStatus}
+              onChange={e => setFiltroStatus(e.target.value)}
+              disabled={!!activeSearchId}
+            >
+              <option value="">Todos os status</option>
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
           )}
         </div>
+
+        {view === 'lista' && (
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+            <p className="text-sm text-slate-500">
+              {loading
+                ? 'Carregando...'
+                : activeSearchId
+                ? `${pedidos.length} resultado(s) para ID #${activeSearchId}`
+                : `${total.toLocaleString('pt-BR')} pedido(s)${filtersActive ? ' encontrado(s)' : ' no total'} — página ${page + 1} de ${Math.max(1, totalPages)}`
+              }
+            </p>
+            {activeSearchId && (
+              <button onClick={clearIdSearch} className="text-xs text-blue-600 hover:underline">
+                Limpar busca por ID
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Loading */}
-      {loading && <div className="card text-center py-12 text-slate-400">Carregando...</div>}
+      {view === 'lista' ? (
+        <>
+          {/* Loading */}
+          {loading && <div className="card text-center py-12 text-slate-400">Carregando...</div>}
 
-      {/* Empty */}
-      {!loading && pedidos.length === 0 && (
-        <div className="card text-center py-12">
-          <Search size={36} className="mx-auto text-slate-300 mb-3" />
-          <p className="text-slate-500">Nenhum pedido encontrado</p>
-        </div>
-      )}
-
-      {/* Table */}
-      {!loading && pedidos.length > 0 && (
-        <div className="card p-0 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="table-header">
-                  <th className="table-cell font-medium">ID</th>
-                  <th className="table-cell font-medium">Empresa</th>
-                  <th className="table-cell font-medium">Categoria</th>
-                  <th className="table-cell font-medium">Fornecedor</th>
-                  <th className="table-cell font-medium text-right">Valor</th>
-                  <th className="table-cell font-medium">Status</th>
-                  <th className="table-cell font-medium">Solicitação</th>
-                  <th className="table-cell font-medium w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {pedidos.map(p => (
-                  <tr
-                    key={p.id}
-                    className={`table-row cursor-pointer hover:bg-slate-50 ${p.cancelado ? 'opacity-60' : ''}`}
-                    onClick={() => router.push(`/pagamentos/acompanhar/${p.id}`)}
-                  >
-                    <td className="table-cell font-mono text-xs text-slate-500">
-                      <div className="flex items-center gap-1">
-                        #{p.id}
-                        {p.emergencia && <AlertTriangle size={11} className="text-orange-500 shrink-0" />}
-                      </div>
-                    </td>
-                    <td className="table-cell font-medium max-w-[140px] truncate">{p.empresa}</td>
-                    <td className="table-cell text-slate-600 max-w-[120px] truncate">{p.categoria}</td>
-                    <td className="table-cell text-slate-600 max-w-[140px] truncate">{p.fornecedor}</td>
-                    <td className="table-cell text-right font-medium">{fmtMoeda(p.valor_pedido)}</td>
-                    <td className="table-cell">
-                      <span className={`badge ${STATUS_BADGE[p.cancelado ? 'Cancelado' : p.status] ?? 'bg-slate-100 text-slate-600'}`}>
-                        {p.cancelado ? 'Cancelado' : p.status}
-                      </span>
-                    </td>
-                    <td className="table-cell text-slate-500">{fmtData(p.data_solicitacao)}</td>
-                    <td className="table-cell">
-                      <ChevronRight size={14} className="text-slate-400" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Paginação */}
-          {!activeSearchId && totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
-              <button
-                onClick={() => setPage(p => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <ChevronLeft size={14} /> Anterior
-              </button>
-              <span className="text-sm text-slate-600">
-                Página <span className="font-semibold">{page + 1}</span> de{' '}
-                <span className="font-semibold">{totalPages}</span>
-              </span>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                disabled={page >= totalPages - 1}
-                className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Próximo <ChevronRight size={14} />
-              </button>
+          {/* Empty */}
+          {!loading && pedidos.length === 0 && (
+            <div className="card text-center py-12">
+              <Search size={36} className="mx-auto text-slate-300 mb-3" />
+              <p className="text-slate-500">Nenhum pedido encontrado</p>
             </div>
           )}
+
+          {/* Table */}
+          {!loading && pedidos.length > 0 && (
+            <div className="card p-0 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="table-header">
+                      <th className="table-cell font-medium">ID</th>
+                      <th className="table-cell font-medium">Empresa</th>
+                      <th className="table-cell font-medium">Categoria</th>
+                      <th className="table-cell font-medium">Fornecedor</th>
+                      <th className="table-cell font-medium text-right">Valor</th>
+                      <th className="table-cell font-medium">Status</th>
+                      <th className="table-cell font-medium">Solicitação</th>
+                      <th className="table-cell font-medium w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pedidos.map(p => (
+                      <tr
+                        key={p.id}
+                        className={`table-row cursor-pointer hover:bg-slate-50 ${p.cancelado ? 'opacity-60' : ''}`}
+                        onClick={() => router.push(`/pagamentos/acompanhar/${p.id}`)}
+                      >
+                        <td className="table-cell font-mono text-xs text-slate-500">
+                          <div className="flex items-center gap-1">
+                            #{p.id}
+                            {p.emergencia && <AlertTriangle size={11} className="text-orange-500 shrink-0" />}
+                          </div>
+                        </td>
+                        <td className="table-cell font-medium max-w-[140px] truncate">{p.empresa}</td>
+                        <td className="table-cell text-slate-600 max-w-[120px] truncate">{p.categoria}</td>
+                        <td className="table-cell text-slate-600 max-w-[140px] truncate">{p.fornecedor}</td>
+                        <td className="table-cell text-right font-medium">{fmtMoeda(p.valor_pedido)}</td>
+                        <td className="table-cell">
+                          <span className={`badge ${STATUS_BADGE[p.cancelado ? 'Cancelado' : p.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                            {p.cancelado ? 'Cancelado' : p.status}
+                          </span>
+                        </td>
+                        <td className="table-cell text-slate-500">{fmtData(p.data_solicitacao)}</td>
+                        <td className="table-cell">
+                          <ChevronRight size={14} className="text-slate-400" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Paginação */}
+              {!activeSearchId && totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
+                  <button
+                    onClick={() => setPage(p => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                    className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft size={14} /> Anterior
+                  </button>
+                  <span className="text-sm text-slate-600">
+                    Página <span className="font-semibold">{page + 1}</span> de{' '}
+                    <span className="font-semibold">{totalPages}</span>
+                  </span>
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={page >= totalPages - 1}
+                    className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Próximo <ChevronRight size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700">
+            <Info size={15} className="mt-0.5 shrink-0" />
+            <p>
+              Enquanto não é autorizado, o card pode ser movido livremente entre <strong>Aguardando Autorização</strong>,{' '}
+              <strong>Aguardando Ajuste</strong> e <strong>Não Autorizado</strong>, ou arrastado para{' '}
+              <strong>Autorizado — Aguardando Pagamento</strong> para autorizar (isso já cria a conta a pagar). A partir
+              daí o card trava — pagamento é controlado em Controle de Pagamentos, e cancelamento continua sendo feito
+              pelo detalhe do pedido. Mostrando os {KANBAN_LIMIT} pedidos mais recentes; use os filtros para refinar.
+            </p>
+          </div>
+
+          {kanbanLoading ? (
+            <div className="card text-center py-12 text-slate-400">Carregando...</div>
+          ) : kanbanPedidos.length === 0 ? (
+            <div className="card text-center py-12">
+              <Search size={36} className="mx-auto text-slate-300 mb-3" />
+              <p className="text-slate-500">Nenhum pedido encontrado</p>
+            </div>
+          ) : (
+            <div className="flex gap-3 overflow-x-auto pb-2">
+              {COLUNAS_PEDIDO.map(col => {
+                const cards = comEstagio.filter(c => c.estagio === col.key)
+                const podeReceberDrop = isAdminOrOwner && (COLUNAS_LIVRES.includes(col.key) || col.key === 'aguardando_pagamento')
+                return (
+                  <div
+                    key={col.key}
+                    className="flex-shrink-0 w-64 bg-slate-50 rounded-lg border border-slate-200"
+                    onDragOver={podeReceberDrop ? e => e.preventDefault() : undefined}
+                    onDrop={podeReceberDrop ? e => {
+                      e.preventDefault()
+                      if (draggingId == null) return
+                      if (col.key === 'aguardando_ajuste') {
+                        setAjusteModal({ id: draggingId, comentario: '', processing: false, error: '' })
+                      } else if (col.key === 'aguardando_pagamento') {
+                        handleMudarStatusPedido(draggingId, 'Autorizado')
+                      } else if (col.key === 'nao_autorizado') {
+                        handleMudarStatusPedido(draggingId, 'Não Autorizado')
+                      } else if (col.key === 'aguardando_autorizacao') {
+                        handleMudarStatusPedido(draggingId, 'Aguardando Autorização')
+                      }
+                      setDraggingId(null)
+                    } : undefined}
+                  >
+                    <div className="px-3 py-2.5 border-b border-slate-200">
+                      <p className="text-xs font-semibold text-slate-600">{col.titulo}</p>
+                      <p className="text-xs text-slate-400">{cards.length} pedido(s)</p>
+                    </div>
+                    <div className="p-2 space-y-2 min-h-[80px]">
+                      {cards.map(({ pedido: p }) => {
+                        const arrastavel = isAdminOrOwner && COLUNAS_LIVRES.includes(col.key)
+                        return (
+                          <div
+                            key={p.id}
+                            draggable={arrastavel}
+                            onDragStart={arrastavel ? () => setDraggingId(p.id) : undefined}
+                            onDragEnd={() => setDraggingId(null)}
+                            onClick={() => router.push(`/pagamentos/acompanhar/${p.id}`)}
+                            className={`bg-white rounded-md border border-slate-200 p-2.5 text-sm shadow-sm hover:shadow cursor-pointer ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''} ${draggingId === p.id ? 'opacity-40' : ''}`}
+                          >
+                            <div className="flex items-center gap-1">
+                              <p className="font-mono text-xs text-slate-400">#{p.id}</p>
+                              {p.emergencia && <AlertTriangle size={11} className="text-orange-500 shrink-0" />}
+                            </div>
+                            <p className="font-medium text-slate-800 truncate">{p.empresa}</p>
+                            <p className="text-xs text-slate-500 truncate">{p.categoria} · {p.fornecedor}</p>
+                            <p className="text-xs font-semibold text-slate-700 mt-1">{fmtMoeda(p.valor_pedido)}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Modal Solicitar Ajuste (drag para a coluna Aguardando Ajuste) */}
+      {ajusteModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-semibold text-slate-900">Solicitar Ajuste — Pedido #{ajusteModal.id}</h2>
+              <button onClick={() => setAjusteModal(null)} className="text-slate-400 hover:text-slate-600">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-slate-500">Descreva o que precisa ser ajustado. O solicitante receberá este comentário.</p>
+            <textarea
+              className="input w-full min-h-[100px] resize-none"
+              placeholder="Comentário obrigatório..."
+              value={ajusteModal.comentario}
+              onChange={e => setAjusteModal(m => m ? { ...m, comentario: e.target.value, error: '' } : m)}
+            />
+            {ajusteModal.error && <p className="text-xs text-red-600">{ajusteModal.error}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setAjusteModal(null)} className="btn-secondary text-sm">Cancelar</button>
+              <button
+                onClick={handleAjusteConfirm}
+                disabled={ajusteModal.processing}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
+              >
+                {ajusteModal.processing ? 'Enviando...' : 'Solicitar Ajuste'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
