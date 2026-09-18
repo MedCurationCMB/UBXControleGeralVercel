@@ -537,12 +537,13 @@ function EmailsTab() {
 }
 
 // ---- Tab: Configurações ----
-type FluxoSistema = '1' | '2' | '3'
+type FluxoSistema = '1' | '2' | '3' | '4'
 
 const FLUXOS: { valor: FluxoSistema; titulo: string; desc: string }[] = [
   { valor: '1', titulo: 'Fluxo 1', desc: 'Pedidos são bloqueados quando o saldo orçamentário é insuficiente.' },
   { valor: '2', titulo: 'Fluxo 2', desc: 'Pedidos são permitidos independentemente do saldo orçamentário.' },
   { valor: '3', titulo: 'Fluxo 3', desc: 'Pedidos já nascem autorizados e ignoram o saldo orçamentário.' },
+  { valor: '4', titulo: 'Fluxo 4', desc: 'Todo pedido precisa ser vinculado a uma requisição já autorizada.' },
 ]
 
 function ConfiguracoesTab() {

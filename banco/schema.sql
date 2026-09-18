@@ -1733,11 +1733,37 @@ CREATE TABLE IF NOT EXISTS "public"."pedidos_solicitados" (
     "cancelado" boolean DEFAULT false,
     "analise_texto" "text"[],
     "pedido_status" integer DEFAULT 1 NOT NULL,
-    "tipo_documento" integer
+    "tipo_documento" integer,
+    "requisicao_id" bigint
 );
 
 
 ALTER TABLE "public"."pedidos_solicitados" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."requisicoes" (
+    "id" bigint NOT NULL,
+    "empresa" "text" NOT NULL,
+    "categoria" "text" NOT NULL,
+    "descricao" "text" NOT NULL,
+    "status" "public"."status_pedido" DEFAULT 'Aguardando Autorização'::"public"."status_pedido",
+    "data_solicitacao" "date" DEFAULT CURRENT_TIMESTAMP,
+    "data_autorizacao" "date",
+    "usuario_autorizador" "text"
+);
+
+
+ALTER TABLE "public"."requisicoes" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."requisicoes" ALTER COLUMN "id" ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME "public"."requisicoes_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
 
 
 CREATE TABLE IF NOT EXISTS "public"."pedidos_solicitados_fluxo" (
@@ -2405,6 +2431,16 @@ ALTER TABLE ONLY "public"."pedidos_solicitados"
 
 
 
+ALTER TABLE ONLY "public"."pedidos_solicitados"
+    ADD CONSTRAINT "pedidos_solicitados_requisicao_id_key" UNIQUE ("requisicao_id");
+
+
+
+ALTER TABLE ONLY "public"."requisicoes"
+    ADD CONSTRAINT "requisicoes_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "public"."pedidos_solicitados_receita"
     ADD CONSTRAINT "pedidos_solicitados_receita_pkey" PRIMARY KEY ("id");
 
@@ -2835,6 +2871,16 @@ ALTER TABLE ONLY "public"."orcamentos_usuarios_receita"
 
 ALTER TABLE ONLY "public"."pedidos_solicitados"
     ADD CONSTRAINT "pedidos_solicitados_empresa_categoria_fkey" FOREIGN KEY ("empresa", "categoria") REFERENCES "public"."categorias"("empresa", "categoria") ON UPDATE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."pedidos_solicitados"
+    ADD CONSTRAINT "pedidos_solicitados_requisicao_id_fkey" FOREIGN KEY ("requisicao_id") REFERENCES "public"."requisicoes"("id");
+
+
+
+ALTER TABLE ONLY "public"."requisicoes"
+    ADD CONSTRAINT "requisicoes_empresa_categoria_fkey" FOREIGN KEY ("empresa", "categoria") REFERENCES "public"."categorias"("empresa", "categoria") ON UPDATE CASCADE;
 
 
 
@@ -3594,6 +3640,12 @@ GRANT ALL ON TABLE "public"."pedidos_solicitados" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."requisicoes" TO "anon";
+GRANT ALL ON TABLE "public"."requisicoes" TO "authenticated";
+GRANT ALL ON TABLE "public"."requisicoes" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."pedidos_solicitados_fluxo" TO "anon";
 GRANT ALL ON TABLE "public"."pedidos_solicitados_fluxo" TO "authenticated";
 GRANT ALL ON TABLE "public"."pedidos_solicitados_fluxo" TO "service_role";
@@ -3621,6 +3673,12 @@ GRANT ALL ON SEQUENCE "public"."pedidos_solicitados_fluxo_receita_id_seq" TO "se
 GRANT ALL ON SEQUENCE "public"."pedidos_solicitados_id_seq" TO "anon";
 GRANT ALL ON SEQUENCE "public"."pedidos_solicitados_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."pedidos_solicitados_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."requisicoes_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."requisicoes_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."requisicoes_id_seq" TO "service_role";
 
 
 

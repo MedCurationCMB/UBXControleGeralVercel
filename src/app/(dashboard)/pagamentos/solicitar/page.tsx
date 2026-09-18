@@ -26,6 +26,13 @@ interface SaldoMes {
   saldo: number
 }
 
+interface Requisicao {
+  id: number
+  empresa: string
+  categoria: string
+  descricao: string
+}
+
 // ---- Bulk Import Modal ----
 function ImportModal({ onClose }: { onClose: () => void }) {
   const [file, setFile] = useState<File | null>(null)
@@ -165,8 +172,13 @@ export default function SolicitarPage() {
   const [showImport, setShowImport] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const [fluxoSistema, setFluxoSistema] = useState<'1' | '2' | '3'>('2')
-  const controlarOrcamento = fluxoSistema === '1'
+  const [fluxoSistema, setFluxoSistema] = useState<'1' | '2' | '3' | '4'>('2')
+  const controlarOrcamento = fluxoSistema === '1' || fluxoSistema === '4'
+
+  // Fluxo 4: pedido precisa ser vinculado a uma requisição já autorizada
+  const [requisicoesAutorizadas, setRequisicoesAutorizadas] = useState<Requisicao[]>([])
+  const [requisicoesUsadas, setRequisicoesUsadas] = useState<Set<number>>(new Set())
+  const [requisicaoId, setRequisicaoId] = useState<number | ''>('')
 
   // Load reference data from orcamentos_usuarios
   useEffect(() => {
@@ -176,7 +188,9 @@ export default function SolicitarPage() {
       supabase.from('tipos_documento').select('id').eq('tipo', 'Documentos da Solicitação').maybeSingle(),
       supabase.from('config').select('valor').eq('chave', 'fluxo_sistema').maybeSingle(),
       supabase.from('config').select('valor').eq('chave', 'controla_orcamento').maybeSingle(),
-    ]).then(([{ data: oc }, { data: forns }, { data: tipoDoc }, { data: cfgFluxo }, { data: cfgOrc }]) => {
+      supabase.from('requisicoes').select('id, empresa, categoria, descricao').eq('status', 'Autorizado'),
+      supabase.from('pedidos_solicitados').select('requisicao_id').not('requisicao_id', 'is', null),
+    ]).then(([{ data: oc }, { data: forns }, { data: tipoDoc }, { data: cfgFluxo }, { data: cfgOrc }, { data: reqs }, { data: usadas }]) => {
       const emps = [...new Set((oc ?? []).map(r => r.empresa).filter(Boolean))].sort() as string[]
       const catMap: Record<string, string[]> = {}
       for (const row of (oc ?? [])) {
@@ -190,7 +204,9 @@ export default function SolicitarPage() {
       setCategoriasPorEmpresa(catMap)
       setFornecedores((forns ?? []).map(f => f.nome))
       if (tipoDoc) setTipoDocSolicitacao(tipoDoc.id)
-      setFluxoSistema((cfgFluxo?.valor as '1' | '2' | '3') || (cfgOrc?.valor === 'true' ? '1' : '2'))
+      setFluxoSistema((cfgFluxo?.valor as '1' | '2' | '3' | '4') || (cfgOrc?.valor === 'true' ? '1' : '2'))
+      setRequisicoesAutorizadas(reqs ?? [])
+      setRequisicoesUsadas(new Set((usadas ?? []).map(u => u.requisicao_id as number)))
     })
   }, [])
 
@@ -226,6 +242,7 @@ export default function SolicitarPage() {
     if (!empresa) { setError('Selecione a empresa'); return }
     if (!categoria) { setError('Selecione a categoria'); return }
     if (!fornecedor) { setError('Selecione o fornecedor'); return }
+    if (fluxoSistema === '4' && requisicaoId === '') { setError('Selecione a requisição'); return }
 
     setSaving(true)
 
@@ -240,14 +257,23 @@ export default function SolicitarPage() {
         arquivo_texto: [],
         arquivos_pdf_ids: [],
         status: 'Aguardando Autorização',
+        requisicao_id: fluxoSistema === '4' ? requisicaoId : null,
       })
       .select('id')
       .single()
 
     if (errPedido || !pedido) {
       setSaving(false)
-      setError(errPedido?.message ?? 'Erro ao criar pedido')
+      setError(
+        errPedido?.code === '23505'
+          ? 'Esta requisição já foi utilizada por outro pedido. Selecione outra.'
+          : errPedido?.message ?? 'Erro ao criar pedido'
+      )
       return
+    }
+
+    if (fluxoSistema === '4' && requisicaoId !== '') {
+      setRequisicoesUsadas(prev => new Set(prev).add(requisicaoId))
     }
 
     if (files.length > 0) {
@@ -361,6 +387,7 @@ export default function SolicitarPage() {
     setAddMes('')
     setAddAno('')
     setAddValor('')
+    setRequisicaoId('')
     setError('')
     if (fileRef.current) fileRef.current.value = ''
 
@@ -369,6 +396,9 @@ export default function SolicitarPage() {
   }
 
   const categorias = categoriasPorEmpresa[empresa] ?? []
+  const requisicoesDisponiveis = requisicoesAutorizadas.filter(
+    r => r.empresa === empresa && !requisicoesUsadas.has(r.id)
+  )
   const valorTotal = mesesSelecionados.reduce((s, m) => s + m.valorReferente, 0)
 
   return (
@@ -405,24 +435,45 @@ export default function SolicitarPage() {
               <label className="label">Empresa *</label>
               <select
                 className="input" value={empresa}
-                onChange={e => { setEmpresa(e.target.value); setCategoria('') }}
+                onChange={e => { setEmpresa(e.target.value); setCategoria(''); setRequisicaoId('') }}
               >
                 <option value="">Selecionar...</option>
                 {empresas.map(e => <option key={e} value={e}>{e}</option>)}
               </select>
             </div>
 
-            <div>
-              <label className="label">Categoria *</label>
-              <select
-                className="input" value={categoria}
-                onChange={e => setCategoria(e.target.value)}
-                disabled={!empresa}
-              >
-                <option value="">Selecionar...</option>
-                {categorias.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
+            {fluxoSistema === '4' ? (
+              <div>
+                <label className="label">Requisição *</label>
+                <select
+                  className="input" value={requisicaoId}
+                  onChange={e => {
+                    const id = e.target.value ? Number(e.target.value) : ''
+                    setRequisicaoId(id)
+                    const req = requisicoesDisponiveis.find(r => r.id === id)
+                    setCategoria(req?.categoria ?? '')
+                  }}
+                  disabled={!empresa}
+                >
+                  <option value="">Selecionar...</option>
+                  {requisicoesDisponiveis.map(r => (
+                    <option key={r.id} value={r.id}>#{r.id} · {r.categoria} · {r.descricao}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="label">Categoria *</label>
+                <select
+                  className="input" value={categoria}
+                  onChange={e => setCategoria(e.target.value)}
+                  disabled={!empresa}
+                >
+                  <option value="">Selecionar...</option>
+                  {categorias.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            )}
 
             <div className="md:col-span-2">
               <label className="label">Fornecedor *</label>

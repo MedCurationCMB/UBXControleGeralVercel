@@ -11,7 +11,7 @@ import {
   LayoutDashboard, FileText, CheckSquare, Clock, PlusSquare,
   CreditCard, FolderOpen, Users, Building2, Tag, List,
   FileSignature, TrendingUp, TrendingDown, Settings, ShieldCheck,
-  ChevronLeft, ChevronRight, Receipt,
+  ChevronLeft, ChevronRight, Receipt, ClipboardList, ClipboardCheck,
 } from 'lucide-react'
 
 interface NavItem {
@@ -19,7 +19,7 @@ interface NavItem {
   href: string
   icon: React.ElementType
   adminOnly?: boolean
-  flow3Only?: boolean
+  flowOnly?: '3' | '4'
 }
 
 interface NavGroup {
@@ -41,7 +41,9 @@ const navGroups: NavGroup[] = [
       { label: 'Autorizar Pedidos', href: '/pagamentos/autorizar', icon: CheckSquare, adminOnly: true },
       { label: 'Acompanhar', href: '/pagamentos/acompanhar', icon: Clock },
       { label: 'Solicitar', href: '/pagamentos/solicitar', icon: PlusSquare },
-      { label: 'Lançar Conta a Pagar', href: '/pagamentos/lancar-conta', icon: Receipt, flow3Only: true },
+      { label: 'Lançar Conta a Pagar', href: '/pagamentos/lancar-conta', icon: Receipt, flowOnly: '3' },
+      { label: 'Requisitar', href: '/pagamentos/requisicoes', icon: ClipboardList, flowOnly: '4' },
+      { label: 'Autorizar Requisições', href: '/pagamentos/autorizar-requisicoes', icon: ClipboardCheck, adminOnly: true, flowOnly: '4' },
       { label: 'Controle', href: '/pagamentos/controle', icon: CreditCard },
       { label: 'Documentos', href: '/pagamentos/documentos', icon: FolderOpen },
       { label: 'Fornecedores', href: '/pagamentos/fornecedores', icon: Users },
@@ -151,7 +153,7 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
               : <p className="sidebar-link-group">{group.title}</p>
             }
             {group.items
-              .filter((item) => (!item.adminOnly || isAdminOrOwner) && (!item.flow3Only || fluxoSistema === '3'))
+              .filter((item) => (!item.adminOnly || isAdminOrOwner) && (!item.flowOnly || fluxoSistema === item.flowOnly))
               .map((item) => {
                 const Icon = item.icon
                 const isActive =
