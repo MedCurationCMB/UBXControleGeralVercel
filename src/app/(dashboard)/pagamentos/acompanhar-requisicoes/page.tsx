@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Search, RefreshCw, ChevronRight, List, LayoutGrid } from 'lucide-react'
+import { Search, RefreshCw, ChevronRight, List, LayoutGrid, Info } from 'lucide-react'
 
 interface Requisicao {
   id: number; empresa: string; categoria: string; descricao: string
@@ -229,6 +229,16 @@ export default function AcompanharRequisicoesPage() {
           </div>
         </div>
       ) : (
+        <>
+        <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700">
+          <Info size={15} className="mt-0.5 shrink-0" />
+          <p>
+            Cada coluna é uma etapa da requisição até o pagamento. Só é possível arrastar cards da coluna{' '}
+            <strong>Aguardando Autorização</strong> — soltando em <strong>Não Autorizada</strong> ela é rejeitada, soltando em{' '}
+            <strong>Autorizada — Aguardando Pedido</strong> ela é autorizada. As demais colunas avançam sozinhas conforme
+            o pedido é criado, autorizado e pago nas outras telas.
+          </p>
+        </div>
         <div className="flex gap-3 overflow-x-auto pb-2">
           {COLUNAS.map(col => {
             const cards = comEstagio.filter(c => c.estagio === col.key)
@@ -273,6 +283,7 @@ export default function AcompanharRequisicoesPage() {
             )
           })}
         </div>
+        </>
       )}
     </div>
   )
