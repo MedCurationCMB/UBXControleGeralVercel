@@ -40,6 +40,15 @@ const COLUNAS: { key: Estagio; titulo: string }[] = [
   { key: 'paga', titulo: 'Paga' },
 ]
 
+// Enquanto nenhum pedido foi vinculado, a requisição pode transitar livremente entre essas 3 colunas.
+const COLUNAS_SEM_PEDIDO: Estagio[] = ['aguardando_autorizacao', 'nao_autorizada', 'aguardando_pedido']
+
+const STATUS_POR_COLUNA: Partial<Record<Estagio, 'Aguardando Autorização' | 'Autorizado' | 'Não Autorizado'>> = {
+  aguardando_autorizacao: 'Aguardando Autorização',
+  nao_autorizada: 'Não Autorizado',
+  aguardando_pedido: 'Autorizado',
+}
+
 function getEstagio(req: Requisicao, pedido: PedidoInfo | undefined, controles: ControleInfo[]): Estagio {
   if (req.status === 'Aguardando Autorização') return 'aguardando_autorizacao'
   if (req.status === 'Não Autorizado') return 'nao_autorizada'
@@ -126,10 +135,12 @@ export default function AcompanharRequisicoesPage() {
     estagio: getEstagio(r, pedidosPorRequisicao[r.id], controlesPorPedido[pedidosPorRequisicao[r.id]?.id] ?? []),
   })), [filtered, pedidosPorRequisicao, controlesPorPedido])
 
-  const handleAutorizacao = async (id: number, novoStatus: 'Autorizado' | 'Não Autorizado') => {
+  const handleMudarStatus = async (id: number, novoStatus: 'Aguardando Autorização' | 'Autorizado' | 'Não Autorizado') => {
     const hoje = new Date().toISOString().split('T')[0]
     await supabase.from('requisicoes').update({
-      status: novoStatus, data_autorizacao: hoje, usuario_autorizador: username,
+      status: novoStatus,
+      data_autorizacao: novoStatus === 'Aguardando Autorização' ? null : hoje,
+      usuario_autorizador: novoStatus === 'Aguardando Autorização' ? null : username,
     }).eq('id', id)
     load()
   }
@@ -233,16 +244,16 @@ export default function AcompanharRequisicoesPage() {
         <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700">
           <Info size={15} className="mt-0.5 shrink-0" />
           <p>
-            Cada coluna é uma etapa da requisição até o pagamento. Só é possível arrastar cards da coluna{' '}
-            <strong>Aguardando Autorização</strong> — soltando em <strong>Não Autorizada</strong> ela é rejeitada, soltando em{' '}
-            <strong>Autorizada — Aguardando Pedido</strong> ela é autorizada. As demais colunas avançam sozinhas conforme
-            o pedido é criado, autorizado e pago nas outras telas.
+            Cada coluna é uma etapa da requisição até o pagamento. Enquanto nenhum pedido foi vinculado, o card pode ser
+            movido livremente entre <strong>Aguardando Autorização</strong>, <strong>Não Autorizada</strong> e{' '}
+            <strong>Autorizada — Aguardando Pedido</strong>. Assim que um pedido é criado para essa requisição, ela trava
+            e as colunas seguintes avançam sozinhas conforme o pedido é autorizado e pago nas outras telas.
           </p>
         </div>
         <div className="flex gap-3 overflow-x-auto pb-2">
           {COLUNAS.map(col => {
             const cards = comEstagio.filter(c => c.estagio === col.key)
-            const podeReceberDrop = isAdminOrOwner && (col.key === 'nao_autorizada' || col.key === 'aguardando_pedido')
+            const podeReceberDrop = isAdminOrOwner && COLUNAS_SEM_PEDIDO.includes(col.key)
             return (
               <div
                 key={col.key}
@@ -251,7 +262,8 @@ export default function AcompanharRequisicoesPage() {
                 onDrop={podeReceberDrop ? e => {
                   e.preventDefault()
                   if (draggingId == null) return
-                  handleAutorizacao(draggingId, col.key === 'nao_autorizada' ? 'Não Autorizado' : 'Autorizado')
+                  const novoStatus = STATUS_POR_COLUNA[col.key]
+                  if (novoStatus) handleMudarStatus(draggingId, novoStatus)
                   setDraggingId(null)
                 } : undefined}
               >
@@ -261,7 +273,7 @@ export default function AcompanharRequisicoesPage() {
                 </div>
                 <div className="p-2 space-y-2 min-h-[80px]">
                   {cards.map(({ req }) => {
-                    const arrastavel = isAdminOrOwner && col.key === 'aguardando_autorizacao'
+                    const arrastavel = isAdminOrOwner && COLUNAS_SEM_PEDIDO.includes(col.key)
                     return (
                       <div
                         key={req.id}
