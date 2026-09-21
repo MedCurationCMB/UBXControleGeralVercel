@@ -27,6 +27,14 @@ function formatarCpfCnpj(d: string): string {
   return d
 }
 
+// Chave Pix tipo telefone precisa ir no arquivo remessa como +55DDDNNNNNNNNN (E.164)
+function formatarChaveTelefone(v: string): { ok: boolean; chave: string } {
+  let d = somenteDigitos(v)
+  if (d.length === 10 || d.length === 11) d = '55' + d
+  const ok = d.length === 12 || d.length === 13
+  return { ok, chave: ok ? `+${d}` : v }
+}
+
 function isCadastroCompleto(f: Fornecedor) {
   return !!(f.nome && f.cnpj_cpf && f.rua_avenida && f.numero &&
     f.bairro && f.cidade && f.estado && f.cep && f.tipo_chave && f.chave_pix)
@@ -55,12 +63,17 @@ function FornecedorModal({
   const isEditing = !!initial.id
   // Find if PIX type is CPF/CNPJ (id=3 in Streamlit convention)
   const tipoCpfCnpjId = tiposChave.find(t => t.tipo.toLowerCase().includes('cpf') || t.tipo.toLowerCase().includes('cnpj'))?.id
+  const tipoTelefoneId = tiposChave.find(t => {
+    const nome = t.tipo.toLowerCase()
+    return nome.includes('telefone') || nome.includes('celular')
+  })?.id
 
   const set = (k: keyof typeof form, v: string | number | null) =>
     setForm(f => ({ ...f, [k]: v }))
 
   // Auto-fill chave_pix when tipo = CPF/CNPJ
   const isTipoCpfCnpj = tipoCpfCnpjId != null && form.tipo_chave === tipoCpfCnpjId
+  const isTipoTelefone = tipoTelefoneId != null && form.tipo_chave === tipoTelefoneId
   useEffect(() => {
     if (isTipoCpfCnpj) setForm(f => ({ ...f, chave_pix: f.cnpj_cpf ?? '' }))
   }, [isTipoCpfCnpj, form.cnpj_cpf])
@@ -78,6 +91,13 @@ function FornecedorModal({
       const formatted = formatarCpfCnpj(digitos)
       payload.cnpj_cpf = formatted
       if (isTipoCpfCnpj) payload.chave_pix = formatted
+    }
+
+    // Validate + normalize chave Pix tipo telefone (formato exigido pelo arquivo remessa: +55DDDNNNNNNNNN)
+    if (isTipoTelefone && form.chave_pix) {
+      const { ok, chave } = formatarChaveTelefone(form.chave_pix)
+      if (!ok) { setError('Telefone inválido — informe DDD + número (ex: 11999999999).'); return }
+      payload.chave_pix = chave
     }
 
     setSaving(true)
@@ -179,11 +199,14 @@ function FornecedorModal({
           <div>
             <label className="label">Chave PIX</label>
             <input className="input" disabled={isTipoCpfCnpj}
-              placeholder={isTipoCpfCnpj ? 'Preenchido automaticamente' : ''}
+              placeholder={isTipoCpfCnpj ? 'Preenchido automaticamente' : (isTipoTelefone ? 'DDD + número, ex: 11999999999' : '')}
               value={isTipoCpfCnpj ? (form.cnpj_cpf ?? '') : (form.chave_pix ?? '')}
               onChange={e => set('chave_pix', e.target.value)} />
             {isTipoCpfCnpj && (
               <p className="text-xs text-slate-400 mt-1">A chave PIX será o CPF/CNPJ do fornecedor.</p>
+            )}
+            {isTipoTelefone && (
+              <p className="text-xs text-slate-400 mt-1">Digite DDD + número — será salvo como +55DDDNNNNNNNNN, formato exigido pelo arquivo remessa.</p>
             )}
           </div>
         </div>

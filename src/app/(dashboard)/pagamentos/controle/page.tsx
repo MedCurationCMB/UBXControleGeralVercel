@@ -190,6 +190,10 @@ function AdicionarModal({
   const [valorPagar, setValorPagar] = useState('')
   const [tipoPag, setTipoPag] = useState('')
   const [boletoFile, setBoletoFile] = useState<File | null>(null)
+  const [codigoBarras, setCodigoBarras] = useState('')
+  const [boletoDocId, setBoletoDocId] = useState<number | null>(null)
+  const [boletoUploading, setBoletoUploading] = useState(false)
+  const [boletoOcrMsg, setBoletoOcrMsg] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -206,6 +210,42 @@ function AdicionarModal({
     id: p.id,
     label: `Pedido #${p.id} — ${p.fornecedor} (${p.empresa})`
   }))
+
+  // Sobe o PDF e roda o OCR assim que o arquivo é selecionado, pra mostrar
+  // o código de barras lido pro usuário conferir/corrigir antes de salvar.
+  const handleBoletoFile = async (file: File) => {
+    setBoletoFile(file)
+    setCodigoBarras('')
+    setBoletoDocId(null)
+    setBoletoOcrMsg('')
+    if (!pedidoId || !user) {
+      setBoletoOcrMsg('Selecione um pedido antes de anexar o boleto.')
+      return
+    }
+    setBoletoUploading(true)
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('pedido_id', pedidoId)
+    fd.append('tipo_documento', '4')
+    fd.append('extrair_boleto', 'true')
+    try {
+      const res = await fetch('/api/documentos/upload', { method: 'POST', body: fd })
+      const data = await res.json()
+      if (res.ok && data.documento) {
+        setBoletoDocId(data.documento.id)
+        const codigo = data.dadosBoleto?.codigo_barras ?? ''
+        setCodigoBarras(codigo)
+        setBoletoOcrMsg(codigo
+          ? 'Código de barras lido automaticamente do PDF — confira os dígitos antes de continuar.'
+          : 'Não foi possível ler o código de barras automaticamente. Digite os dígitos abaixo.')
+      } else {
+        setBoletoOcrMsg('Falha ao processar o PDF. Digite o código de barras manualmente.')
+      }
+    } catch {
+      setBoletoOcrMsg('Falha ao processar o PDF. Digite o código de barras manualmente.')
+    }
+    setBoletoUploading(false)
+  }
 
   const handleAddIndividual = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -236,19 +276,25 @@ function AdicionarModal({
       return
     }
 
-    if (isBoleto && boletoFile && user) {
-      const fd = new FormData()
-      fd.append('file', boletoFile)
-      fd.append('pedido_id', pedidoId)
-      fd.append('pagamento_id', String(novo.id))
-      fd.append('tipo_documento', '4')
-      fd.append('extrair_boleto', 'true')
-      await fetch('/api/documentos/upload', { method: 'POST', body: fd }).catch(() => {})
+    if (isBoleto && boletoDocId) {
+      await supabase.from('documentos').update({ pagamento_id: novo.id }).eq('id', boletoDocId)
+
+      const codigo = codigoBarras.replace(/\D/g, '')
+      if (codigo) {
+        const { data: info } = await supabase.from('informacoes_boleto')
+          .select('id').eq('boleto_id', boletoDocId).maybeSingle()
+        if (info) {
+          await supabase.from('informacoes_boleto').update({ codigo_barras: codigo }).eq('id', info.id)
+        } else {
+          await supabase.from('informacoes_boleto').insert({ boleto_id: boletoDocId, codigo_barras: codigo })
+        }
+      }
     }
 
     setSaving(false)
     setSuccess('Pagamento adicionado com sucesso!')
-    setPedidoId(''); setDataVenc(''); setValorPagar(''); setTipoPag(''); setBoletoFile(null)
+    setPedidoId(''); setDataVenc(''); setValorPagar(''); setTipoPag('')
+    setBoletoFile(null); setCodigoBarras(''); setBoletoDocId(null); setBoletoOcrMsg('')
     if (boletoRef.current) boletoRef.current.value = ''
     onSaved()
   }
@@ -332,30 +378,49 @@ function AdicionarModal({
             </div>
 
             {isBoleto && (
-              <div>
-                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-3 mb-2">
-                  Recomendamos anexar o PDF do boleto para facilitar o controle.
+              <div className="space-y-3">
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-3">
+                  É necessário anexar o PDF do boleto para que ele entre na geração do arquivo remessa.
                 </p>
-                <label className="label">PDF do Boleto (opcional)</label>
-                <div
-                  className="border-2 border-dashed border-slate-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400 transition-colors"
-                  onClick={() => boletoRef.current?.click()}
-                >
-                  {boletoFile ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="text-sm text-slate-700">{boletoFile.name}</span>
-                      <button type="button" onClick={e => { e.stopPropagation(); setBoletoFile(null) }}
-                        className="text-slate-400 hover:text-red-500"><X size={14} /></button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-1 text-slate-400">
-                      <Upload size={20} />
-                      <span className="text-xs">Clique para anexar PDF do boleto</span>
-                    </div>
-                  )}
+                <div>
+                  <label className="label">PDF do Boleto</label>
+                  <div
+                    className="border-2 border-dashed border-slate-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400 transition-colors"
+                    onClick={() => boletoRef.current?.click()}
+                  >
+                    {boletoFile ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-sm text-slate-700">{boletoFile.name}</span>
+                        <button type="button" onClick={e => {
+                          e.stopPropagation()
+                          setBoletoFile(null); setCodigoBarras(''); setBoletoDocId(null); setBoletoOcrMsg('')
+                          if (boletoRef.current) boletoRef.current.value = ''
+                        }} className="text-slate-400 hover:text-red-500"><X size={14} /></button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-slate-400">
+                        <Upload size={20} />
+                        <span className="text-xs">Clique para anexar PDF do boleto</span>
+                      </div>
+                    )}
+                  </div>
+                  <input type="file" ref={boletoRef} className="hidden" accept=".pdf"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleBoletoFile(f) }} />
                 </div>
-                <input type="file" ref={boletoRef} className="hidden" accept=".pdf"
-                  onChange={e => setBoletoFile(e.target.files?.[0] ?? null)} />
+
+                {boletoFile && (
+                  <div>
+                    <label className="label">Código de Barras do Boleto</label>
+                    <input className="input font-mono" inputMode="numeric" maxLength={54}
+                      placeholder="Somente os dígitos da linha digitável/código de barras"
+                      value={codigoBarras}
+                      onChange={e => setCodigoBarras(e.target.value.replace(/[^\d.\s]/g, ''))}
+                      disabled={boletoUploading} />
+                    <p className="text-xs text-slate-400 mt-1">
+                      {boletoUploading ? 'Lendo o PDF...' : (boletoOcrMsg || 'Confira os dígitos — é o que vai pro arquivo remessa.')}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
