@@ -221,6 +221,14 @@ function generateCnabFile(company: Company, transactions: Tx[]): string {
   return lines.join('\n')
 }
 
+// O OCR devolve "CPF"/"CNPJ" (texto), não o código 1/2 exigido pelo CNAB.
+function beneficiarioTipo(tipo: unknown, documento: unknown): number {
+  const raw = String(tipo ?? '').toUpperCase()
+  if (raw.includes('CPF')) return 1
+  if (raw.includes('CNPJ')) return 2
+  return String(documento ?? '').replace(/\D/g, '').length === 11 ? 1 : 2
+}
+
 // ─── API Handler ─────────────────────────────────────────────────────────────
 
 interface TransactionInput {
@@ -348,7 +356,7 @@ export async function POST(req: NextRequest) {
         valor_desconto: Number(info.valor_desconto ?? 0),
         valor_mora: Number(info.valor_mora ?? 0),
         nosso_numero: String(info.nosso_numero ?? ''),
-        beneficiario_tipo: Number(info.beneficiario_tipo ?? 2),
+        beneficiario_tipo: beneficiarioTipo(info.beneficiario_tipo, info.beneficiario_documento),
         beneficiario_documento: String(info.beneficiario_documento ?? '').replace(/\D/g, ''),
         beneficiario_nome: String(info.beneficiario_nome ?? ''),
         pagador_documento: cnpjLimpo,
