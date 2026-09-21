@@ -145,7 +145,7 @@ function buildSegmentoJBoleto(t: BoletoTx, seq: number): string {
     fmtDate(t.data_vencimento) + padN(valorNomInt, 15) +
     padN(valorDescInt, 15) + padN(valorMoraInt, 15) +
     fmtDate(t.data_pagamento) + padN(valorPagInt, 15) +
-    padN('0', 15) + padA(t.doc_empresa, 20) + padA(t.nosso_numero, 20) +
+    padN('0', 15) + padN(t.doc_empresa, 20) + padN(t.nosso_numero, 20) +
     ' '.repeat(8) + ' '.repeat(10)
   ).padEnd(240, ' ')
 }
@@ -156,7 +156,7 @@ function buildSegmentoJ52Boleto(t: BoletoTx, seq: number): string {
     padN('52', 2) +
     padN('2', 1) + padN(t.pagador_documento, 15) + padA(t.pagador_nome, 40) +
     padN(t.beneficiario_tipo, 1) + padN(t.beneficiario_documento, 15) + padA(t.beneficiario_nome, 40) +
-    ' '.repeat(56) + padA(t.doc_empresa_adicional, 53)
+    ' '.repeat(56) + padN(t.doc_empresa_adicional, 53)
   ).padEnd(240, ' ')
 }
 
@@ -334,15 +334,16 @@ export async function POST(req: NextRequest) {
       })
     } else if (t.tipo_pagamento === 3) {
       const info = boletoInfoMap[t.pagamento_id] ?? {}
+      const dataVenc = info.data_vencimento ? new Date(`${info.data_vencimento}T12:00:00`) : dataPag
       transactions.push({
         tipo_pagamento: '3',
         data_pagamento: dataPag,
-        data_vencimento: dataPag,
+        data_vencimento: dataVenc,
         valor_pagamento: t.valor_pagamento,
         doc_empresa: t.doc_empresa ?? String(t.pagamento_id),
         codigo_barras: String(info.codigo_barras ?? ''),
         nome_beneficiario: String(info.nome_beneficiario ?? ''),
-        valor_nominal: t.valor_pagamento,
+        valor_nominal: Number(info.valor_nominal ?? t.valor_pagamento),
         valor_desconto: Number(info.valor_desconto ?? 0),
         valor_mora: Number(info.valor_mora ?? 0),
         nosso_numero: String(info.nosso_numero ?? ''),
