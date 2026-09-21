@@ -67,7 +67,7 @@ function buildHeaderArquivo(c: Company): string {
 function buildHeaderLotePix(c: Company): string {
   return (
     padN('077', 3) + padN('1', 4) + '1' + 'C' +
-    padN('00', 2) + padN('45', 2) + padN('046', 3) + ' ' +
+    padN('20', 2) + padN('45', 2) + padN('046', 3) + ' ' +
     '2' + padN(c.cnpj, 14) + ' '.repeat(20) +
     padN(c.agencia, 5) + padA(c.agencia_dv, 1) +
     padN(c.conta, 12) + padN(c.conta_dv, 1) + ' ' +
@@ -81,12 +81,15 @@ function buildHeaderLotePix(c: Company): string {
 
 function buildSegmentoAPix(t: PixTx, seq: number): string {
   let fav = ''
+  let idPagamento = ''
   if (t.forma_iniciacao === '05') {
     fav = padN(t.fav_banco ?? '', 3) + padN(t.fav_agencia ?? '', 5) +
           padA(t.fav_agencia_dv ?? '', 1) + padN(t.fav_conta ?? '', 12) +
           padA(t.fav_conta_dv ?? '', 1) + ' ' + padA(t.fav_nome ?? '', 30)
+    idPagamento = padN(t.doc_fav, 14) + padN(t.fav_ispb ?? '0', 8) + padN('01', 2)
   } else {
-    fav = '000' + '00000' + ' ' + '0'.repeat(12) + ' ' + ' '.repeat(30) + ' '
+    fav = '000' + '00000' + '0' + '0'.repeat(12) + '0' + ' ' + ' '.repeat(30)
+    idPagamento = padN('0', 14) + padN('0', 8) + padN('0', 2)
   }
   const valorInt = Math.round(t.valor_pagamento * 100)
   return (
@@ -94,9 +97,9 @@ function buildSegmentoAPix(t: PixTx, seq: number): string {
     padN('000', 3) + fav +
     padA(t.doc_empresa, 20) + fmtDate(t.data_pagamento) +
     padA('BRL', 3) + padN('0', 15) + padN(valorInt, 15) +
-    ' '.repeat(20) + ' '.repeat(8) + ' '.repeat(15) + ' '.repeat(22) +
-    padN('01', 2) + ' '.repeat(18) + padN('00010', 5) +
-    ' '.repeat(6) + ' '.repeat(10)
+    ' '.repeat(20) + ' '.repeat(8) + ' '.repeat(15) +
+    idPagamento +
+    ' '.repeat(29) + ' '.repeat(10)
   ).padEnd(240, ' ')
 }
 
@@ -119,7 +122,7 @@ function buildSegmentoBPix(t: PixTx, seq: number): string {
 function buildHeaderLoteBoleto(c: Company): string {
   return (
     padN('077', 3) + padN('1', 4) + '1' + 'C' +
-    padN('00', 2) + padN('31', 2) + padN('046', 3) + ' ' +
+    padN('20', 2) + padN('31', 2) + padN('046', 3) + ' ' +
     '2' + padN(c.cnpj, 14) + ' '.repeat(20) +
     padN(c.agencia, 5) + padA(c.agencia_dv, 1) +
     padN(c.conta, 12) + padN(c.conta_dv, 1) + ' ' +
