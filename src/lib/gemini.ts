@@ -20,7 +20,7 @@ async function getGeminiKey(): Promise<string> {
 
 function getClient(apiKey: string) {
   return new GoogleGenerativeAI(apiKey).getGenerativeModel({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-flash-lite-latest',
   })
 }
 
