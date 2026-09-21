@@ -20,7 +20,7 @@ async function getGeminiKey(): Promise<string> {
 
 function getClient(apiKey: string) {
   return new GoogleGenerativeAI(apiKey).getGenerativeModel({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
   })
 }
 
@@ -69,7 +69,7 @@ Se um campo não estiver presente, retorne null para ele.
 Retorne APENAS o JSON, sem texto adicional, sem markdown, sem blocos de código.
 
 {
-  "codigo_barras": "linha digitável ou código de barras completo",
+  "codigo_barras": "a linha digitável impressa (os números em grupos separados por pontos/espaços no topo do boleto), com todos os dígitos, incluindo os dígitos verificadores de cada campo — não tente calcular ou simplificar, apenas transcreva",
   "nome_beneficiario": "nome do beneficiário",
   "data_vencimento": "data no formato YYYY-MM-DD",
   "valor_nominal": número com duas casas decimais,

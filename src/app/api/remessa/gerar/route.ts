@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/server'
 import { uploadFile } from '@/lib/b2'
+import { linhaDigitavelParaCodigoBarras } from '@/lib/boleto'
 
 // ─── CNAB 240 helpers ───────────────────────────────────────────────────────
 
@@ -341,7 +342,7 @@ export async function POST(req: NextRequest) {
         data_vencimento: dataVenc,
         valor_pagamento: t.valor_pagamento,
         doc_empresa: t.doc_empresa ?? String(t.pagamento_id),
-        codigo_barras: String(info.codigo_barras ?? ''),
+        codigo_barras: linhaDigitavelParaCodigoBarras(String(info.codigo_barras ?? '')),
         nome_beneficiario: String(info.nome_beneficiario ?? ''),
         valor_nominal: Number(info.valor_nominal ?? t.valor_pagamento),
         valor_desconto: Number(info.valor_desconto ?? 0),
