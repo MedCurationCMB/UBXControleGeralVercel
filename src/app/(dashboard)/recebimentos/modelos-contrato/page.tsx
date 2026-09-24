@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import ContratosGuard from '@/components/contratos/ContratosGuard'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { Upload, Download, Trash2, FileText, RefreshCw, X } from 'lucide-react'
 
@@ -96,7 +97,7 @@ function UploadTab({
   )
 }
 
-export default function ModelosContratoRecebimentosPage() {
+function ModelosContratoRecebimentosPageConteudo() {
   const [modelos, setModelos] = useState<ModeloContrato[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'variavel' | 'estatico'>('variavel')
@@ -260,4 +261,8 @@ export default function ModelosContratoRecebimentosPage() {
       )}
     </div>
   )
+}
+
+export default function ModelosContratoRecebimentosPage() {
+  return <ContratosGuard><ModelosContratoRecebimentosPageConteudo /></ContratosGuard>
 }

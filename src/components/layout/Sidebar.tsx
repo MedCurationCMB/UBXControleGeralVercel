@@ -1,5 +1,6 @@
 'use client'
 
+import { useContratosLiberados } from '@/lib/useContratosLiberados'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -21,6 +22,7 @@ interface NavItem {
   adminOnly?: boolean
   flowOnly?: ('3' | '4' | '5')[]
   flowOnlyReceita?: ('3' | '4' | '5')[]
+  contrato?: boolean
 }
 
 interface NavGroup {
@@ -53,7 +55,7 @@ const navGroups: NavGroup[] = [
       { label: 'Categorias', href: '/pagamentos/categorias', icon: Tag },
       { label: 'Orçamento', href: '/pagamentos/orcamento', icon: FileText },
       { label: 'Cadastros', href: '/pagamentos/cadastros', icon: List },
-      { label: 'Contratos', href: '/pagamentos/modelos-contrato', icon: FileSignature },
+      { label: 'Contratos', href: '/pagamentos/modelos-contrato', icon: FileSignature, contrato: true },
     ],
   },
   {
@@ -74,7 +76,7 @@ const navGroups: NavGroup[] = [
       { label: 'Categorias', href: '/recebimentos/categorias', icon: Tag },
       { label: 'Orçamento', href: '/recebimentos/orcamento', icon: FileText },
       { label: 'Cadastros', href: '/recebimentos/cadastros', icon: List },
-      { label: 'Contratos', href: '/recebimentos/modelos-contrato', icon: FileSignature },
+      { label: 'Contratos', href: '/recebimentos/modelos-contrato', icon: FileSignature, contrato: true },
     ],
   },
   {
@@ -96,6 +98,7 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(true)
   const [fluxoSistema, setFluxoSistema] = useState<string | null>(null)
   const [fluxoSistemaReceita, setFluxoSistemaReceita] = useState<string | null>(null)
+  const contratosLiberados = useContratosLiberados()
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed')
@@ -169,6 +172,7 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
             {group.items
               .filter((item) =>
                 (!item.adminOnly || isAdminOrOwner) &&
+                (!item.contrato || contratosLiberados) &&
                 (!item.flowOnly || item.flowOnly.includes(fluxoSistema as '3' | '4' | '5')) &&
                 (!item.flowOnlyReceita || item.flowOnlyReceita.includes(fluxoSistemaReceita as '3' | '4' | '5'))
               )

@@ -1,5 +1,6 @@
 'use client'
 
+import { useContratosLiberados } from '@/lib/useContratosLiberados'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
@@ -1062,6 +1063,7 @@ export default function AcompanharDetalhePage() {
   const [showDocs, setShowDocs] = useState(false)
   const [showAnalise, setShowAnalise] = useState(false)
   const [showContrato, setShowContrato] = useState(false)
+  const contratosLiberados = useContratosLiberados()
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [cancelling, setCancelling] = useState(false)
 
@@ -1245,10 +1247,12 @@ export default function AcompanharDetalhePage() {
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-800">
           <Printer size={15} /> Imprimir Pedido
         </button>
-        <button onClick={() => setShowContrato(true)}
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-          <FileSignature size={15} /> Gerar Contrato
-        </button>
+        {contratosLiberados && (
+          <button onClick={() => setShowContrato(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
+            <FileSignature size={15} /> Gerar Contrato
+          </button>
+        )}
         <button onClick={() => setShowComents(true)}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-200">
           <MessageSquare size={15} /> Comentários

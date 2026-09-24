@@ -1,4 +1,7 @@
+'use client'
+
 import Link from 'next/link'
+import { useContratosLiberados } from '@/lib/useContratosLiberados'
 import {
   BarChart3, CheckSquare, Search, FileText, FolderOpen,
   ShoppingCart, Banknote, ClipboardList, CreditCard, Users,
@@ -12,6 +15,7 @@ interface NavCard {
   icon: React.ElementType
   external?: boolean
   adminOnly?: boolean
+  contrato?: boolean
 }
 
 interface Section {
@@ -72,7 +76,7 @@ const sections: Section[] = [
         { label: 'Contas Pagadoras', href: '/pagamentos/contas', icon: Landmark },
       ],
       [
-        { label: 'Modelos de Contrato', href: '/pagamentos/modelos-contrato', icon: FileSignature },
+        { label: 'Modelos de Contrato', href: '/pagamentos/modelos-contrato', icon: FileSignature, contrato: true },
       ],
       [
         { label: 'Painel Administrativo', href: '/admin', icon: ShieldCheck, adminOnly: true },
@@ -103,6 +107,7 @@ function Card({ card }: { card: NavCard }) {
 }
 
 export default function InicioPage() {
+  const contratosLiberados = useContratosLiberados()
   return (
     <div className="space-y-8">
       <div>
@@ -118,7 +123,7 @@ export default function InicioPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {section.columns.map((col, ci) => (
               <div key={ci} className="space-y-2">
-                {col.map(card => (
+                {col.filter(card => !card.contrato || contratosLiberados).map(card => (
                   <Card key={card.href} card={card} />
                 ))}
               </div>

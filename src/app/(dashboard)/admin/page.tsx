@@ -1,5 +1,6 @@
 'use client'
 
+import { CONTRATOS_EVENT } from '@/lib/useContratosLiberados'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { Upload, RefreshCw, Check, X, Save, Eye, EyeOff } from 'lucide-react'
@@ -601,6 +602,48 @@ function FluxoSelector({
   )
 }
 
+function ContratosToggle() {
+  const [liberado, setLiberado] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  useEffect(() => {
+    supabase.from('config').select('valor').eq('chave', 'contratos_liberados').maybeSingle()
+      .then(({ data }) => setLiberado(data?.valor === 'true'))
+  }, [])
+
+  const handleChange = async (novo: boolean) => {
+    setSaving(true)
+    setMsg(null)
+    await supabase.from('config').delete().eq('chave', 'contratos_liberados')
+    const { error } = await supabase.from('config').insert({ chave: 'contratos_liberados', valor: String(novo) })
+    setSaving(false)
+    if (error) { setMsg({ type: 'error', text: error.message }); return }
+    setLiberado(novo)
+    setMsg({ type: 'success', text: novo ? 'Contratos liberados.' : 'Contratos ocultados.' })
+    window.dispatchEvent(new CustomEvent(CONTRATOS_EVENT, { detail: novo }))
+  }
+
+  if (liberado === null) return <p className="text-slate-400 text-sm">Carregando...</p>
+
+  return (
+    <div className="p-4 border border-slate-200 rounded-xl bg-slate-50 space-y-3">
+      <label className="label">Contratos (menu, pedidos e modelos)</label>
+      <select className="input" value={liberado ? 'true' : 'false'} disabled={saving}
+        onChange={e => handleChange(e.target.value === 'true')}>
+        <option value="true">Liberado</option>
+        <option value="false">Oculto</option>
+      </select>
+      <p className="text-xs text-slate-500">
+        Oculto: nada de contrato aparece no menu, na página inicial, nos cadastros nem nos pedidos.
+      </p>
+      {msg && (
+        <p className={`text-sm ${msg.type === 'success' ? 'text-green-700' : 'text-red-600'}`}>{msg.text}</p>
+      )}
+    </div>
+  )
+}
+
 function ConfiguracoesTab() {
   return (
     <div className="max-w-md space-y-6">
@@ -618,6 +661,7 @@ function ConfiguracoesTab() {
         eventoNome="fluxo-sistema-receita-changed"
         fallbackSemConfig="1"
       />
+      <ContratosToggle />
     </div>
   )
 }

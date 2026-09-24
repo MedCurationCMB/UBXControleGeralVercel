@@ -1,4 +1,7 @@
+'use client'
+
 import Link from 'next/link'
+import { useContratosLiberados } from '@/lib/useContratosLiberados'
 import { Users, Tag, Landmark, FileText, Package, ShoppingCart } from 'lucide-react'
 
 const cadastros = [
@@ -29,6 +32,7 @@ const cadastros = [
     title: 'Modelos de Contrato',
     description: 'Armazene templates DOCX estáticos ou variáveis para geração de contratos.',
     color: 'bg-orange-50 text-orange-600',
+    contrato: true,
   },
   {
     href: '/pagamentos/registrar-orcamento',
@@ -47,6 +51,7 @@ const cadastros = [
 ]
 
 export default function CadastrosPage() {
+  const contratosLiberados = useContratosLiberados()
   return (
     <div className="space-y-6">
       <div>
@@ -55,7 +60,7 @@ export default function CadastrosPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {cadastros.map(c => {
+        {cadastros.filter(c => !('contrato' in c) || contratosLiberados).map(c => {
           const Icon = c.icon
           return (
             <Link key={c.href} href={c.href}
