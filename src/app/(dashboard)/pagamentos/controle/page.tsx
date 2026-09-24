@@ -56,6 +56,20 @@ const STATUS_AUTORIZACAO_BADGE: Record<string, string> = {
 
 const PAGE_SIZE = 100
 
+// O Supabase limita cada consulta a 1000 linhas, então busca em páginas.
+async function fetchPedidosAutorizados(): Promise<Pedido[]> {
+  const BATCH = 1000
+  const all: Pedido[] = []
+  for (let offset = 0; ; offset += BATCH) {
+    const { data } = await supabase.from('pedidos_solicitados')
+      .select('id, empresa, categoria, fornecedor, valor_pedido, status, observacao, cancelado')
+      .eq('status', 'Autorizado').eq('cancelado', false)
+      .order('id', { ascending: false }).range(offset, offset + BATCH - 1)
+    all.push(...((data ?? []) as Pedido[]))
+    if ((data?.length ?? 0) < BATCH) return all
+  }
+}
+
 // ---- Edit Modal ----
 function EditModal({
   row, statuses, tipos, onClose, onSaved
@@ -674,15 +688,14 @@ export default function ControlePage() {
     Promise.all([
       supabase.from('pagamento_status').select('*').order('id'),
       supabase.from('tipos_pagamento').select('*').order('id'),
-      supabase.from('pedidos_solicitados').select('id, empresa, categoria, fornecedor, valor_pedido, status, observacao, cancelado')
-        .eq('status', 'Autorizado').eq('cancelado', false).order('id', { ascending: false }),
-      supabase.from('pedidos_solicitados').select('empresa').order('empresa'),
-      supabase.from('pedidos_solicitados').select('categoria').order('categoria'),
+      fetchPedidosAutorizados(),
+      supabase.from('empresas').select('empresa'),
+      supabase.from('categorias').select('categoria'),
       fetch('/api/auth/me').then(r => r.json()),
-    ]).then(([{ data: sts }, { data: tps }, { data: peds }, { data: emp }, { data: cat }, u]) => {
+    ]).then(([{ data: sts }, { data: tps }, peds, { data: emp }, { data: cat }, u]) => {
       setStatuses(sts ?? [])
       setTipos(tps ?? [])
-      setPedidosForAdd(peds ?? [])
+      setPedidosForAdd(peds)
       setEmpresas([...new Set((emp ?? []).map((r: { empresa: string }) => r.empresa).filter(Boolean))].sort())
       setCategorias([...new Set((cat ?? []).map((r: { categoria: string }) => r.categoria).filter(Boolean))].sort())
       setUser(u?.username ? u : null)
