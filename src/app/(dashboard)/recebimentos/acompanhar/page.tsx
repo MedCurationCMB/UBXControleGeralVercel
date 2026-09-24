@@ -112,14 +112,14 @@ export default function AcompanharRecebimentosPage() {
   useEffect(() => {
     const fetchOpcoes = async () => {
       const [{ data: emp }, { data: cat }, { data: cli }, u] = await Promise.all([
-        supabase.from('pedidos_solicitados_receita').select('empresa').order('empresa').limit(1000),
-        supabase.from('pedidos_solicitados_receita').select('categoria').order('categoria').limit(1000),
-        supabase.from('pedidos_solicitados_receita').select('cliente').order('cliente').limit(1000),
+        supabase.from('empresas').select('empresa'),
+        supabase.from('categorias_receita').select('categoria'),
+        supabase.from('clientes').select('nome'),
         fetch('/api/auth/me').then(r => r.json()),
       ])
       setEmpresas([...new Set(emp?.map(r => r.empresa).filter(Boolean) ?? [])].sort())
       setCategorias([...new Set(cat?.map(r => r.categoria).filter(Boolean) ?? [])].sort())
-      setClientes([...new Set(cli?.map(r => r.cliente).filter(Boolean) ?? [])].sort())
+      setClientes([...new Set(cli?.map(r => r.nome).filter(Boolean) ?? [])].sort())
       setIsAdminOrOwner(u?.hierarquia === 'admin' || u?.hierarquia === 'owner')
       setUsername(u?.username ?? '')
     }
