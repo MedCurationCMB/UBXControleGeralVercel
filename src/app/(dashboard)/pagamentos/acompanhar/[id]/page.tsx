@@ -13,6 +13,8 @@ import {
 import Modal from '@/components/ui/Modal'
 import Confirm from '@/components/ui/Confirm'
 
+const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+
 // --- Types ---
 interface Pedido {
   id: number; empresa: string; categoria: string; fornecedor: string
@@ -1071,10 +1073,12 @@ export default function AcompanharDetalhePage() {
   // Ajuste state
   const [comentariosAjuste, setComentariosAjuste] = useState<Comentario[]>([])
   const [editando, setEditando] = useState(false)
-  const [editForm, setEditFormAjuste] = useState({ empresa: '', categoria: '', fornecedor: '', valor_pedido: '', observacao: '' })
-  const [editEmpresas, setEditEmpresas] = useState<string[]>([])
-  const [editCategorias, setEditCategorias] = useState<string[]>([])
+  const [editForm, setEditFormAjuste] = useState({ empresa: '', categoria: '', fornecedor: '', observacao: '' })
+  const [editPeriodos, setEditPeriodos] = useState<{ mes: number; ano: string; valor: string }[]>([])
+  const [editErro, setEditErro] = useState('')
+  const [catPares, setCatPares] = useState<{ empresa: string; categoria: string }[]>([])
   const [editFornecedores, setEditFornecedores] = useState<string[]>([])
+  const [controlaOrcamento, setControlaOrcamento] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
   const [reenviando, setReenviando] = useState(false)
 
@@ -1099,21 +1103,25 @@ export default function AcompanharDetalhePage() {
         .eq('pedido_id', pedidoId)
         .order('data_comentario', { ascending: false })
       setComentariosAjuste(coms ?? [])
-      // Pre-fill edit form
+      // Pre-fill edit form (dados do pedido + cronograma mensal)
       setEditFormAjuste({
         empresa: (p as Pedido).empresa,
         categoria: (p as Pedido).categoria,
         fornecedor: (p as Pedido).fornecedor,
-        valor_pedido: String((p as Pedido).valor_pedido),
         observacao: (p as Pedido).observacao ?? '',
       })
-      // Load reference data for edit dropdowns
-      const [{ data: emps }, { data: fors }] = await Promise.all([
-        supabase.from('pedidos_solicitados').select('empresa').order('empresa'),
+      setEditPeriodos((fl ?? []).map((r: FluxoRow) => ({ mes: r.mes, ano: String(r.ano), valor: String(r.valor_referente) })))
+      // Empresas/categorias vêm do cadastro (a busca antiga nos pedidos era cortada em 1000 linhas)
+      const [{ data: cats }, { data: fors }, { data: cfgFluxo }, { data: cfgOrc }] = await Promise.all([
+        supabase.from('categorias').select('empresa, categoria'),
         supabase.from('fornecedores').select('nome').order('nome'),
+        supabase.from('config').select('valor').eq('chave', 'fluxo_sistema').maybeSingle(),
+        supabase.from('config').select('valor').eq('chave', 'controla_orcamento').maybeSingle(),
       ])
-      setEditEmpresas([...new Set((emps ?? []).map((r: { empresa: string }) => r.empresa).filter(Boolean))])
+      setCatPares(cats ?? [])
       setEditFornecedores((fors ?? []).map((r: { nome: string }) => r.nome))
+      const fluxoSistema = cfgFluxo?.valor || (cfgOrc?.valor === 'true' ? '1' : '2')
+      setControlaOrcamento(fluxoSistema === '1' || fluxoSistema === '4')
     } else {
       setComentariosAjuste([])
     }
@@ -1151,22 +1159,88 @@ export default function AcompanharDetalhePage() {
     setCancelling(false); setConfirmCancel(false); load()
   }
 
-  const handleEmpresaChange = async (empresa: string) => {
-    setEditFormAjuste(f => ({ ...f, empresa, categoria: '' }))
-    const { data } = await supabase.from('pedidos_solicitados').select('categoria').eq('empresa', empresa).order('categoria')
-    setEditCategorias([...new Set((data ?? []).map((r: { categoria: string }) => r.categoria).filter(Boolean))])
-  }
+  const setPeriodo = (i: number, patch: Partial<{ mes: number; ano: string; valor: string }>) =>
+    setEditPeriodos(ps => ps.map((p, j) => j === i ? { ...p, ...patch } : p))
 
+  // Salva dados + cronograma mensal. O orçamento é calculado a partir do cronograma
+  // (pedidos_solicitados_fluxo), então valor/empresa/categoria mudam nos dois lugares
+  // e, no Fluxo 1/4, o saldo é conferido de novo.
   const handleSaveEdit = async () => {
     if (!pedido) return
+    setEditErro('')
+    if (!editForm.empresa || !editForm.categoria || !editForm.fornecedor) {
+      setEditErro('Selecione empresa, categoria e fornecedor.'); return
+    }
+    const periodos = editPeriodos.map(p => ({ mes: p.mes, ano: parseInt(p.ano), valor: parseFloat(p.valor.replace(',', '.')) }))
+    if (periodos.length === 0) { setEditErro('Informe ao menos um período.'); return }
+    if (periodos.some(p => !p.ano || !(p.valor > 0))) { setEditErro('Todos os períodos precisam de ano e valor maior que zero.'); return }
+    if (new Set(periodos.map(p => `${p.ano}-${p.mes}`)).size !== periodos.length) {
+      setEditErro('Há períodos repetidos (mesmo mês e ano).'); return
+    }
+    const total = periodos.reduce((s, p) => s + p.valor, 0)
+
     setSavingEdit(true)
-    await supabase.from('pedidos_solicitados').update({
+
+    if (controlaOrcamento) {
+      for (const p of periodos) {
+        const rotulo = `${MESES[p.mes - 1]}/${p.ano}`
+        const { data: orc } = await supabase.from('controle_orcamento')
+          .select('valor_orcamento, valor_pedidos_solicitados')
+          .eq('empresa', editForm.empresa).eq('categoria', editForm.categoria)
+          .eq('mes', p.mes).eq('ano', p.ano).maybeSingle()
+        if (!orc) { setSavingEdit(false); setEditErro(`Não existe orçamento para ${rotulo}.`); return }
+        // O que este pedido já consome nesse mesmo empresa/categoria/mês volta para o saldo
+        const jaConsumido = pedido.empresa === editForm.empresa && pedido.categoria === editForm.categoria
+          ? fluxo.filter(r => r.mes === p.mes && r.ano === p.ano).reduce((s, r) => s + Number(r.valor_referente), 0)
+          : 0
+        const disponivel = orc.valor_orcamento - orc.valor_pedidos_solicitados + jaConsumido
+        if (p.valor > disponivel + 0.005) {
+          setSavingEdit(false)
+          setEditErro(`Valor ${fmtMoeda(p.valor)} excede o saldo disponível de ${fmtMoeda(disponivel)} para ${rotulo}.`)
+          return
+        }
+      }
+    }
+
+    const antigosDados = { empresa: pedido.empresa, categoria: pedido.categoria, fornecedor: pedido.fornecedor, valor_pedido: pedido.valor_pedido, observacao: pedido.observacao }
+    const linhasAntigas = (fluxo as unknown as Record<string, unknown>[]).map(r => {
+      const { id: _id, ...resto } = r
+      return resto
+    })
+    const linhasNovas = periodos.map(p => ({
+      pedido_id: pedidoId,
+      empresa: editForm.empresa, categoria: editForm.categoria, fornecedor: editForm.fornecedor,
+      mes: p.mes, ano: p.ano, valor_referente: p.valor,
+      status: pedido.status,
+      ...(pedido.pedido_status != null ? { pedido_status: pedido.pedido_status } : {}),
+    }))
+
+    const desfazer = async (motivo: string) => {
+      await supabase.from('pedidos_solicitados').update(antigosDados).eq('id', pedidoId)
+      await supabase.from('pedidos_solicitados_fluxo').delete().eq('pedido_id', pedidoId)
+      if (linhasAntigas.length) await supabase.from('pedidos_solicitados_fluxo').insert(linhasAntigas)
+      setSavingEdit(false)
+      setEditErro(`Não foi possível salvar (${motivo}). Nada foi alterado, tente novamente.`)
+      load()
+    }
+
+    const { error: e1 } = await supabase.from('pedidos_solicitados').update({
       empresa: editForm.empresa,
       categoria: editForm.categoria,
       fornecedor: editForm.fornecedor,
-      valor_pedido: parseFloat(editForm.valor_pedido) || pedido.valor_pedido,
+      valor_pedido: total,
       observacao: editForm.observacao || null,
     }).eq('id', pedidoId)
+    if (e1) { setSavingEdit(false); setEditErro(e1.message); return }
+
+    // Zera antes de apagar: o trigger de exclusão não recalcula o orçamento, o de atualização recalcula.
+    const { error: e2 } = await supabase.from('pedidos_solicitados_fluxo').update({ valor_referente: 0 }).eq('pedido_id', pedidoId)
+    if (e2) return desfazer(e2.message)
+    const { error: e3 } = await supabase.from('pedidos_solicitados_fluxo').delete().eq('pedido_id', pedidoId)
+    if (e3) return desfazer(e3.message)
+    const { error: e4 } = await supabase.from('pedidos_solicitados_fluxo').insert(linhasNovas)
+    if (e4) return desfazer(e4.message)
+
     setSavingEdit(false)
     setEditando(false)
     load()
@@ -1198,6 +1272,9 @@ export default function AcompanharDetalhePage() {
   )
 
   const isCancelado = pedido.cancelado || pedido.status === 'Cancelado'
+  const editEmpresas = [...new Set(catPares.map(c => c.empresa).filter(Boolean))].sort()
+  const editCategorias = [...new Set(catPares.filter(c => c.empresa === editForm.empresa).map(c => c.categoria))].sort()
+  const editTotal = editPeriodos.reduce((s, p) => s + (parseFloat(p.valor.replace(',', '.')) || 0), 0)
   const canCancel = !isCancelado && pedido.status !== 'Não Autorizado'
   const hasDoc = !!(pedido.arquivo_texto || (pedido.arquivos_pdf_ids && pedido.arquivos_pdf_ids.length > 0))
 
@@ -1298,7 +1375,7 @@ export default function AcompanharDetalhePage() {
                 <div>
                   <label className="label">Empresa</label>
                   <select className="input" value={editForm.empresa}
-                    onChange={e => handleEmpresaChange(e.target.value)}>
+                    onChange={e => setEditFormAjuste(f => ({ ...f, empresa: e.target.value, categoria: '' }))}>
                     <option value="">Selecionar...</option>
                     {editEmpresas.map(e => <option key={e} value={e}>{e}</option>)}
                   </select>
@@ -1319,10 +1396,29 @@ export default function AcompanharDetalhePage() {
                     {editFornecedores.map(f => <option key={f} value={f}>{f}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="label">Valor do Pedido (R$)</label>
-                  <input type="number" step="0.01" className="input" value={editForm.valor_pedido}
-                    onChange={e => setEditFormAjuste(f => ({ ...f, valor_pedido: e.target.value }))} />
+                <div className="md:col-span-2">
+                  <label className="label">Períodos e valores (R$)</label>
+                  <div className="space-y-2">
+                    {editPeriodos.map((p, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <select className="input w-40" value={p.mes} onChange={e => setPeriodo(i, { mes: Number(e.target.value) })}>
+                          {MESES.map((m, k) => <option key={m} value={k + 1}>{m}</option>)}
+                        </select>
+                        <input className="input w-24" type="number" value={p.ano} onChange={e => setPeriodo(i, { ano: e.target.value })} />
+                        <input className="input flex-1" type="number" min="0.01" step="0.01" placeholder="0,00"
+                          value={p.valor} onChange={e => setPeriodo(i, { valor: e.target.value })} />
+                        <button type="button" onClick={() => setEditPeriodos(ps => ps.filter((_, j) => j !== i))}
+                          className="text-slate-400 hover:text-red-500 p-1" title="Remover"><X size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <button type="button" className="btn-secondary text-xs"
+                      onClick={() => setEditPeriodos(ps => [...ps, { mes: new Date().getMonth() + 1, ano: String(new Date().getFullYear()), valor: '' }])}>
+                      + Adicionar período
+                    </button>
+                    <span className="text-sm font-semibold text-slate-700">Total do pedido: {fmtMoeda(editTotal)}</span>
+                  </div>
                 </div>
                 <div className="md:col-span-2">
                   <label className="label">Observação</label>
@@ -1330,11 +1426,12 @@ export default function AcompanharDetalhePage() {
                     onChange={e => setEditFormAjuste(f => ({ ...f, observacao: e.target.value }))} />
                 </div>
               </div>
+              {editErro && <p className="text-sm text-red-600">{editErro}</p>}
               <div className="flex gap-2">
                 <button onClick={handleSaveEdit} disabled={savingEdit} className="btn-primary gap-1.5 text-sm">
                   {savingEdit ? <><RefreshCw size={13} className="animate-spin" /> Salvando...</> : <><Check size={13} /> Salvar Alterações</>}
                 </button>
-                <button onClick={() => setEditando(false)} className="btn-secondary text-sm">Cancelar</button>
+                <button onClick={() => { setEditando(false); setEditErro('') }} className="btn-secondary text-sm">Cancelar</button>
               </div>
             </div>
           )}

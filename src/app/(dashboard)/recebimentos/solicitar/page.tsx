@@ -161,7 +161,6 @@ export default function SolicitarRecebimentoPage() {
 
   // Step management
   const [step, setStep] = useState<'form' | 'meses'>('form')
-  const [pedidoId, setPedidoId] = useState<number | null>(null)
 
   // Step 2
   const [saldos, setSaldos] = useState<SaldoMes[]>([])
@@ -174,7 +173,7 @@ export default function SolicitarRecebimentoPage() {
   const [saving, setSaving] = useState(false)
   const [addingMes, setAddingMes] = useState(false)
   const [error, setError] = useState('')
-  const [successInfo, setSuccessInfo] = useState<{ empresa: string; categoria: string; cliente: string; total: number } | null>(null)
+  const [successInfo, setSuccessInfo] = useState<{ empresa: string; categoria: string; cliente: string; total: number; id: number; falhas: string[] } | null>(null)
   const [showImport, setShowImport] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -234,13 +233,14 @@ export default function SolicitarRecebimentoPage() {
     setError('')
     if (selected.length > 4) { setError('Máximo de 4 arquivos permitidos.'); return }
     for (const f of selected) {
-      if (f.size > 5 * 1024 * 1024) { setError(`Arquivo ${f.name} excede 5MB.`); return }
+      if (f.size > 4 * 1024 * 1024) { setError(`Arquivo ${f.name} excede 4MB.`); return }
       if (f.type !== 'application/pdf') { setError(`Arquivo ${f.name} deve ser PDF.`); return }
     }
     setFiles(selected)
   }
 
-  // Step 1: create pedido, upload PDFs, advance to step 2
+  // Step 1: valida e avança. O pedido só é gravado no envio (step 2), para não
+  // deixar pedido pela metade (valor R$ 0,00) na fila do autorizador.
   const handleInitialSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -250,56 +250,6 @@ export default function SolicitarRecebimentoPage() {
     if (usaRequisicao && requisicaoId === '') { setError('Selecione a requisição'); return }
 
     setSaving(true)
-
-    const { data: pedido, error: errPedido } = await supabase
-      .from('pedidos_solicitados_receita')
-      .insert({
-        empresa, categoria, cliente,
-        observacao: observacao || null,
-        emergencia: emergencial,
-        valor_pedido: 0,
-        data_solicitacao: new Date().toISOString().split('T')[0],
-        arquivo_texto: [],
-        arquivos_pdf_ids: [],
-        status: 'Aguardando Autorização',
-        requisicao_id: usaRequisicao ? requisicaoId : null,
-      })
-      .select('id')
-      .single()
-
-    if (errPedido || !pedido) {
-      setSaving(false)
-      setError(
-        errPedido?.code === '23505'
-          ? 'Esta requisição já foi utilizada por outro pedido. Selecione outra.'
-          : errPedido?.message ?? 'Erro ao criar pedido'
-      )
-      return
-    }
-
-    if (usaRequisicao && requisicaoId !== '') {
-      setRequisicoesUsadas(prev => new Set(prev).add(requisicaoId))
-    }
-
-    if (files.length > 0) {
-      for (const f of files) {
-        const formData = new FormData()
-        formData.append('file', f)
-        formData.append('pedido_id', String(pedido.id))
-        formData.append('tipo_documento', String(tipoDocSolicitacao ?? ''))
-        formData.append('analisar', 'true')
-        formData.append('modulo', 'recebimentos')
-        await fetch('/api/documentos/upload', { method: 'POST', body: formData }).catch(() => {})
-      }
-      if (tipoDocSolicitacao) {
-        await supabase
-          .from('pedidos_solicitados_receita')
-          .update({ tipo_documento: tipoDocSolicitacao })
-          .eq('id', pedido.id)
-      }
-    }
-
-    setPedidoId(pedido.id)
     await loadSaldos(empresa, categoria)
     setSaving(false)
     setStep('meses')
@@ -354,34 +304,84 @@ export default function SolicitarRecebimentoPage() {
     setAddValor('')
   }
 
-  // Step 2: finalize
+  // Step 2: grava o pedido (já com o valor total), o cronograma e os anexos
   const handleEnviarSolicitacao = async () => {
     if (!mesesSelecionados.length) { setError('Adicione pelo menos um período antes de enviar.'); return }
-    if (!pedidoId) return
 
     setSaving(true)
+    setError('')
     const valorTotal = mesesSelecionados.reduce((s, m) => s + m.valorReferente, 0)
 
-    await supabase
+    const { data: pedido, error: errPedido } = await supabase
       .from('pedidos_solicitados_receita')
-      .update({ valor_pedido: valorTotal })
-      .eq('id', pedidoId)
+      .insert({
+        empresa, categoria, cliente,
+        observacao: observacao || null,
+        emergencia: emergencial,
+        valor_pedido: valorTotal,
+        data_solicitacao: new Date().toISOString().split('T')[0],
+        arquivo_texto: [],
+        arquivos_pdf_ids: [],
+        status: 'Aguardando Autorização',
+        requisicao_id: usaRequisicao ? requisicaoId : null,
+      })
+      .select('id')
+      .single()
 
-    await supabase.from('pedidos_solicitados_fluxo_receita').insert(
+    if (errPedido || !pedido) {
+      setSaving(false)
+      setError(
+        errPedido?.code === '23505'
+          ? 'Esta requisição já foi utilizada por outro pedido. Selecione outra.'
+          : errPedido?.message ?? 'Erro ao criar pedido'
+      )
+      return
+    }
+
+    const { error: errFluxo } = await supabase.from('pedidos_solicitados_fluxo_receita').insert(
       mesesSelecionados.map(m => ({
-        pedido_id: pedidoId,
+        pedido_id: pedido.id,
         empresa, categoria, cliente,
         mes: m.mes, ano: m.ano,
         valor_referente: m.valorReferente,
       }))
     )
+    if (errFluxo) {
+      await supabase.from('pedidos_solicitados_receita').delete().eq('id', pedido.id)
+      setSaving(false)
+      setError(`Não foi possível gravar os períodos: ${errFluxo.message}`)
+      return
+    }
 
-    const summary = { empresa, categoria, cliente, total: valorTotal }
+    if (usaRequisicao && requisicaoId !== '') {
+      setRequisicoesUsadas(prev => new Set(prev).add(requisicaoId))
+    }
+
+    // Anexos: não interrompe o envio, mas avisa quais falharam
+    const falhas: string[] = []
+    for (const f of files) {
+      const formData = new FormData()
+      formData.append('file', f)
+      formData.append('pedido_id', String(pedido.id))
+      formData.append('tipo_documento', String(tipoDocSolicitacao ?? ''))
+      formData.append('analisar', 'true')
+        formData.append('modulo', 'recebimentos')
+      try {
+        const r = await fetch('/api/documentos/upload', { method: 'POST', body: formData })
+        if (!r.ok) falhas.push(f.name)
+      } catch {
+        falhas.push(f.name)
+      }
+    }
+    if (files.length > falhas.length && tipoDocSolicitacao) {
+      await supabase.from('pedidos_solicitados_receita').update({ tipo_documento: tipoDocSolicitacao }).eq('id', pedido.id)
+    }
+
+    const summary = { empresa, categoria, cliente, total: valorTotal, id: pedido.id, falhas }
 
     // Reset state
     setSaving(false)
     setStep('form')
-    setPedidoId(null)
     setEmpresa('')
     setCategoria('')
     setCliente('')
@@ -398,7 +398,7 @@ export default function SolicitarRecebimentoPage() {
     if (fileRef.current) fileRef.current.value = ''
 
     setSuccessInfo(summary)
-    setTimeout(() => setSuccessInfo(null), 8000)
+    if (falhas.length === 0) setTimeout(() => setSuccessInfo(null), 8000)
   }
 
   const categorias = categoriasPorEmpresa[empresa] ?? []
@@ -420,6 +420,12 @@ export default function SolicitarRecebimentoPage() {
           <div className="text-sm">
             <p className="font-semibold">Solicitação enviada com sucesso!</p>
             <p>{successInfo.empresa} · {successInfo.categoria} · {successInfo.cliente} · Total: {fmtMoeda(successInfo.total)}</p>
+            {successInfo.falhas.length > 0 && (
+              <p className="mt-1 text-amber-700">
+                Pedido #{successInfo.id} criado, mas não foi possível anexar: {successInfo.falhas.join(', ')}.
+                Anexe pelo botão Documentos do pedido.
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -556,9 +562,9 @@ export default function SolicitarRecebimentoPage() {
           <div className="flex items-start gap-3 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
             <CheckCircle size={18} className="mt-0.5 shrink-0" />
             <div className="text-sm">
-              <p className="font-semibold">Solicitação iniciada! Por favor, adicione os valores para cada período.</p>
+              <p className="font-semibold">Adicione os valores para cada período. O pedido só é criado ao clicar em Enviar Solicitação.</p>
               <p className="text-green-600 mt-0.5">
-                Pedido #{pedidoId} · {empresa} / {categoria} / {cliente}
+                {empresa} / {categoria} / {cliente}
               </p>
             </div>
           </div>
