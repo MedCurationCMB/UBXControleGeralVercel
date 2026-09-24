@@ -24,6 +24,19 @@ interface Row extends Controle {
 }
 
 // ---- Helpers ----
+// O Supabase limita cada consulta a 1000 linhas, então busca em páginas.
+const BATCH = 1000
+async function fetchTodos<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null }>
+): Promise<T[]> {
+  const all: T[] = []
+  for (let from = 0; ; from += BATCH) {
+    const { data } = await page(from, from + BATCH - 1)
+    all.push(...(data ?? []))
+    if ((data?.length ?? 0) < BATCH) return all
+  }
+}
+
 const fmtMoeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'
 const fmtData = (d: string | null | undefined) =>
@@ -561,6 +574,9 @@ function AlterarStatusLoteModal({
 export default function ControleRecebimentosPage() {
   const [controles, setControles] = useState<Controle[]>([])
   const [pedidos, setPedidos] = useState<Record<number, Pedido>>({})
+  const [pedidosForAdd, setPedidosForAdd] = useState<Pedido[]>([])
+  const [empresasCad, setEmpresasCad] = useState<string[]>([])
+  const [categoriasCad, setCategoriasCad] = useState<{ empresa: string; categoria: string }[]>([])
   const [statuses, setStatuses] = useState<RecebimentoStatus[]>([])
   const [tipos, setTipos] = useState<TipoRecebimento[]>([])
   const [loading, setLoading] = useState(true)
@@ -577,29 +593,40 @@ export default function ControleRecebimentosPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: ctrls }, { data: sts }, { data: tps }, u] = await Promise.all([
-      supabase.from('controle_recebimento').select('*').order('id', { ascending: false }),
+    const [ctrls, { data: sts }, { data: tps }, u, pedsAdd, { data: emps }, { data: cats }] = await Promise.all([
+      fetchTodos<Controle>((a, b) =>
+        supabase.from('controle_recebimento').select('*').order('id', { ascending: false }).range(a, b)),
       supabase.from('recebimento_status').select('*').order('id'),
       supabase.from('tipos_recebimento').select('*').order('id'),
       fetch('/api/auth/me').then(r => r.json()),
+      fetchTodos<Pedido>((a, b) =>
+        supabase.from('pedidos_solicitados_receita')
+          .select('id, empresa, categoria, cliente, valor_pedido, status, observacao')
+          .eq('status', 'Autorizado').eq('cancelado', false)
+          .order('id', { ascending: false }).range(a, b)),
+      supabase.from('empresas').select('empresa'),
+      supabase.from('categorias_receita').select('empresa, categoria'),
     ])
     setStatuses(sts ?? [])
     setTipos(tps ?? [])
     setUser(u?.username ? u : null)
+    setPedidosForAdd(pedsAdd)
+    setEmpresasCad([...new Set((emps ?? []).map(r => r.empresa).filter(Boolean))].sort())
+    setCategoriasCad(cats ?? [])
 
-    const ctrlList = ctrls ?? []
-    setControles(ctrlList)
+    setControles(ctrls)
 
-    const pedidoIds = [...new Set(ctrlList.filter(c => c.pedido_id).map(c => c.pedido_id as number))]
-    if (pedidoIds.length > 0) {
+    // .in() vai na URL, então busca os pedidos em blocos pequenos
+    const pedidoIds = [...new Set(ctrls.filter(c => c.pedido_id).map(c => c.pedido_id as number))]
+    const map: Record<number, Pedido> = {}
+    for (let k = 0; k < pedidoIds.length; k += 200) {
       const { data: peds } = await supabase
         .from('pedidos_solicitados_receita')
         .select('id, empresa, categoria, cliente, valor_pedido, status, observacao')
-        .in('id', pedidoIds)
-      const map: Record<number, Pedido> = {}
+        .in('id', pedidoIds.slice(k, k + 200))
       peds?.forEach(p => { map[p.id] = p })
-      setPedidos(map)
     }
+    setPedidos(map)
     setLoading(false)
   }, [])
 
@@ -619,11 +646,12 @@ export default function ControleRecebimentosPage() {
       }
     }), [controles, pedidos])
 
-  const empresas = useMemo(() => [...new Set(rows.map(r => r.empresa).filter(Boolean))].sort(), [rows])
+  // Filtros vêm do cadastro (empresas/categorias), não das linhas carregadas
+  const empresas = empresasCad
   const categorias = useMemo(() => {
-    const base = filtroEmpresa ? rows.filter(r => r.empresa === filtroEmpresa) : rows
-    return [...new Set(base.map(r => r.categoria).filter(Boolean))].sort()
-  }, [rows, filtroEmpresa])
+    const base = filtroEmpresa ? categoriasCad.filter(c => c.empresa === filtroEmpresa) : categoriasCad
+    return [...new Set(base.map(c => c.categoria).filter(Boolean))].sort()
+  }, [categoriasCad, filtroEmpresa])
 
   const filtered = useMemo(() => {
     let list = rows
@@ -651,7 +679,7 @@ export default function ControleRecebimentosPage() {
   const statusNome = (id: number | null) => statuses.find(s => s.id === id)?.nome_status ?? '-'
   const tipoNome = (id: number | null) => tipos.find(t => t.id === id)?.tipos ?? '-'
 
-  const pedidosList = useMemo(() => Object.values(pedidos).sort((a, b) => b.id - a.id), [pedidos])
+  const pedidosList = pedidosForAdd
 
   return (
     <div className="space-y-5">
