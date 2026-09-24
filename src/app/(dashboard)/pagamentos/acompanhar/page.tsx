@@ -628,13 +628,22 @@ export default function AcompanharPage() {
                 Mostrando {kanbanPedidos.length.toLocaleString('pt-BR')} de {kanbanTotal.toLocaleString('pt-BR')} pedido(s)
               </p>
               {kanbanPedidos.length < kanbanTotal && (
-                <button
-                  onClick={() => setKanbanLimit(l => l + KANBAN_PASSO)}
-                  disabled={kanbanLoading}
-                  className="btn-secondary text-sm disabled:opacity-40"
-                >
-                  {kanbanLoading ? 'Carregando...' : `Carregar mais ${KANBAN_PASSO}`}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setKanbanLimit(l => l + KANBAN_PASSO)}
+                    disabled={kanbanLoading}
+                    className="btn-secondary text-sm disabled:opacity-40"
+                  >
+                    {kanbanLoading ? 'Carregando...' : `Carregar mais ${KANBAN_PASSO}`}
+                  </button>
+                  <button
+                    onClick={() => setKanbanLimit(kanbanTotal)}
+                    disabled={kanbanLoading}
+                    className="btn-secondary text-sm disabled:opacity-40"
+                  >
+                    Carregar todos
+                  </button>
+                </div>
               )}
             </div>
           )}
