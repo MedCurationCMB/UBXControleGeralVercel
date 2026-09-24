@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import {
@@ -20,7 +20,22 @@ interface ControleInfo {
 }
 
 const PAGE_SIZE = 100
-const KANBAN_LIMIT = 300
+const KANBAN_PASSO = 300
+const STORAGE_KEY = 'acompanhar-pagamentos-v1'
+
+type Ordem = 'recentes' | 'antigos' | 'valor_desc' | 'valor_asc' | 'empresa' | 'parte'
+
+// "Empresa" é o centro de custo do pedido.
+const ORDEM_SQL: Record<Ordem, { col: string; asc: boolean; label: string }> = {
+  recentes:   { col: 'data_solicitacao', asc: false, label: 'Data: mais recente → mais antigo' },
+  antigos:    { col: 'data_solicitacao', asc: true,  label: 'Data: mais antigo → mais recente' },
+  valor_desc: { col: 'valor_pedido',     asc: false, label: 'Valor: maior → menor' },
+  valor_asc:  { col: 'valor_pedido',     asc: true,  label: 'Valor: menor → maior' },
+  empresa:    { col: 'empresa',          asc: true,  label: 'Centro de custo (A–Z)' },
+  parte:      { col: 'fornecedor',        asc: true,  label: 'Fornecedor (A–Z)' },
+}
+
+const chaveFiltros = (...v: (string | undefined)[]) => JSON.stringify(v.map(x => x ?? ''))
 
 const STATUS_OPTIONS = [
   'Aguardando Autorização',
@@ -99,6 +114,10 @@ export default function AcompanharPage() {
   const [filtroCategoria, setFiltroCategoria] = useState('')
   const [filtroFornecedor, setFiltroFornecedor] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
+  const [ordem, setOrdem] = useState<Ordem>('recentes')
+  const [kanbanLimit, setKanbanLimit] = useState(KANBAN_PASSO)
+  const [kanbanTotal, setKanbanTotal] = useState(0)
+  const [restaurado, setRestaurado] = useState(false)
 
   // Fetch distinct option values + current user once on mount
   useEffect(() => {
@@ -118,10 +137,48 @@ export default function AcompanharPage() {
     fetchOpcoes()
   }, [])
 
-  // Reset to page 0 whenever any filter changes
+  const filtrosKey = chaveFiltros(filtroEmpresa, filtroCategoria, filtroFornecedor, filtroStatus, activeSearchId, ordem)
+  const filtrosAnterior = useRef(filtrosKey)
+
+  // Volta para a página 0 (e para o primeiro lote do kanban) quando algum filtro/ordem muda
   useEffect(() => {
+    if (filtrosAnterior.current === filtrosKey) return
+    filtrosAnterior.current = filtrosKey
     setPage(0)
-  }, [filtroEmpresa, filtroCategoria, filtroFornecedor, filtroStatus, activeSearchId])
+    setKanbanLimit(KANBAN_PASSO)
+  }, [filtrosKey])
+
+  // Restaura visão, filtros e ordenação ao voltar do detalhe do pedido
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY)
+      if (raw) {
+        const s = JSON.parse(raw)
+        const ordemOk: Ordem = s.ordem in ORDEM_SQL ? s.ordem : 'recentes'
+        filtrosAnterior.current = chaveFiltros(s.filtroEmpresa, s.filtroCategoria, s.filtroFornecedor, s.filtroStatus, s.activeSearchId, ordemOk)
+        setView(s.view === 'kanban' ? 'kanban' : 'lista')
+        setPage(Number(s.page) || 0)
+        setSearchId(s.searchId ?? '')
+        setActiveSearchId(s.activeSearchId ?? '')
+        setFiltroEmpresa(s.filtroEmpresa ?? '')
+        setFiltroCategoria(s.filtroCategoria ?? '')
+        setFiltroFornecedor(s.filtroFornecedor ?? '')
+        setFiltroStatus(s.filtroStatus ?? '')
+        setOrdem(ordemOk)
+        setKanbanLimit(Number(s.kanbanLimit) || KANBAN_PASSO)
+      }
+    } catch {}
+    setRestaurado(true)
+  }, [])
+
+  useEffect(() => {
+    if (!restaurado) return
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+        view, page, searchId, activeSearchId, filtroEmpresa, filtroCategoria, filtroFornecedor, filtroStatus, ordem, kanbanLimit,
+      }))
+    } catch {}
+  }, [restaurado, view, page, searchId, activeSearchId, filtroEmpresa, filtroCategoria, filtroFornecedor, filtroStatus, ordem, kanbanLimit])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -151,7 +208,8 @@ export default function AcompanharPage() {
         'id, empresa, categoria, fornecedor, valor_pedido, status, emergencia, data_solicitacao, cancelado',
         { count: 'exact' }
       )
-      .order('id', { ascending: false })
+      .order(ORDEM_SQL[ordem].col, { ascending: ORDEM_SQL[ordem].asc, nullsFirst: false })
+      .order('id', { ascending: ordem === 'antigos' })
       .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
     if (filtroEmpresa)    query = query.eq('empresa',   filtroEmpresa)
@@ -168,44 +226,55 @@ export default function AcompanharPage() {
     setPedidos(data ?? [])
     setTotal(count ?? 0)
     setLoading(false)
-  }, [page, activeSearchId, filtroEmpresa, filtroCategoria, filtroFornecedor, filtroStatus])
+  }, [page, activeSearchId, filtroEmpresa, filtroCategoria, filtroFornecedor, filtroStatus, ordem])
 
-  useEffect(() => { if (view === 'lista') load() }, [view, load])
+  useEffect(() => { if (restaurado && view === 'lista') load() }, [restaurado, view, load])
 
   const loadKanban = useCallback(async () => {
     setKanbanLoading(true)
-    let query = supabase
-      .from('pedidos_solicitados')
-      .select('id, empresa, categoria, fornecedor, valor_pedido, status, emergencia, data_solicitacao, cancelado')
-      .order('id', { ascending: false })
-      .limit(KANBAN_LIMIT)
+    const o = ORDEM_SQL[ordem]
+    const todos: Pedido[] = []
+    let count = 0
+    // O Supabase devolve no máximo 1000 linhas por consulta, então busca em blocos.
+    for (let from = 0; from < kanbanLimit; from += 1000) {
+      const to = Math.min(from + 999, kanbanLimit - 1)
+      let query = supabase
+        .from('pedidos_solicitados')
+        .select('id, empresa, categoria, fornecedor, valor_pedido, status, emergencia, data_solicitacao, cancelado', { count: 'exact' })
+        .order(o.col, { ascending: o.asc, nullsFirst: false })
+        .order('id', { ascending: ordem === 'antigos' })
+        .range(from, to)
 
-    if (filtroEmpresa)    query = query.eq('empresa', filtroEmpresa)
-    if (filtroCategoria)  query = query.eq('categoria', filtroCategoria)
-    if (filtroFornecedor) query = query.eq('fornecedor', filtroFornecedor)
+      if (filtroEmpresa)   query = query.eq('empresa', filtroEmpresa)
+      if (filtroCategoria) query = query.eq('categoria', filtroCategoria)
+      if (filtroFornecedor) query = query.eq('fornecedor', filtroFornecedor)
 
-    const { data } = await query
-    setKanbanPedidos(data ?? [])
+      const { data, count: total } = await query
+      todos.push(...(data ?? []))
+      count = total ?? count
+      if ((data?.length ?? 0) < to - from + 1) break
+    }
+    setKanbanPedidos(todos)
+    setKanbanTotal(count)
 
-    const ids = (data ?? []).map(p => p.id)
-    if (ids.length > 0) {
-      const { data: controles } = await supabase
-        .from('controle_pagamentos')
-        .select('pedido_id, valor_pagar, valor_pagamento')
-        .in('pedido_id', ids)
-      const map: Record<number, ControleInfo[]> = {}
+    // .in() vai na URL, então busca os controles em blocos de pedidos
+    const ids = todos.map(p => p.id)
+    const blocos: number[][] = []
+    for (let i = 0; i < ids.length; i += 100) blocos.push(ids.slice(i, i + 100))
+    const respostas = await Promise.all(blocos.map(b =>
+      supabase.from('controle_pagamentos').select('pedido_id, valor_pagar, valor_pagamento').in('pedido_id', b)))
+    const map: Record<number, ControleInfo[]> = {}
+    for (const { data: controles } of respostas) {
       for (const c of (controles ?? [])) {
         if (!map[c.pedido_id]) map[c.pedido_id] = []
         map[c.pedido_id].push({ valor_pagar: c.valor_pagar, valor_pagamento: c.valor_pagamento })
       }
-      setControlesPorPedido(map)
-    } else {
-      setControlesPorPedido({})
     }
+    setControlesPorPedido(map)
     setKanbanLoading(false)
-  }, [filtroEmpresa, filtroCategoria, filtroFornecedor])
+  }, [filtroEmpresa, filtroCategoria, filtroFornecedor, ordem, kanbanLimit])
 
-  useEffect(() => { if (view === 'kanban') loadKanban() }, [view, loadKanban])
+  useEffect(() => { if (restaurado && view === 'kanban') loadKanban() }, [restaurado, view, loadKanban])
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
@@ -310,7 +379,7 @@ export default function AcompanharPage() {
 
       {/* Filtros */}
       <div className="card">
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -358,6 +427,15 @@ export default function AcompanharPage() {
               {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
+          <select
+            className="input"
+            value={ordem}
+            onChange={e => setOrdem(e.target.value as Ordem)}
+            disabled={!!activeSearchId}
+            title="Ordenar por"
+          >
+            {(Object.keys(ORDEM_SQL) as Ordem[]).map(k => <option key={k} value={k}>{ORDEM_SQL[k].label}</option>)}
+          </select>
         </div>
 
         {view === 'lista' && (
@@ -476,11 +554,11 @@ export default function AcompanharPage() {
               <strong>Aguardando Ajuste</strong> e <strong>Não Autorizado</strong>, ou arrastado para{' '}
               <strong>Autorizado — Aguardando Pagamento</strong> para autorizar (isso já cria a conta a pagar). A partir
               daí o card trava — pagamento é controlado em Controle de Pagamentos, e cancelamento continua sendo feito
-              pelo detalhe do pedido. Mostrando os {KANBAN_LIMIT} pedidos mais recentes; use os filtros para refinar.
+              pelo detalhe do pedido.
             </p>
           </div>
 
-          {kanbanLoading ? (
+          {kanbanLoading && kanbanPedidos.length === 0 ? (
             <div className="card text-center py-12 text-slate-400">Carregando...</div>
           ) : kanbanPedidos.length === 0 ? (
             <div className="card text-center py-12">
@@ -488,14 +566,14 @@ export default function AcompanharPage() {
               <p className="text-slate-500">Nenhum pedido encontrado</p>
             </div>
           ) : (
-            <div className="flex gap-3 overflow-x-auto pb-2">
+            <div className={`flex gap-3 overflow-x-auto pb-2 ${kanbanLoading ? 'opacity-60' : ''}`}>
               {COLUNAS_PEDIDO.map(col => {
                 const cards = comEstagio.filter(c => c.estagio === col.key)
                 const podeReceberDrop = isAdminOrOwner && (COLUNAS_LIVRES.includes(col.key) || col.key === 'aguardando_pagamento')
                 return (
                   <div
                     key={col.key}
-                    className="flex-shrink-0 w-64 bg-slate-50 rounded-lg border border-slate-200"
+                    className="flex-shrink-0 w-64 bg-slate-50 rounded-lg border border-slate-200 flex flex-col max-h-[70vh]"
                     onDragOver={podeReceberDrop ? e => e.preventDefault() : undefined}
                     onDrop={podeReceberDrop ? e => {
                       e.preventDefault()
@@ -512,11 +590,11 @@ export default function AcompanharPage() {
                       setDraggingId(null)
                     } : undefined}
                   >
-                    <div className="px-3 py-2.5 border-b border-slate-200">
+                    <div className="px-3 py-2.5 border-b border-slate-200 shrink-0">
                       <p className="text-xs font-semibold text-slate-600">{col.titulo}</p>
                       <p className="text-xs text-slate-400">{cards.length} pedido(s)</p>
                     </div>
-                    <div className="p-2 space-y-2 min-h-[80px]">
+                    <div className="p-2 space-y-2 min-h-[80px] overflow-y-auto">
                       {cards.map(({ pedido: p }) => {
                         const arrastavel = isAdminOrOwner && COLUNAS_LIVRES.includes(col.key)
                         return (
@@ -542,6 +620,22 @@ export default function AcompanharPage() {
                   </div>
                 )
               })}
+            </div>
+          )}
+          {kanbanPedidos.length > 0 && (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-slate-500">
+                Mostrando {kanbanPedidos.length.toLocaleString('pt-BR')} de {kanbanTotal.toLocaleString('pt-BR')} pedido(s)
+              </p>
+              {kanbanPedidos.length < kanbanTotal && (
+                <button
+                  onClick={() => setKanbanLimit(l => l + KANBAN_PASSO)}
+                  disabled={kanbanLoading}
+                  className="btn-secondary text-sm disabled:opacity-40"
+                >
+                  {kanbanLoading ? 'Carregando...' : `Carregar mais ${KANBAN_PASSO}`}
+                </button>
+              )}
             </div>
           )}
         </>
