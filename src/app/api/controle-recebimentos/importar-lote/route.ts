@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
     }))
 
     const { error } = await supabaseServer.from('controle_recebimento').insert(inserts)
-    if (error) throw error
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
     return NextResponse.json({ ok: true, count: rows.length })
   } catch (err) {
