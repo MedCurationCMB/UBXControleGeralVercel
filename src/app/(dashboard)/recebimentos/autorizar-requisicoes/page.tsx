@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { CheckCircle, XCircle, RefreshCw, Search } from 'lucide-react'
 import Confirm from '@/components/ui/Confirm'
+import { ListaAnexos, type Anexo } from '@/components/requisicoes/Anexos'
 
 interface Requisicao {
   id: number; empresa: string; categoria: string; descricao: string
-  data_solicitacao: string
+  data_solicitacao: string; anexos?: Anexo[] | null
 }
 
 const fmtData = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
@@ -30,7 +31,7 @@ export default function AutorizarRequisicoesReceitaPage() {
     const [{ data: reqs }, u] = await Promise.all([
       supabase
         .from('requisicoes_receita')
-        .select('id, empresa, categoria, descricao, data_solicitacao')
+        .select('*')
         .eq('status', 'Aguardando Autorização')
         .order('id', { ascending: true }),
       fetch('/api/auth/me').then(r => r.json()),
@@ -106,6 +107,7 @@ export default function AutorizarRequisicoesReceitaPage() {
                   <th className="table-cell text-left">Empresa</th>
                   <th className="table-cell text-left">Categoria</th>
                   <th className="table-cell text-left">Descrição</th>
+                  <th className="table-cell text-left">Anexos</th>
                   <th className="table-cell text-left">Data</th>
                   <th className="table-cell text-center w-32">Ações</th>
                 </tr>
@@ -117,6 +119,9 @@ export default function AutorizarRequisicoesReceitaPage() {
                     <td className="table-cell">{r.empresa}</td>
                     <td className="table-cell">{r.categoria}</td>
                     <td className="table-cell max-w-sm">{r.descricao}</td>
+                    <td className="table-cell max-w-xs">
+                      {(r.anexos ?? []).length > 0 ? <ListaAnexos anexos={r.anexos ?? []} /> : <span className="text-slate-300">—</span>}
+                    </td>
                     <td className="table-cell">{fmtData(r.data_solicitacao)}</td>
                     <td className="table-cell text-center">
                       <div className="flex items-center justify-center gap-1.5">

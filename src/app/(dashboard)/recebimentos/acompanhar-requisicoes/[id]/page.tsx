@@ -4,11 +4,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { ArrowLeft, Pencil, Check, X } from 'lucide-react'
+import { enviarAnexos, ListaAnexos, BotaoAnexar, type Anexo } from '@/components/requisicoes/Anexos'
 
 interface Requisicao {
   id: number; empresa: string; categoria: string; descricao: string
   status: string; data_solicitacao: string; data_autorizacao: string | null
-  usuario_autorizador: string | null
+  usuario_autorizador: string | null; anexos?: Anexo[] | null
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -34,6 +35,7 @@ export default function RequisicaoReceitaDetalhePage() {
   const [categoria, setCategoria] = useState('')
   const [descricao, setDescricao] = useState('')
   const [saving, setSaving] = useState(false)
+  const [anexando, setAnexando] = useState(false)
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
@@ -87,6 +89,24 @@ export default function RequisicaoReceitaDetalhePage() {
     if (err) { setError(err.message); return }
     setEditing(false)
     load()
+  }
+
+  const anexos: Anexo[] = requisicao?.anexos ?? []
+
+  const salvarAnexos = async (novos: Anexo[]) => {
+    if (!requisicao) return
+    const { error: err } = await supabase.from('requisicoes_receita').update({ anexos: novos }).eq('id', requisicao.id)
+    if (err) { setError(err.message); return }
+    load()
+  }
+
+  const handleAnexar = async (files: File[]) => {
+    if (files.length === 0) return
+    setError('')
+    setAnexando(true)
+    try { await salvarAnexos([...anexos, ...(await enviarAnexos(files))]) }
+    catch (e) { setError((e as Error).message) }
+    setAnexando(false)
   }
 
   if (loading) return <div className="card text-center py-12 text-slate-400">Carregando...</div>
@@ -150,6 +170,16 @@ export default function RequisicaoReceitaDetalhePage() {
             <textarea className="input min-h-[80px] resize-y" value={descricao} onChange={e => setDescricao(e.target.value)} />
           ) : (
             <p className="text-sm text-slate-800 whitespace-pre-wrap">{requisicao.descricao}</p>
+          )}
+        </div>
+
+        <div>
+          <label className="label">Anexos</label>
+          <ListaAnexos anexos={anexos} onRemove={podeEditar ? a => salvarAnexos(anexos.filter(x => x.id !== a.id)) : undefined} />
+          {podeEditar && (
+            <div className="mt-2">
+              <BotaoAnexar onFiles={handleAnexar} disabled={anexando} label={anexando ? 'Enviando...' : 'Anexar arquivo'} />
+            </div>
           )}
         </div>
 

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
-import { CheckCircle, Info } from 'lucide-react'
+import { CheckCircle, Info, Paperclip, X } from 'lucide-react'
+import { enviarAnexos, BotaoAnexar, type Anexo } from '@/components/requisicoes/Anexos'
 
 export default function RequisicoesPage() {
   const [fluxoAtivo, setFluxoAtivo] = useState<boolean | null>(null)
@@ -13,6 +14,7 @@ export default function RequisicoesPage() {
   const [empresa, setEmpresa] = useState('')
   const [categoria, setCategoria] = useState('')
   const [descricao, setDescricao] = useState('')
+  const [arquivos, setArquivos] = useState<File[]>([])
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -48,8 +50,11 @@ export default function RequisicoesPage() {
     if (!descricao.trim()) { setError('Informe a descrição'); return }
 
     setSaving(true)
+    let anexos: Anexo[] = []
+    try { anexos = await enviarAnexos(arquivos) } catch (e) { setSaving(false); setError((e as Error).message); return }
     const { error: err } = await supabase.from('requisicoes').insert({
       empresa, categoria, descricao: descricao.trim(),
+      ...(anexos.length ? { anexos } : {}),
       status: 'Aguardando Autorização',
       data_solicitacao: new Date().toISOString().split('T')[0],
     })
@@ -60,6 +65,7 @@ export default function RequisicoesPage() {
     setEmpresa('')
     setCategoria('')
     setDescricao('')
+    setArquivos([])
     setTimeout(() => setSuccessInfo(null), 6000)
   }
 
@@ -131,6 +137,23 @@ export default function RequisicoesPage() {
             value={descricao}
             onChange={e => setDescricao(e.target.value)}
           />
+        </div>
+
+        <div>
+          <label className="label">Anexos (opcional)</label>
+          <BotaoAnexar onFiles={f => setArquivos(a => [...a, ...f])} disabled={saving} />
+          {arquivos.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {arquivos.map((f, i) => (
+                <li key={i} className="flex items-center gap-2 text-sm text-slate-600">
+                  <Paperclip size={13} className="text-slate-400 shrink-0" />
+                  <span className="truncate">{f.name}</span>
+                  <button type="button" onClick={() => setArquivos(a => a.filter((_, j) => j !== i))}
+                    className="text-slate-400 hover:text-red-500" title="Remover"><X size={14} /></button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <button type="submit" disabled={saving} className="btn-primary">
