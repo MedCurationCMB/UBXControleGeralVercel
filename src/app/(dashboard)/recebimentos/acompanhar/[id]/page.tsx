@@ -6,8 +6,9 @@ import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import {
   ArrowLeft, AlertTriangle, RefreshCw,
   MessageSquare, FileText, Upload, ExternalLink,
-  X, ChevronDown, ChevronUp, CreditCard, Check, Edit2,
+  X, ChevronDown, ChevronUp, CreditCard, Check, Edit2, Printer,
 } from 'lucide-react'
+import { gerarPdfPedido } from '@/lib/pedido-pdf'
 import Modal from '@/components/ui/Modal'
 import Confirm from '@/components/ui/Confirm'
 
@@ -781,6 +782,27 @@ export default function AcompanharRecebimentoDetalhePage() {
 
   useEffect(() => { if (!isNaN(pedidoId)) load() }, [load, pedidoId])
 
+  const handlePrint = () => {
+    if (!pedido) return
+    return gerarPdfPedido({
+      titulo: 'PEDIDO DE RECEBIMENTO',
+      arquivo: `pedido_recebimento_${pedido.id}.pdf`,
+      campos: [
+        ['Pedido ID', `#${pedido.id}`], ['Empresa', pedido.empresa], ['Categoria', pedido.categoria],
+        ['Cliente', pedido.cliente], ['Valor', fmtMoeda(Number(pedido.valor_pedido))],
+        ['Status', pedido.status], ['Data Solicitação', fmtData(pedido.data_solicitacao)],
+        ['Data Autorização', fmtData(pedido.data_autorizacao)],
+        ['Emergência', pedido.emergencia ? 'Sim' : 'Não'],
+        ['Cancelado', pedido.cancelado ? 'Sim' : 'Não'],
+        ...(pedido.observacao ? [['Observação', pedido.observacao] as [string, string]] : []),
+        ...(statusNome ? [['Status do Pedido', statusNome] as [string, string]] : []),
+        ...(pedido.usuario_autorizador ? [['Autorizado por', pedido.usuario_autorizador] as [string, string]] : []),
+      ],
+      cronogramaTitulo: 'Cronograma de Recebimentos',
+      cronograma: fluxo.map(r => ({ periodo: `${r.mes}/${r.ano}`, valor: fmtMoeda(Number(r.valor_referente)), status: r.status })),
+    })
+  }
+
   if (loading) return <div className="card text-center py-16 text-slate-400">Carregando...</div>
   if (error || !pedido) return (
     <div className="card text-center py-12">
@@ -823,6 +845,10 @@ export default function AcompanharRecebimentoDetalhePage() {
         <button onClick={() => setShowRecebimentos(true)}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700">
           <CreditCard size={15} /> Controle de Recebimentos
+        </button>
+        <button onClick={handlePrint}
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-800">
+          <Printer size={15} /> Imprimir Pedido
         </button>
         <button onClick={() => setShowComents(true)}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-sm font-medium hover:bg-slate-200">

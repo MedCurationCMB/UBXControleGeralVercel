@@ -1,5 +1,6 @@
 'use client'
 
+import { gerarPdfPedido } from '@/lib/pedido-pdf'
 import { useContratosLiberados } from '@/lib/useContratosLiberados'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -1121,32 +1122,25 @@ export default function AcompanharDetalhePage() {
 
   useEffect(() => { if (!isNaN(pedidoId)) load() }, [load, pedidoId])
 
-  const handlePrint = async () => {
+  const handlePrint = () => {
     if (!pedido) return
-    const { jsPDF } = await import('jspdf')
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-    doc.setFontSize(16); doc.setFont('helvetica', 'bold')
-    doc.text('PEDIDO DE PAGAMENTO', 105, 18, { align: 'center' })
-    doc.setFontSize(10); doc.setFont('helvetica', 'normal')
-    const fields: [string, string][] = [
-      ['Pedido ID', `#${pedido.id}`], ['Empresa', pedido.empresa], ['Categoria', pedido.categoria],
-      ['Fornecedor', pedido.fornecedor], ['Valor', fmtMoeda(pedido.valor_pedido)],
-      ['Status', pedido.status], ['Data Solicitação', fmtData(pedido.data_solicitacao)],
-      ['Data Autorização', fmtData(pedido.data_autorizacao)],
-      ['Emergência', pedido.emergencia ? 'Sim' : 'Não'],
-      ['Cancelado', pedido.cancelado ? 'Sim' : 'Não'],
-    ]
-    if (pedido.observacao) fields.push(['Observação', pedido.observacao])
-    if (statusNome) fields.push(['Status do Pedido', statusNome])
-    if (pedido.usuario_autorizador) fields.push(['Autorizado por', pedido.usuario_autorizador])
-    let y = 32
-    fields.forEach(([k, v]) => { doc.setFont('helvetica', 'bold'); doc.text(k + ':', 20, y); doc.setFont('helvetica', 'normal'); doc.text(v ?? '—', 70, y); y += 7 })
-    if (fluxo.length > 0) {
-      y += 5; doc.setFont('helvetica', 'bold'); doc.text('Cronograma de Pagamentos', 20, y); y += 7
-      doc.setFont('helvetica', 'normal')
-      fluxo.forEach(r => { doc.text(`${r.mes}/${r.ano}`, 25, y); doc.text(fmtMoeda(Number(r.valor_referente)), 80, y); doc.text(r.status, 140, y); y += 6 })
-    }
-    doc.save(`pedido_${pedido.id}.pdf`)
+    return gerarPdfPedido({
+      titulo: 'PEDIDO DE PAGAMENTO',
+      arquivo: `pedido_${pedido.id}.pdf`,
+      campos: [
+        ['Pedido ID', `#${pedido.id}`], ['Empresa', pedido.empresa], ['Categoria', pedido.categoria],
+        ['Fornecedor', pedido.fornecedor], ['Valor', fmtMoeda(Number(pedido.valor_pedido))],
+        ['Status', pedido.status], ['Data Solicitação', fmtData(pedido.data_solicitacao)],
+        ['Data Autorização', fmtData(pedido.data_autorizacao)],
+        ['Emergência', pedido.emergencia ? 'Sim' : 'Não'],
+        ['Cancelado', pedido.cancelado ? 'Sim' : 'Não'],
+        ...(pedido.observacao ? [['Observação', pedido.observacao] as [string, string]] : []),
+        ...(statusNome ? [['Status do Pedido', statusNome] as [string, string]] : []),
+        ...(pedido.usuario_autorizador ? [['Autorizado por', pedido.usuario_autorizador] as [string, string]] : []),
+      ],
+      cronogramaTitulo: 'Cronograma de Pagamentos',
+      cronograma: fluxo.map(r => ({ periodo: `${r.mes}/${r.ano}`, valor: fmtMoeda(Number(r.valor_referente)), status: r.status })),
+    })
   }
 
   const handleCancel = async () => {
