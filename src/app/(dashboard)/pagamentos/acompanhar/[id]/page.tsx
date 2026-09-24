@@ -77,6 +77,7 @@ function ControlePagamentosModal({
   const [valorPagar, setValorPagar] = useState('')
   const [tipoAdd, setTipoAdd] = useState<number | ''>('')
   const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState('')
 
   // Edit row
   const [editId, setEditId] = useState<number | null>(null)
@@ -121,12 +122,14 @@ function ControlePagamentosModal({
     e.preventDefault()
     if (!valorPagar || tipoAdd === '') return
     setAdding(true)
-    await supabase.from('controle_pagamentos').insert({
+    setAddError('')
+    const { error } = await supabase.from('controle_pagamentos').insert({
       pedido_id: pedidoId,
       data_vencimento: dataVenc || null,
       valor_pagar: parseFloat(valorPagar),
       tipo_pagamento: tipoAdd,
     })
+    if (error) { setAddError(error.message); setAdding(false); return }
     setDataVenc(new Date().toISOString().split('T')[0])
     setValorPagar('')
     setTipoAdd('')
@@ -221,6 +224,7 @@ function ControlePagamentosModal({
                 </select>
               </div>
             </div>
+            {addError && <p className="text-sm text-red-600 mt-3">{addError}</p>}
             <button type="submit" disabled={adding} className="btn-primary mt-3 text-sm">
               {adding ? 'Adicionando...' : '+ Adicionar Pagamento'}
             </button>

@@ -74,10 +74,12 @@ function EditModal({
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [error, setError] = useState('')
 
   const handleSave = async () => {
     setSaving(true)
-    await supabase.from('controle_pagamentos').update({
+    setError('')
+    const { error } = await supabase.from('controle_pagamentos').update({
       data_vencimento: form.data_vencimento || null,
       valor_pagar: form.valor_pagar ? parseFloat(form.valor_pagar) : null,
       data_pagamento: form.data_pagamento || null,
@@ -86,6 +88,7 @@ function EditModal({
       tipo_pagamento: form.tipo_pagamento ? Number(form.tipo_pagamento) : null,
     }).eq('id', row.id)
     setSaving(false)
+    if (error) { setError(error.message); return }
     onSaved()
   }
 
@@ -148,6 +151,8 @@ function EditModal({
               onChange={e => setForm(f => ({ ...f, valor_pagamento: e.target.value }))} />
           </div>
         </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
 
         <div className="flex items-center justify-between pt-2">
           {confirmDelete ? (
