@@ -155,6 +155,7 @@ export default function SolicitarPage() {
 
   // Step management
   const [step, setStep] = useState<'form' | 'meses'>('form')
+  const [username, setUsername] = useState('')
 
   // Step 2
   const [saldos, setSaldos] = useState<SaldoMes[]>([])
@@ -179,6 +180,10 @@ export default function SolicitarPage() {
   const [requisicoesAutorizadas, setRequisicoesAutorizadas] = useState<Requisicao[]>([])
   const [requisicoesUsadas, setRequisicoesUsadas] = useState<Set<number>>(new Set())
   const [requisicaoId, setRequisicaoId] = useState<number | ''>('')
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(u => setUsername(u?.username ?? '')).catch(() => {})
+  }, [])
 
   // Load reference data from orcamentos_usuarios
   useEffect(() => {
@@ -348,6 +353,9 @@ export default function SolicitarPage() {
       setError(`Não foi possível gravar os períodos: ${errFluxo.message}`)
       return
     }
+
+    // Quem pediu (falha em silêncio se a coluna ainda não existir no banco)
+    if (username) await supabase.from('pedidos_solicitados').update({ usuario_solicitante: username }).eq('id', pedido.id)
 
     if (usaRequisicao && requisicaoId !== '') {
       setRequisicoesUsadas(prev => new Set(prev).add(requisicaoId))

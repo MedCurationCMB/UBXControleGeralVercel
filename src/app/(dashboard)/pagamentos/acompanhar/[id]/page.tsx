@@ -13,6 +13,12 @@ import {
 import Modal from '@/components/ui/Modal'
 import Confirm from '@/components/ui/Confirm'
 
+type UsuarioSessao = { username: string; hierarquia?: string }
+
+// Só quem pediu o pedido (ou um admin) ajusta e reenvia. Pedidos antigos, sem solicitante, ficam livres.
+const podeAjustarPedido = (p: { usuario_solicitante?: string | null }, u: UsuarioSessao | null) =>
+  !p.usuario_solicitante || p.usuario_solicitante === u?.username || u?.hierarquia === 'admin' || u?.hierarquia === 'owner'
+
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 
 // --- Types ---
@@ -23,6 +29,7 @@ interface Pedido {
   cancelado: boolean; usuario_autorizador: string | null
   pedido_status: number | null; arquivo_texto: string | null
   arquivos_pdf_ids: string[] | null
+  usuario_solicitante?: string | null; ajuste_reenviado?: boolean
 }
 interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string }
 interface Comentario {
@@ -1057,7 +1064,7 @@ export default function AcompanharDetalhePage() {
   const [fluxo, setFluxo] = useState<FluxoRow[]>([])
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([])
   const [statusNome, setStatusNome] = useState<string | null>(null)
-  const [user, setUser] = useState<{ username: string } | null>(null)
+  const [user, setUser] = useState<UsuarioSessao | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -1241,17 +1248,46 @@ export default function AcompanharDetalhePage() {
     const { error: e4 } = await supabase.from('pedidos_solicitados_fluxo').insert(linhasNovas)
     if (e4) return desfazer(e4.message)
 
+    // Registra no histórico o que mudou (de → para)
+    const curto = (t: string) => (t.length > 100 ? `${t.slice(0, 100)}…` : t) || '—'
+    const descreverPeriodos = (rows: { mes: number; ano: number; valor: number }[]) =>
+      [...rows].sort((a, b) => a.ano - b.ano || a.mes - b.mes)
+        .map(r => `${MESES[r.mes - 1].slice(0, 3)}/${r.ano} ${fmtMoeda(r.valor)}`).join(', ')
+    const mudancas: string[] = []
+    const dif = (rotulo: string, antes: string, depois: string) => {
+      if (antes.trim() !== depois.trim()) mudancas.push(`${rotulo}: ${curto(antes)} → ${curto(depois)}`)
+    }
+    dif('Empresa', pedido.empresa, editForm.empresa)
+    dif('Categoria', pedido.categoria, editForm.categoria)
+    dif('Fornecedor', pedido.fornecedor, editForm.fornecedor)
+    dif('Observação', pedido.observacao ?? '', editForm.observacao)
+    dif('Valor total', fmtMoeda(Number(pedido.valor_pedido)), fmtMoeda(total))
+    dif('Períodos',
+      descreverPeriodos(fluxo.map(r => ({ mes: r.mes, ano: r.ano, valor: Number(r.valor_referente) }))),
+      descreverPeriodos(periodos))
+    if (mudancas.length > 0) {
+      await supabase.from('comentarios').insert({
+        pedido_id: pedidoId,
+        comentario: `Alterações no pedido:\n${mudancas.map(m => `• ${m}`).join('\n')}`,
+        usuario: user?.username ?? 'sistema',
+        data_comentario: new Date().toISOString(),
+        tipo_documento: null,
+      })
+    }
+
     setSavingEdit(false)
     setEditando(false)
     load()
   }
 
   const handleReenviar = async () => {
-    if (!pedido || !user) return
+    if (!pedido || !user || !podeAjustarPedido(pedido, user)) return
     setReenviando(true)
     await supabase.from('pedidos_solicitados')
       .update({ status: 'Aguardando Autorização' })
       .eq('id', pedidoId)
+    // Marca para o autorizador (ignora erro se a coluna ainda não existir)
+    await supabase.from('pedidos_solicitados').update({ ajuste_reenviado: true }).eq('id', pedidoId)
     await supabase.from('comentarios').insert({
       pedido_id: pedidoId,
       comentario: 'Pedido reenviado para aprovação após ajustes.',
@@ -1348,7 +1384,7 @@ export default function AcompanharDetalhePage() {
           {/* Histórico de comentários de ajuste */}
           {comentariosAjuste.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-orange-800 uppercase tracking-wide">Comentários do Gestor</p>
+              <p className="text-xs font-semibold text-orange-800 uppercase tracking-wide">Histórico: comentários e alterações</p>
               {comentariosAjuste.map(c => (
                 <div key={c.id} className="bg-white border border-orange-200 rounded-lg px-4 py-3">
                   <div className="flex items-center justify-between mb-1">
@@ -1363,8 +1399,14 @@ export default function AcompanharDetalhePage() {
             </div>
           )}
 
+          {!podeAjustarPedido(pedido, user) && (
+            <p className="text-sm text-orange-800">
+              Somente {pedido.usuario_solicitante} ou um administrador pode ajustar e reenviar este pedido.
+            </p>
+          )}
+
           {/* Formulário de edição */}
-          {!editando ? (
+          {!podeAjustarPedido(pedido, user) ? null : !editando ? (
             <button onClick={() => setEditando(true)} className="btn-secondary gap-1.5 text-sm">
               <Edit2 size={14} /> Editar Pedido
             </button>
@@ -1437,7 +1479,7 @@ export default function AcompanharDetalhePage() {
           )}
 
           {/* Botão reenviar */}
-          {!editando && (
+          {!editando && podeAjustarPedido(pedido, user) && (
             <button onClick={handleReenviar} disabled={reenviando}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50">
               {reenviando ? <><RefreshCw size={14} className="animate-spin" /> Reenviando...</> : <><Send size={14} /> Reenviar para Aprovação</>}

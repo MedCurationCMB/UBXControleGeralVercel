@@ -99,6 +99,30 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
   const [fluxoSistema, setFluxoSistema] = useState<string | null>(null)
   const [fluxoSistemaReceita, setFluxoSistemaReceita] = useState<string | null>(null)
   const contratosLiberados = useContratosLiberados()
+  const [badges, setBadges] = useState<Record<string, number>>({})
+
+  // Contadores: pedidos esperando autorização (admin) e pedidos meus devolvidos para ajuste.
+  // Atualiza a cada navegação.
+  useEffect(() => {
+    let ativo = true
+    ;(async () => {
+      const u = await fetch('/api/auth/me').then(r => r.json()).catch(() => null)
+      const contar = (tabela: string, status: string) =>
+        supabase.from(tabela).select('id', { count: 'exact', head: true }).eq('status', status).eq('cancelado', false)
+      const [aut, autRec, ajuste] = await Promise.all([
+        isAdminOrOwner ? contar('pedidos_solicitados', 'Aguardando Autorização') : null,
+        isAdminOrOwner ? contar('pedidos_solicitados_receita', 'Aguardando Autorização') : null,
+        u?.username ? contar('pedidos_solicitados', 'Aguardando Ajuste').eq('usuario_solicitante', u.username) : null,
+      ])
+      if (!ativo) return
+      setBadges({
+        '/pagamentos/autorizar': aut?.count ?? 0,
+        '/recebimentos/autorizar': autRec?.count ?? 0,
+        '/pagamentos/acompanhar': ajuste?.count ?? 0,
+      })
+    })()
+    return () => { ativo = false }
+  }, [pathname, isAdminOrOwner])
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed')
@@ -190,13 +214,20 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
                     href={item.href}
                     title={collapsed ? item.label : undefined}
                     className={cn(
-                      'sidebar-link',
+                      'sidebar-link relative',
                       isActive && 'active',
                       collapsed && 'justify-center px-0'
                     )}
                   >
                     <Icon size={16} className="shrink-0" />
                     {!collapsed && <span>{item.label}</span>}
+                    {!!badges[item.href] && (
+                      collapsed
+                        ? <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-orange-500" />
+                        : <span className="ml-auto bg-orange-500 text-white text-[10px] font-semibold rounded-full px-1.5 min-w-[18px] text-center">
+                            {badges[item.href]}
+                          </span>
+                    )}
                   </Link>
                 )
               })}

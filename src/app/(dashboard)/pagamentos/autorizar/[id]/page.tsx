@@ -20,6 +20,7 @@ interface Pedido {
   data_solicitacao: string; data_autorizacao: string | null; status: string
   cancelado: boolean; usuario_autorizador: string | null
   pedido_status: number | null; arquivo_texto: string | null; analise_texto: string | null
+  usuario_solicitante?: string | null; ajuste_reenviado?: boolean
 }
 interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string }
 interface Comentario { id: number; comentario: string; usuario: string; data_comentario: string; tipo_documento: number | null }
@@ -544,6 +545,7 @@ export default function DetalhePedidoPage() {
   const [ajusteComentario, setAjusteComentario] = useState('')
   const [ajusteProcessing, setAjusteProcessing] = useState(false)
   const [ajusteError, setAjusteError] = useState('')
+  const [historico, setHistorico] = useState<Comentario[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -564,6 +566,16 @@ export default function DetalhePedidoPage() {
     setPedido(p as Pedido)
     setFluxo(fl ?? [])
     setUser(u)
+
+    // Pedido reenviado após ajuste: mostra o que o solicitante alterou
+    if ((p as Pedido).ajuste_reenviado) {
+      const { data: coms } = await supabase.from('comentarios')
+        .select('id, comentario, usuario, data_comentario, tipo_documento')
+        .eq('pedido_id', pedidoId).order('data_comentario', { ascending: false }).limit(6)
+      setHistorico(coms ?? [])
+    } else {
+      setHistorico([])
+    }
 
     // Fetch pedido_status name if set
     if ((p as Pedido).pedido_status) {
@@ -650,6 +662,7 @@ export default function DetalhePedidoPage() {
     await supabase.from('pedidos_solicitados')
       .update({ status: 'Aguardando Ajuste' })
       .eq('id', pedidoId)
+    await supabase.from('pedidos_solicitados').update({ ajuste_reenviado: false }).eq('id', pedidoId)
     await supabase.from('comentarios').insert({
       pedido_id: pedidoId,
       comentario: ajusteComentario.trim(),
@@ -719,6 +732,23 @@ export default function DetalhePedidoPage() {
           {pedido.status}
         </span>
       </div>
+
+      {pedido.ajuste_reenviado && pedido.status === 'Aguardando Autorização' && (
+        <div className="border border-blue-200 bg-blue-50 rounded-xl p-4 space-y-2">
+          <p className="text-sm font-semibold text-blue-800">
+            Pedido reenviado após ajuste{pedido.usuario_solicitante ? ` por ${pedido.usuario_solicitante}` : ''}
+          </p>
+          {historico.map(c => (
+            <div key={c.id} className="bg-white border border-blue-100 rounded-lg px-3 py-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-slate-700">{c.usuario}</span>
+                <span className="text-xs text-slate-400">{new Date(c.data_comentario).toLocaleString('pt-BR')}</span>
+              </div>
+              <p className="text-sm text-slate-800 whitespace-pre-wrap">{c.comentario}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Action buttons row */}
       <div className="flex flex-wrap gap-2">

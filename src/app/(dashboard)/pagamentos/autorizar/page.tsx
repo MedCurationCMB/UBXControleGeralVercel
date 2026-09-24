@@ -9,7 +9,7 @@ import Confirm from '@/components/ui/Confirm'
 interface Pedido {
   id: number; empresa: string; categoria: string; fornecedor: string
   valor_pedido: number; observacao: string | null; emergencia: boolean
-  data_solicitacao: string
+  data_solicitacao: string; usuario_solicitante?: string | null; ajuste_reenviado?: boolean
 }
 
 const fmtMoeda = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -19,6 +19,9 @@ export default function AutorizarPage() {
   const router = useRouter()
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
+  const [aba, setAba] = useState<'autorizacao' | 'ajuste'>('autorizacao')
+  const [contagem, setContagem] = useState({ autorizacao: 0, ajuste: 0 })
+  const emAjuste = aba === 'ajuste'
   const [user, setUser] = useState<{ username: string } | null>(null)
 
   const [searchId, setSearchId] = useState('')
@@ -42,6 +45,7 @@ export default function AutorizarPage() {
     }
     setAjuste(a => a ? { ...a, processing: true, error: '' } : a)
     await supabase.from('pedidos_solicitados').update({ status: 'Aguardando Ajuste' }).eq('id', ajuste.id)
+    await supabase.from('pedidos_solicitados').update({ ajuste_reenviado: false }).eq('id', ajuste.id)
     await supabase.from('comentarios').insert({
       pedido_id: ajuste.id, comentario: ajuste.comentario.trim(),
       usuario: user?.username ?? '', data_comentario: new Date().toISOString(), tipo_documento: null,
@@ -52,21 +56,26 @@ export default function AutorizarPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: peds }, u] = await Promise.all([
+    const contar = (status: string) => supabase.from('pedidos_solicitados')
+      .select('id', { count: 'exact', head: true }).eq('status', status).eq('cancelado', false)
+    const [{ data: peds }, cAut, cAju, u] = await Promise.all([
       supabase
         .from('pedidos_solicitados')
-        .select('id, empresa, categoria, fornecedor, valor_pedido, observacao, emergencia, data_solicitacao')
-        .eq('status', 'Aguardando Autorização')
+        .select('*')
+        .eq('status', aba === 'ajuste' ? 'Aguardando Ajuste' : 'Aguardando Autorização')
         .eq('cancelado', false)
         .order('emergencia', { ascending: false })
         .order('id', { ascending: true }),
+      contar('Aguardando Autorização'),
+      contar('Aguardando Ajuste'),
       fetch('/api/auth/me').then(r => r.json()),
     ])
     setPedidos(peds ?? [])
+    setContagem({ autorizacao: cAut.count ?? 0, ajuste: cAju.count ?? 0 })
     setUser(u)
     setLoading(false)
     setSelected(new Set())
-  }, [])
+  }, [aba])
 
   useEffect(() => { load() }, [load])
 
@@ -134,10 +143,22 @@ export default function AutorizarPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Autorizar Pedidos</h1>
-          <p className="page-subtitle">Pedidos aguardando autorização</p>
+          <p className="page-subtitle">{emAjuste ? 'Pedidos devolvidos ao solicitante para ajuste' : 'Pedidos aguardando autorização'}</p>
         </div>
         <button onClick={load} className="btn-secondary p-2" title="Atualizar">
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {/* Abas */}
+      <div className="flex rounded-lg border border-slate-200 overflow-hidden w-fit">
+        <button onClick={() => setAba('autorizacao')}
+          className={`px-4 py-1.5 text-sm ${aba === 'autorizacao' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+          Aguardando autorização ({contagem.autorizacao})
+        </button>
+        <button onClick={() => setAba('ajuste')}
+          className={`px-4 py-1.5 text-sm ${aba === 'ajuste' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+          Aguardando ajuste ({contagem.ajuste})
         </button>
       </div>
 
@@ -190,7 +211,7 @@ export default function AutorizarPage() {
       {!loading && filtered.length === 0 && (
         <div className="card text-center py-16">
           <CheckCircle size={40} className="mx-auto text-green-400 mb-3" />
-          <p className="text-slate-600 font-medium">Nenhum pedido aguardando autorização</p>
+          <p className="text-slate-600 font-medium">{emAjuste ? 'Nenhum pedido aguardando ajuste' : 'Nenhum pedido aguardando autorização'}</p>
         </div>
       )}
 
@@ -198,18 +219,18 @@ export default function AutorizarPage() {
       {!loading && filtered.length > 0 && (
         <div className="space-y-3">
           {/* Select-all bar */}
-          <label className="flex items-center gap-2 px-1 cursor-pointer select-none">
+          {!emAjuste && <label className="flex items-center gap-2 px-1 cursor-pointer select-none">
             <input type="checkbox" className="w-4 h-4 accent-blue-600"
               checked={allSelected} onChange={toggleAll} />
             <span className="text-xs text-slate-500">Selecionar todos ({filtered.length})</span>
-          </label>
+          </label>}
 
           {filtered.map(p => (
             <div key={p.id}
               className={`card border transition-all ${p.emergencia ? 'border-orange-300 bg-orange-50' : 'border-slate-200'} ${selected.has(p.id) ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}>
               <div className="flex items-start gap-3">
-                <input type="checkbox" className="w-4 h-4 mt-1 accent-blue-600 shrink-0"
-                  checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} />
+                {!emAjuste && <input type="checkbox" className="w-4 h-4 mt-1 accent-blue-600 shrink-0"
+                  checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} />}
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -217,6 +238,14 @@ export default function AutorizarPage() {
                     {p.emergencia && (
                       <span className="badge bg-orange-100 text-orange-700 flex items-center gap-1">
                         <AlertTriangle size={10} /> Emergência
+                      </span>
+                    )}
+                    {p.ajuste_reenviado && !emAjuste && (
+                      <span className="badge bg-blue-100 text-blue-700">Reenviado após ajuste</span>
+                    )}
+                    {emAjuste && (
+                      <span className="badge bg-orange-100 text-orange-700">
+                        Com {p.usuario_solicitante ?? 'o solicitante'}
                       </span>
                     )}
                     <span className="text-xs text-slate-400 ml-auto">{fmtData(p.data_solicitacao)}</span>
@@ -249,6 +278,7 @@ export default function AutorizarPage() {
                 </div>
 
                 <div className="flex flex-col gap-1.5 shrink-0">
+                  {!emAjuste && <>
                   <button onClick={() => setConfirm({ open: true, ids: [p.id], acao: 'Autorizado' })}
                     className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700">
                     <CheckCircle size={12} /> Autorizar
@@ -261,6 +291,7 @@ export default function AutorizarPage() {
                     className="inline-flex items-center gap-1 px-3 py-1.5 border border-orange-200 bg-orange-50 text-orange-700 rounded text-xs font-medium hover:bg-orange-100">
                     Solicitar Ajuste
                   </button>
+                  </>}
                   <button onClick={() => router.push(`/pagamentos/autorizar/${p.id}`)}
                     className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-700 rounded text-xs font-medium hover:bg-slate-200">
                     Detalhes <ChevronRight size={12} />

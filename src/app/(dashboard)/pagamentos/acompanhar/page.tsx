@@ -330,6 +330,7 @@ export default function AcompanharPage() {
     }
     setAjusteModal(m => m ? { ...m, processing: true, error: '' } : m)
     await supabase.from('pedidos_solicitados').update({ status: 'Aguardando Ajuste' }).eq('id', ajusteModal.id)
+    await supabase.from('pedidos_solicitados').update({ ajuste_reenviado: false }).eq('id', ajusteModal.id)
     await supabase.from('pedidos_solicitados_fluxo').update({ status: 'Aguardando Ajuste' }).eq('pedido_id', ajusteModal.id)
     await supabase.from('comentarios').insert({
       pedido_id: ajusteModal.id, comentario: ajusteModal.comentario.trim(),
