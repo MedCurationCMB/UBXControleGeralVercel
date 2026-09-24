@@ -1,5 +1,6 @@
 ﻿'use client'
 
+import Link from 'next/link'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { RefreshCw, Plus, Pencil, X, Trash2, Download, Upload, FileSpreadsheet } from 'lucide-react'
@@ -769,7 +770,12 @@ export default function ControleRecebimentosPage() {
                 {sorted.map(r => (
                   <tr key={r.id} className="table-row">
                     <td className="table-cell font-mono text-xs text-slate-400">#{r.id}</td>
-                    <td className="table-cell font-mono text-xs text-slate-500">#{r.pedido_id}</td>
+                    <td className="table-cell font-mono text-xs">
+                      {r.pedido_id ? (
+                        <Link href={`/recebimentos/acompanhar/${r.pedido_id}`} target="_blank" title="Abrir pedido em nova aba"
+                          className="text-blue-600 hover:underline">#{r.pedido_id}</Link>
+                      ) : '—'}
+                    </td>
                     <td className="table-cell">
                       <p className="font-medium text-slate-900 truncate max-w-[120px]">{r.empresa}</p>
                       <p className="text-xs text-slate-400 truncate max-w-[120px]">{r.categoria}</p>
