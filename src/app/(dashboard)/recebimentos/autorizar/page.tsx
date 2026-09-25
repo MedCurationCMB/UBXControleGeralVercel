@@ -5,11 +5,12 @@ import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { CheckCircle, XCircle, AlertTriangle, RefreshCw, Search, ChevronRight } from 'lucide-react'
 import Confirm from '@/components/ui/Confirm'
+import AjusteModal from '@/components/pedidos/AjusteModal'
 
 interface Pedido {
   id: number; empresa: string; categoria: string; cliente: string
   valor_pedido: number; observacao: string | null; emergencia: boolean
-  data_solicitacao: string
+  data_solicitacao: string; usuario_solicitante?: string | null; ajuste_reenviado?: boolean
 }
 
 const fmtMoeda = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -19,6 +20,9 @@ export default function AutorizarRecebimentosPage() {
   const router = useRouter()
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
+  const [aba, setAba] = useState<'autorizacao' | 'ajuste'>('autorizacao')
+  const [contagem, setContagem] = useState({ autorizacao: 0, ajuste: 0 })
+  const emAjuste = aba === 'ajuste'
   const [user, setUser] = useState<{ username: string } | null>(null)
 
   const [searchId, setSearchId] = useState('')
@@ -33,23 +37,30 @@ export default function AutorizarRecebimentosPage() {
   }>({ open: false, ids: [], acao: 'Autorizado' })
   const [processing, setProcessing] = useState(false)
 
+  const [ajusteId, setAjusteId] = useState<number | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: peds }, u] = await Promise.all([
+    const contar = (status: string) => supabase.from('pedidos_solicitados_receita')
+      .select('id', { count: 'exact', head: true }).eq('status', status).eq('cancelado', false)
+    const [{ data: peds }, cAut, cAju, u] = await Promise.all([
       supabase
         .from('pedidos_solicitados_receita')
-        .select('id, empresa, categoria, cliente, valor_pedido, observacao, emergencia, data_solicitacao')
-        .eq('status', 'Aguardando Autorização')
+        .select('*')
+        .eq('status', aba === 'ajuste' ? 'Aguardando Ajuste' : 'Aguardando Autorização')
         .eq('cancelado', false)
         .order('emergencia', { ascending: false })
         .order('id', { ascending: true }),
+      contar('Aguardando Autorização'),
+      contar('Aguardando Ajuste'),
       fetch('/api/auth/me').then(r => r.json()),
     ])
     setPedidos(peds ?? [])
+    setContagem({ autorizacao: cAut.count ?? 0, ajuste: cAju.count ?? 0 })
     setUser(u)
     setLoading(false)
     setSelected(new Set())
-  }, [])
+  }, [aba])
 
   useEffect(() => { load() }, [load])
 
@@ -117,10 +128,22 @@ export default function AutorizarRecebimentosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Autorizar Pedidos</h1>
-          <p className="page-subtitle">Pedidos de recebimento aguardando autorização</p>
+          <p className="page-subtitle">{emAjuste ? 'Pedidos de recebimento devolvidos ao solicitante para ajuste' : 'Pedidos de recebimento aguardando autorização'}</p>
         </div>
         <button onClick={load} className="btn-secondary p-2" title="Atualizar">
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+        </button>
+      </div>
+
+      {/* Abas */}
+      <div className="flex rounded-lg border border-slate-200 overflow-hidden w-fit">
+        <button onClick={() => setAba('autorizacao')}
+          className={`px-4 py-1.5 text-sm ${aba === 'autorizacao' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+          Aguardando autorização ({contagem.autorizacao})
+        </button>
+        <button onClick={() => setAba('ajuste')}
+          className={`px-4 py-1.5 text-sm ${aba === 'ajuste' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+          Aguardando ajuste ({contagem.ajuste})
         </button>
       </div>
 
@@ -146,7 +169,7 @@ export default function AutorizarRecebimentosPage() {
           <select className="input" value={filtroCliente}
             onChange={e => setFiltroCliente(e.target.value)} disabled={!!searchId}>
             <option value="">Todos os clientes</option>
-            {clientes.map(c => <option key={c} value={c}>{c}</option>)}
+            {clientes.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
         </div>
 
@@ -173,25 +196,26 @@ export default function AutorizarRecebimentosPage() {
       {!loading && filtered.length === 0 && (
         <div className="card text-center py-16">
           <CheckCircle size={40} className="mx-auto text-green-400 mb-3" />
-          <p className="text-slate-600 font-medium">Nenhum pedido aguardando autorização</p>
+          <p className="text-slate-600 font-medium">{emAjuste ? 'Nenhum pedido aguardando ajuste' : 'Nenhum pedido aguardando autorização'}</p>
         </div>
       )}
 
       {/* Cards */}
       {!loading && filtered.length > 0 && (
         <div className="space-y-3">
-          <label className="flex items-center gap-2 px-1 cursor-pointer select-none">
+          {/* Select-all bar */}
+          {!emAjuste && <label className="flex items-center gap-2 px-1 cursor-pointer select-none">
             <input type="checkbox" className="w-4 h-4 accent-blue-600"
               checked={allSelected} onChange={toggleAll} />
             <span className="text-xs text-slate-500">Selecionar todos ({filtered.length})</span>
-          </label>
+          </label>}
 
           {filtered.map(p => (
             <div key={p.id}
               className={`card border transition-all ${p.emergencia ? 'border-orange-300 bg-orange-50' : 'border-slate-200'} ${selected.has(p.id) ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}>
               <div className="flex items-start gap-3">
-                <input type="checkbox" className="w-4 h-4 mt-1 accent-blue-600 shrink-0"
-                  checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} />
+                {!emAjuste && <input type="checkbox" className="w-4 h-4 mt-1 accent-blue-600 shrink-0"
+                  checked={selected.has(p.id)} onChange={() => toggleSelect(p.id)} />}
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -199,6 +223,14 @@ export default function AutorizarRecebimentosPage() {
                     {p.emergencia && (
                       <span className="badge bg-orange-100 text-orange-700 flex items-center gap-1">
                         <AlertTriangle size={10} /> Emergência
+                      </span>
+                    )}
+                    {p.ajuste_reenviado && !emAjuste && (
+                      <span className="badge bg-blue-100 text-blue-700">Reenviado após ajuste</span>
+                    )}
+                    {emAjuste && (
+                      <span className="badge bg-orange-100 text-orange-700">
+                        Com {p.usuario_solicitante ?? 'o solicitante'}
                       </span>
                     )}
                     <span className="text-xs text-slate-400 ml-auto">{fmtData(p.data_solicitacao)}</span>
@@ -231,6 +263,7 @@ export default function AutorizarRecebimentosPage() {
                 </div>
 
                 <div className="flex flex-col gap-1.5 shrink-0">
+                  {!emAjuste && <>
                   <button onClick={() => setConfirm({ open: true, ids: [p.id], acao: 'Autorizado' })}
                     className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700">
                     <CheckCircle size={12} /> Autorizar
@@ -239,6 +272,11 @@ export default function AutorizarRecebimentosPage() {
                     className="inline-flex items-center gap-1 px-3 py-1.5 border border-red-200 bg-red-50 text-red-700 rounded text-xs font-medium hover:bg-red-100">
                     <XCircle size={12} /> Rejeitar
                   </button>
+                  <button onClick={() => setAjusteId(p.id)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 border border-orange-200 bg-orange-50 text-orange-700 rounded text-xs font-medium hover:bg-orange-100">
+                    Solicitar Ajuste
+                  </button>
+                  </>}
                   <button onClick={() => router.push(`/recebimentos/autorizar/${p.id}`)}
                     className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-700 rounded text-xs font-medium hover:bg-slate-200">
                     Detalhes <ChevronRight size={12} />
@@ -248,6 +286,11 @@ export default function AutorizarRecebimentosPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {ajusteId !== null && (
+        <AjusteModal mod="recebimentos" pedidoId={ajusteId} usuario={user?.username ?? ''}
+          onClose={() => setAjusteId(null)} onDone={() => { setAjusteId(null); load() }} />
       )}
 
       <Confirm

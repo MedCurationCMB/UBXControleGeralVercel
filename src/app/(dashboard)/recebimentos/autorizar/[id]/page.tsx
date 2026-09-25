@@ -11,6 +11,7 @@ import {
 import { gerarPdfPedido } from '@/lib/pedido-pdf'
 import Modal from '@/components/ui/Modal'
 import Confirm from '@/components/ui/Confirm'
+import AjusteModal from '@/components/pedidos/AjusteModal'
 
 // --- Types ---
 interface Pedido {
@@ -20,6 +21,7 @@ interface Pedido {
   cancelado: boolean; usuario_autorizador: string | null
   pedido_status_receita: number | null; arquivo_texto: string | null; analise_texto: string | null
   arquivos_pdf_ids: string[] | null
+  usuario_solicitante?: string | null; ajuste_reenviado?: boolean
 }
 interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string }
 interface Comentario {
@@ -724,6 +726,8 @@ export default function AutorizarRecebimentoDetalhePage() {
     open: boolean; acao: 'Autorizado' | 'Não Autorizado' | 'cancelar'
   }>({ open: false, acao: 'Autorizado' })
   const [processing, setProcessing] = useState(false)
+  const [showAjuste, setShowAjuste] = useState(false)
+  const [historico, setHistorico] = useState<Comentario[]>([])
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
@@ -734,6 +738,14 @@ export default function AutorizarRecebimentoDetalhePage() {
     ])
     if (pErr || !p) { setError('Pedido não encontrado.'); setLoading(false); return }
     setPedido(p as Pedido); setFluxo(fl ?? []); setUser(u)
+    // Pedido reenviado após ajuste: mostra o que o solicitante alterou
+    if ((p as Pedido).ajuste_reenviado) {
+      const { data: coms } = await supabase.from('comentarios_receita')
+        .select('*').eq('pedido_id', pedidoId).order('data_comentario', { ascending: false }).limit(6)
+      setHistorico(coms ?? [])
+    } else {
+      setHistorico([])
+    }
     if ((p as Pedido).pedido_status_receita) {
       const { data: st } = await supabase.from('pedido_status_receita').select('nome_status').eq('id', (p as Pedido).pedido_status_receita).maybeSingle()
       setStatusNome((st as StatusPedido | null)?.nome_status ?? null)
@@ -811,7 +823,7 @@ export default function AutorizarRecebimentoDetalhePage() {
     </div>
   )
 
-  const isPending = pedido.status === 'Aguardando Autorização' && !pedido.cancelado
+  const isPending = (pedido.status === 'Aguardando Autorização' || pedido.status === 'Aguardando Ajuste') && !pedido.cancelado
   const isAutorizado = pedido.status === 'Autorizado'
   const isCancelado = pedido.cancelado
 
@@ -838,9 +850,27 @@ export default function AutorizarRecebimentoDetalhePage() {
           pedido.status === 'Autorizado' ? 'bg-green-100 text-green-700' :
           pedido.status === 'Não Autorizado' ? 'bg-red-100 text-red-700' :
           pedido.status === 'Cancelado' ? 'bg-slate-200 text-slate-600' :
+          pedido.status === 'Aguardando Ajuste' ? 'bg-orange-100 text-orange-700' :
           'bg-yellow-100 text-yellow-700'
         }`}>{pedido.status}</span>
       </div>
+
+      {pedido.ajuste_reenviado && pedido.status === 'Aguardando Autorização' && (
+        <div className="border border-blue-200 bg-blue-50 rounded-xl p-4 space-y-2">
+          <p className="text-sm font-semibold text-blue-800">
+            Pedido reenviado após ajuste{pedido.usuario_solicitante ? ` por ${pedido.usuario_solicitante}` : ''}
+          </p>
+          {historico.map(c => (
+            <div key={c.id} className="bg-white border border-blue-100 rounded-lg px-3 py-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium text-slate-700">{c.usuario}</span>
+                <span className="text-xs text-slate-400">{new Date(c.data_comentario).toLocaleString('pt-BR')}</span>
+              </div>
+              <p className="text-sm text-slate-800 whitespace-pre-wrap">{c.comentario}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="flex flex-wrap gap-2">
@@ -941,6 +971,10 @@ export default function AutorizarRecebimentoDetalhePage() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 border border-red-200 bg-red-50 text-red-700 rounded-lg text-sm font-medium hover:bg-red-100">
                 <XCircle size={15} /> Rejeitar Pedido
               </button>
+              <button onClick={() => setShowAjuste(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 border border-orange-200 bg-orange-50 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-100">
+                <AlertTriangle size={15} /> Solicitar Ajuste
+              </button>
             </>
           )}
           {!isCancelado && (
@@ -964,6 +998,11 @@ export default function AutorizarRecebimentoDetalhePage() {
           </div>
         )}
       </div>
+
+      {showAjuste && (
+        <AjusteModal mod="recebimentos" pedidoId={pedidoId} usuario={user?.username ?? ''}
+          onClose={() => setShowAjuste(false)} onDone={() => { setShowAjuste(false); load() }} />
+      )}
 
       {/* Modals */}
       <ControleRecebimentosModal open={showRecebimentos} onClose={() => setShowRecebimentos(false)}

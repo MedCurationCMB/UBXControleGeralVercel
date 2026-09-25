@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import AjusteModal from '@/components/pedidos/AjusteModal'
 import {
   Search, Download, RefreshCw, ChevronRight, ChevronLeft, AlertTriangle,
   List, LayoutGrid, Info,
@@ -38,6 +39,7 @@ const chaveFiltros = (...v: (string | undefined)[]) => JSON.stringify(v.map(x =>
 
 const STATUS_OPTIONS = [
   'Aguardando Autorização',
+  'Aguardando Ajuste',
   'Autorizado',
   'Não Autorizado',
   'Cancelado',
@@ -47,28 +49,32 @@ const STATUS_BADGE: Record<string, string> = {
   'Autorizado': 'bg-green-100 text-green-700',
   'Não Autorizado': 'bg-red-100 text-red-700',
   'Aguardando Autorização': 'bg-yellow-100 text-yellow-700',
+  'Aguardando Ajuste': 'bg-orange-100 text-orange-700',
   'Cancelado': 'bg-slate-200 text-slate-600',
 }
 
 const fmtMoeda = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtData = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
 
-type EstagioPedido = 'aguardando_autorizacao' | 'nao_autorizado' | 'aguardando_pagamento' | 'pago' | 'cancelado'
+type EstagioPedido = 'aguardando_autorizacao' | 'aguardando_ajuste' | 'nao_autorizado'
+  | 'aguardando_pagamento' | 'pago' | 'cancelado'
 
 const COLUNAS_PEDIDO: { key: EstagioPedido; titulo: string }[] = [
   { key: 'aguardando_autorizacao', titulo: 'Aguardando Autorização' },
+  { key: 'aguardando_ajuste', titulo: 'Aguardando Ajuste' },
   { key: 'nao_autorizado', titulo: 'Não Autorizado' },
   { key: 'aguardando_pagamento', titulo: 'Autorizado — Aguardando Recebimento' },
   { key: 'pago', titulo: 'Recebido' },
   { key: 'cancelado', titulo: 'Cancelado' },
 ]
 
-// Enquanto o pedido não é autorizado, ele pode transitar livremente entre essas 2 colunas.
-const COLUNAS_LIVRES: EstagioPedido[] = ['aguardando_autorizacao', 'nao_autorizado']
+// Enquanto o pedido não é autorizado, ele pode transitar livremente entre essas 3 colunas.
+const COLUNAS_LIVRES: EstagioPedido[] = ['aguardando_autorizacao', 'aguardando_ajuste', 'nao_autorizado']
 
 function getEstagioPedido(p: Pedido, controles: ControleInfo[]): EstagioPedido {
   if (p.cancelado) return 'cancelado'
   if (p.status === 'Aguardando Autorização') return 'aguardando_autorizacao'
+  if (p.status === 'Aguardando Ajuste') return 'aguardando_ajuste'
   if (p.status === 'Não Autorizado') return 'nao_autorizado'
   const pago = controles.length > 0 && controles.every(c =>
     c.valor_pagamento != null && c.valor_pagar != null && c.valor_pagamento >= c.valor_pagar
@@ -92,6 +98,7 @@ export default function AcompanharRecebimentosPage() {
   const [controlesPorPedido, setControlesPorPedido] = useState<Record<number, ControleInfo[]>>({})
   const [kanbanLoading, setKanbanLoading] = useState(true)
   const [draggingId, setDraggingId] = useState<number | null>(null)
+  const [ajusteId, setAjusteId] = useState<number | null>(null)
 
   const [empresas, setEmpresas] = useState<string[]>([])
   const [categorias, setCategorias] = useState<string[]>([])
@@ -504,8 +511,8 @@ export default function AcompanharRecebimentosPage() {
           <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700">
             <Info size={15} className="mt-0.5 shrink-0" />
             <p>
-              Enquanto não é autorizado, o card pode ser movido livremente entre <strong>Aguardando Autorização</strong> e{' '}
-              <strong>Não Autorizado</strong>, ou arrastado para <strong>Autorizado — Aguardando Recebimento</strong> para
+              Enquanto não é autorizado, o card pode ser movido livremente entre <strong>Aguardando Autorização</strong>,{' '}
+              <strong>Aguardando Ajuste</strong> e <strong>Não Autorizado</strong>, ou arrastado para <strong>Autorizado — Aguardando Recebimento</strong> para
               autorizar (isso já cria a conta a receber). A partir daí o card trava — o recebimento é controlado em
               Controle de Recebimentos, e cancelamento continua sendo feito pelo detalhe do pedido.
             </p>
@@ -531,7 +538,9 @@ export default function AcompanharRecebimentosPage() {
                     onDrop={podeReceberDrop ? e => {
                       e.preventDefault()
                       if (draggingId == null) return
-                      if (col.key === 'aguardando_pagamento') {
+                      if (col.key === 'aguardando_ajuste') {
+                        setAjusteId(draggingId)
+                      } else if (col.key === 'aguardando_pagamento') {
                         handleMudarStatusPedido(draggingId, 'Autorizado')
                       } else if (col.key === 'nao_autorizado') {
                         handleMudarStatusPedido(draggingId, 'Não Autorizado')
@@ -599,6 +608,10 @@ export default function AcompanharRecebimentosPage() {
             </div>
           )}
         </>
+      )}
+      {ajusteId !== null && (
+        <AjusteModal mod="recebimentos" pedidoId={ajusteId} usuario={username}
+          onClose={() => setAjusteId(null)} onDone={() => { setAjusteId(null); loadKanban() }} />
       )}
     </div>
   )

@@ -5,9 +5,10 @@ import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import {
   Search, Download, RefreshCw, ChevronRight, ChevronLeft, AlertTriangle,
-  List, LayoutGrid, Info, X,
+  List, LayoutGrid, Info,
 } from 'lucide-react'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import AjusteModal from '@/components/pedidos/AjusteModal'
 
 interface Pedido {
   id: number; empresa: string; categoria: string; fornecedor: string
@@ -98,7 +99,7 @@ export default function AcompanharPage() {
   const [controlesPorPedido, setControlesPorPedido] = useState<Record<number, ControleInfo[]>>({})
   const [kanbanLoading, setKanbanLoading] = useState(true)
   const [draggingId, setDraggingId] = useState<number | null>(null)
-  const [ajusteModal, setAjusteModal] = useState<{ id: number; comentario: string; processing: boolean; error: string } | null>(null)
+  const [ajusteId, setAjusteId] = useState<number | null>(null)
 
   // Dropdown options (fetched once)
   const [empresas, setEmpresas] = useState<string[]>([])
@@ -320,23 +321,6 @@ export default function AcompanharPage() {
         await supabase.from('controle_pagamentos').insert({ pedido_id: id, valor_pagar: pedido?.valor_pedido, status_pagamento: 1 })
       }
     }
-    loadKanban()
-  }
-
-  const handleAjusteConfirm = async () => {
-    if (!ajusteModal || !ajusteModal.comentario.trim()) {
-      setAjusteModal(m => m ? { ...m, error: 'O comentário é obrigatório.' } : m)
-      return
-    }
-    setAjusteModal(m => m ? { ...m, processing: true, error: '' } : m)
-    await supabase.from('pedidos_solicitados').update({ status: 'Aguardando Ajuste' }).eq('id', ajusteModal.id)
-    await supabase.from('pedidos_solicitados').update({ ajuste_reenviado: false }).eq('id', ajusteModal.id)
-    await supabase.from('pedidos_solicitados_fluxo').update({ status: 'Aguardando Ajuste' }).eq('pedido_id', ajusteModal.id)
-    await supabase.from('comentarios').insert({
-      pedido_id: ajusteModal.id, comentario: ajusteModal.comentario.trim(),
-      usuario: username, data_comentario: new Date().toISOString(), tipo_documento: null,
-    })
-    setAjusteModal(null)
     loadKanban()
   }
 
@@ -580,7 +564,7 @@ export default function AcompanharPage() {
                       e.preventDefault()
                       if (draggingId == null) return
                       if (col.key === 'aguardando_ajuste') {
-                        setAjusteModal({ id: draggingId, comentario: '', processing: false, error: '' })
+                        setAjusteId(draggingId)
                       } else if (col.key === 'aguardando_pagamento') {
                         handleMudarStatusPedido(draggingId, 'Autorizado')
                       } else if (col.key === 'nao_autorizado') {
@@ -651,36 +635,9 @@ export default function AcompanharPage() {
         </>
       )}
 
-      {/* Modal Solicitar Ajuste (drag para a coluna Aguardando Ajuste) */}
-      {ajusteModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-slate-900">Solicitar Ajuste — Pedido #{ajusteModal.id}</h2>
-              <button onClick={() => setAjusteModal(null)} className="text-slate-400 hover:text-slate-600">
-                <X size={18} />
-              </button>
-            </div>
-            <p className="text-sm text-slate-500">Descreva o que precisa ser ajustado. O solicitante receberá este comentário.</p>
-            <textarea
-              className="input w-full min-h-[100px] resize-none"
-              placeholder="Comentário obrigatório..."
-              value={ajusteModal.comentario}
-              onChange={e => setAjusteModal(m => m ? { ...m, comentario: e.target.value, error: '' } : m)}
-            />
-            {ajusteModal.error && <p className="text-xs text-red-600">{ajusteModal.error}</p>}
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setAjusteModal(null)} className="btn-secondary text-sm">Cancelar</button>
-              <button
-                onClick={handleAjusteConfirm}
-                disabled={ajusteModal.processing}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
-              >
-                {ajusteModal.processing ? 'Enviando...' : 'Solicitar Ajuste'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {ajusteId !== null && (
+        <AjusteModal mod="pagamentos" pedidoId={ajusteId} usuario={username}
+          onClose={() => setAjusteId(null)} onDone={() => { setAjusteId(null); loadKanban() }} />
       )}
     </div>
   )

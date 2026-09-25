@@ -11,6 +11,7 @@ import {
 import { gerarPdfPedido } from '@/lib/pedido-pdf'
 import Modal from '@/components/ui/Modal'
 import Confirm from '@/components/ui/Confirm'
+import AjustePedido from '@/components/pedidos/AjustePedido'
 
 // --- Types ---
 interface Pedido {
@@ -20,6 +21,7 @@ interface Pedido {
   cancelado: boolean; usuario_autorizador: string | null
   pedido_status_receita: number | null; arquivo_texto: string | null; analise_texto: string | null
   arquivos_pdf_ids: string[] | null
+  usuario_solicitante?: string | null
 }
 interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string }
 interface Comentario {
@@ -756,7 +758,7 @@ export default function AcompanharRecebimentoDetalhePage() {
   const [pedido, setPedido] = useState<Pedido | null>(null)
   const [fluxo, setFluxo] = useState<FluxoRow[]>([])
   const [statusNome, setStatusNome] = useState<string | null>(null)
-  const [user, setUser] = useState<{ username: string } | null>(null)
+  const [user, setUser] = useState<{ username: string; hierarquia?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -836,6 +838,7 @@ export default function AcompanharRecebimentoDetalhePage() {
           pedido.status === 'Autorizado' ? 'bg-green-100 text-green-700' :
           pedido.status === 'Não Autorizado' ? 'bg-red-100 text-red-700' :
           pedido.status === 'Cancelado' ? 'bg-slate-200 text-slate-600' :
+          pedido.status === 'Aguardando Ajuste' ? 'bg-orange-100 text-orange-700' :
           'bg-yellow-100 text-yellow-700'
         }`}>{pedido.status}</span>
       </div>
@@ -862,6 +865,10 @@ export default function AcompanharRecebimentoDetalhePage() {
           <RefreshCw size={16} />
         </button>
       </div>
+
+      {pedido.status === 'Aguardando Ajuste' && (
+        <AjustePedido mod="recebimentos" pedido={pedido} parte={pedido.cliente} fluxo={fluxo} user={user} onChanged={load} />
+      )}
 
       {/* Info grid */}
       <div className="card">

@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import Modal from '@/components/ui/Modal'
 import Confirm from '@/components/ui/Confirm'
+import AjusteModal from '@/components/pedidos/AjusteModal'
 
 // --- Types ---
 interface Pedido {
@@ -542,9 +543,6 @@ export default function DetalhePedidoPage() {
 
   // Ajuste state
   const [showAjuste, setShowAjuste] = useState(false)
-  const [ajusteComentario, setAjusteComentario] = useState('')
-  const [ajusteProcessing, setAjusteProcessing] = useState(false)
-  const [ajusteError, setAjusteError] = useState('')
   const [historico, setHistorico] = useState<Comentario[]>([])
 
   const load = useCallback(async () => {
@@ -649,30 +647,6 @@ export default function DetalhePedidoPage() {
 
     setProcessing(false)
     setConfirmAcao(c => ({ ...c, open: false }))
-    load()
-  }
-
-  const handleAjuste = async () => {
-    if (!pedido || !user || !ajusteComentario.trim()) {
-      setAjusteError('O comentário é obrigatório.')
-      return
-    }
-    setAjusteProcessing(true)
-    setAjusteError('')
-    await supabase.from('pedidos_solicitados')
-      .update({ status: 'Aguardando Ajuste' })
-      .eq('id', pedidoId)
-    await supabase.from('pedidos_solicitados').update({ ajuste_reenviado: false }).eq('id', pedidoId)
-    await supabase.from('comentarios').insert({
-      pedido_id: pedidoId,
-      comentario: ajusteComentario.trim(),
-      usuario: user.username,
-      data_comentario: new Date().toISOString(),
-      tipo_documento: null,
-    })
-    setAjusteProcessing(false)
-    setShowAjuste(false)
-    setAjusteComentario('')
     load()
   }
 
@@ -856,7 +830,7 @@ export default function DetalhePedidoPage() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 border border-red-200 bg-red-50 text-red-700 rounded-lg text-sm font-medium hover:bg-red-100">
                 <XCircle size={15} /> Rejeitar Pedido
               </button>
-              <button onClick={() => { setShowAjuste(true); setAjusteComentario(''); setAjusteError('') }}
+              <button onClick={() => setShowAjuste(true)}
                 className="inline-flex items-center gap-1.5 px-4 py-2 border border-orange-200 bg-orange-50 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-100">
                 <AlertTriangle size={15} /> Solicitar Ajuste
               </button>
@@ -879,38 +853,9 @@ export default function DetalhePedidoPage() {
         </div>
       </div>
 
-      {/* Ajuste Modal */}
       {showAjuste && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold text-slate-900">Solicitar Ajuste</h2>
-              <button onClick={() => setShowAjuste(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
-            </div>
-            <p className="text-sm text-slate-600">
-              Descreva o que precisa ser ajustado no pedido #{pedidoId}. O solicitante verá este comentário e poderá editar e reenviar o pedido para aprovação.
-            </p>
-            <div>
-              <label className="label">Comentário <span className="text-red-500">*</span></label>
-              <textarea
-                className="input resize-none h-32"
-                placeholder="Descreva o que precisa ser ajustado..."
-                value={ajusteComentario}
-                onChange={e => { setAjusteComentario(e.target.value); setAjusteError('') }}
-              />
-              {ajusteError && <p className="text-xs text-red-600 mt-1">{ajusteError}</p>}
-            </div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowAjuste(false)} className="btn-secondary text-sm">Cancelar</button>
-              <button
-                onClick={handleAjuste}
-                disabled={ajusteProcessing || !ajusteComentario.trim()}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50">
-                {ajusteProcessing ? <><RefreshCw size={14} className="animate-spin" /> Enviando...</> : <><AlertTriangle size={14} /> Solicitar Ajuste</>}
-              </button>
-            </div>
-          </div>
-        </div>
+        <AjusteModal mod="pagamentos" pedidoId={pedidoId} usuario={user?.username ?? ''}
+          onClose={() => setShowAjuste(false)} onDone={() => { setShowAjuste(false); load() }} />
       )}
 
       {/* Modals */}

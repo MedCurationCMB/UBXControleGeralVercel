@@ -171,6 +171,7 @@ export default function SolicitarRecebimentoPage() {
 
   // UI state
   const [saving, setSaving] = useState(false)
+  const [username, setUsername] = useState('')
   const [addingMes, setAddingMes] = useState(false)
   const [error, setError] = useState('')
   const [successInfo, setSuccessInfo] = useState<{ empresa: string; categoria: string; cliente: string; total: number; id: number; falhas: string[] } | null>(null)
@@ -185,6 +186,10 @@ export default function SolicitarRecebimentoPage() {
   const [requisicoesAutorizadas, setRequisicoesAutorizadas] = useState<Requisicao[]>([])
   const [requisicoesUsadas, setRequisicoesUsadas] = useState<Set<number>>(new Set())
   const [requisicaoId, setRequisicaoId] = useState<number | ''>('')
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(u => setUsername(u?.username ?? '')).catch(() => {})
+  }, [])
 
   useEffect(() => {
     Promise.all([
@@ -352,6 +357,9 @@ export default function SolicitarRecebimentoPage() {
       setError(`Não foi possível gravar os períodos: ${errFluxo.message}`)
       return
     }
+
+    // Quem pediu (falha em silêncio se a coluna ainda não existir no banco)
+    if (username) await supabase.from('pedidos_solicitados_receita').update({ usuario_solicitante: username }).eq('id', pedido.id)
 
     if (usaRequisicao && requisicaoId !== '') {
       setRequisicoesUsadas(prev => new Set(prev).add(requisicaoId))
