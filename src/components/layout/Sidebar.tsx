@@ -12,7 +12,7 @@ import {
   LayoutDashboard, FileText, CheckSquare, Clock, PlusSquare,
   CreditCard, FolderOpen, Users, Building2, Tag, List,
   FileSignature, TrendingUp, TrendingDown, Settings, ShieldCheck,
-  ChevronLeft, ChevronRight, Receipt, ClipboardList, ClipboardCheck, Layers,
+  ChevronLeft, ChevronRight, Receipt, ClipboardList, ClipboardCheck, Layers, BarChart3,
 } from 'lucide-react'
 
 interface NavItem {
@@ -20,6 +20,7 @@ interface NavItem {
   href: string
   icon: React.ElementType
   adminOnly?: boolean
+  ownerOnly?: boolean
   flowOnly?: ('3' | '4' | '5')[]
   flowOnlyReceita?: ('3' | '4' | '5')[]
   contrato?: boolean
@@ -83,6 +84,7 @@ const navGroups: NavGroup[] = [
     title: 'Configurações',
     items: [
       { label: 'Empresas / CC', href: '/empresas', icon: Building2 },
+      { label: 'Relatórios', href: '/relatorios', icon: BarChart3, ownerOnly: true },
       { label: 'Projetos e Acessos', href: '/projetos', icon: Layers, adminOnly: true },
       { label: 'Painel Admin', href: '/admin', icon: ShieldCheck, adminOnly: true },
     ],
@@ -199,6 +201,7 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
             {group.items
               .filter((item) =>
                 (!item.adminOnly || isAdminOrOwner) &&
+                (!item.ownerOnly || hierarquia === 'owner') &&
                 (!item.contrato || contratosLiberados) &&
                 (!item.flowOnly || item.flowOnly.includes(fluxoSistema as '3' | '4' | '5')) &&
                 (!item.flowOnlyReceita || item.flowOnlyReceita.includes(fluxoSistemaReceita as '3' | '4' | '5'))

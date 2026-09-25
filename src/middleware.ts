@@ -5,7 +5,7 @@ import { garantirTokenDb } from '@/lib/db-token'
 
 const PUBLIC_ROUTES = ['/login', '/recuperar-senha', '/api/auth/login', '/api/auth/recuperar-senha']
 const ADMIN_ROUTES = ['/admin', '/api/admin', '/projetos']
-const OWNER_ROUTES: string[] = [] // rotas exclusivas do owner, se necessário
+const OWNER_ROUTES: string[] = ['/relatorios', '/api/relatorios'] // rotas exclusivas do owner
 
 function getSecretKey() {
   const secret = process.env.SESSION_SECRET

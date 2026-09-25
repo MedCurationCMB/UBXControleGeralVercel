@@ -83,7 +83,7 @@ Ajustes de desenho que o teste trouxe:
 | **2. Aplicação** (pronta e testada no banco de teste) | Projeto ativo na sessão; seletor no menu; cliente Supabase com cabeçalho; rotas de API filtrando; configs (fluxo, contratos, logo) por projeto; pasta do B2 por projeto | usuários só do UBX; sem mudança visível |
 | **3. Administração** (pronta e testada no banco de teste: tela `/projetos`, APIs em `/api/admin/projetos`) | Tela de projetos (criar/desativar); vínculo usuário × projeto × papel; escolha do projeto no login; **cria o PROJETO DEV** (configs, cadastros e usuários de teste) | produção com UBX + DEV |
 | **4. Segurança (RLS)** (pronta e testada no banco de teste: `banco/migracoes/2026-09-25_multi_projeto_fase4_rls.sql`, reversão `..._reverter.sql`, teste `scripts/teste-rls.mjs`) | Políticas nas tabelas raiz e filhas; remove o DEFAULT 1; roteiro de isolamento entre UBX e DEV (usuário de um projeto não lê nem grava no outro) | ativa a proteção real |
-| **5. Owner: relatórios e dashboards** | Página só do owner com visão de todos os projetos, filtros por projeto/empresa/período, totais de pedidos, orçamento × consumido, pagamentos e recebimentos | só owner vê |
+| **5. Owner: relatórios e dashboards** (1ª versão pronta: `/relatorios`, `src/lib/relatorios.ts`; indicadores a validar com o Carlos) | Página só do owner com visão de todos os projetos, filtros por projeto/empresa/período, totais de pedidos, orçamento × consumido, pagamentos e recebimentos | só owner vê |
 
 Ordem importa: as fases 1–2 não mudam nada para o usuário; o risco mora na fase 4 (RLS pode bloquear telas
 que hoje funcionam), por isso ela roda antes na cópia de teste, com roteiro de teste de cada tela.
