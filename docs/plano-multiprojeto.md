@@ -56,8 +56,20 @@ Tocar 386 chamadas uma a uma é caro e fácil de esquecer. Proposta:
 4. Rotas de API (`supabaseServer`, service role) ignoram RLS: filtram por projeto explicitamente. São poucas
    (`src/app/api/*`).
 
-Risco: essa técnica (cabeçalho + default + RLS) precisa de **um teste rápido (spike)** na cópia de teste antes
-de assumir. Plano B: filtro explícito por projeto em cada chamada (mais trabalho, sem proteção real).
+**Spike concluído (banco de teste, 25/09/2026): a técnica funciona.** Script em `scripts/spike-projeto-rls.mjs`,
+SQL em `banco/spike/`. Verificado: o cabeçalho chega ao Postgres; o `projeto_id` nasce do cabeçalho no insert;
+usuário sem vínculo não lê nem grava; cabeçalho falsificado para outro projeto não lê nem grava; usuário em dois
+projetos vê um por vez; JWT com segredo errado é rejeitado.
+
+Ajustes de desenho que o teste trouxe:
+- O vínculo usuário × projeto é checado por uma função `security definer`, não por subconsulta na policy
+  (projetos novos do Supabase podem vir com RLS automático em tabela nova, e a subconsulta então enxerga zero linhas).
+- O login precisa emitir um JWT assinado com o **Legacy JWT Secret** do Supabase (claims `role: authenticated`
+  e `usuario`). Confirmar que a produção usa esse modelo (chaves HS256); se migrar para chaves assimétricas, o
+  emissor do JWT muda.
+- Um banco restaurado com `pg_restore --no-privileges` perde os grants padrão (`anon`, `authenticated`,
+  `service_role`); é preciso reaplicá-los. Vale para qualquer cópia de teste.
+- Plano B (se algum dia a técnica não servir): filtro explícito por projeto em cada chamada.
 
 ## 4. Fases
 
