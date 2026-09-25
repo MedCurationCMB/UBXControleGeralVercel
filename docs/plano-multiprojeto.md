@@ -82,7 +82,7 @@ Ajustes de desenho que o teste trouxe:
 | **1b. Banco (complemento)** | `documentos(_receita)` (arquivos de remessa/retorno não têm pedido) e `controle_pagamentos`/`controle_recebimento` ganham `projeto_id` próprio, herdado do pedido por trigger (`banco/migracoes/2026-09-25_multi_projeto_fase1b.sql`). Rodar **antes** de publicar a fase 2 | igual hoje |
 | **2. Aplicação** (pronta e testada no banco de teste) | Projeto ativo na sessão; seletor no menu; cliente Supabase com cabeçalho; rotas de API filtrando; configs (fluxo, contratos, logo) por projeto; pasta do B2 por projeto | usuários só do UBX; sem mudança visível |
 | **3. Administração** | Tela de projetos (criar/desativar); vínculo usuário × projeto × papel; escolha do projeto no login; **cria o PROJETO DEV** (configs, cadastros e usuários de teste) | produção com UBX + DEV |
-| **4. Segurança (RLS)** | Políticas nas tabelas raiz e filhas; remove o DEFAULT 1; roteiro de isolamento entre UBX e DEV (usuário de um projeto não lê nem grava no outro) | ativa a proteção real |
+| **4. Segurança (RLS)** (pronta e testada no banco de teste: `banco/migracoes/2026-09-25_multi_projeto_fase4_rls.sql`, reversão `..._reverter.sql`, teste `scripts/teste-rls.mjs`) | Políticas nas tabelas raiz e filhas; remove o DEFAULT 1; roteiro de isolamento entre UBX e DEV (usuário de um projeto não lê nem grava no outro) | ativa a proteção real |
 | **5. Owner: relatórios e dashboards** | Página só do owner com visão de todos os projetos, filtros por projeto/empresa/período, totais de pedidos, orçamento × consumido, pagamentos e recebimentos | só owner vê |
 
 Ordem importa: as fases 1–2 não mudam nada para o usuário; o risco mora na fase 4 (RLS pode bloquear telas
@@ -92,6 +92,20 @@ que hoje funcionam), por isso ela roda antes na cópia de teste, com roteiro de 
 servidor já isolam por projeto, mas as telas que consultam o Supabase direto do navegador não filtram: um
 usuário no DEV veria dados do UBX. Por isso a fase 3 pode criar o projeto, mas não deve haver dados nem usuários
 no DEV antes da fase 4.
+
+**Como o RLS funciona (fase 4).** O middleware cria o cookie `ubx_db` com um JWT do Supabase (`role: authenticated`,
+`usuario_id`), assinado com o Legacy JWT Secret. O navegador o envia junto com `x-projeto-id`. As policies usam
+`app_projeto_rls()`: devolve o projeto ativo só se o usuário for membro ou owner (consulta o banco a cada
+requisição, então tirar um vínculo vale na hora). Tabelas de dados: `projeto_id = projeto ativo`. Filhas sem
+`projeto_id` (comentários, boletos) seguem o registro pai. `config`: membros leem, só admin do projeto grava.
+`usuarios`, SMTP, e-mail e chave do assistente: só owner pelo navegador. `reset_tokens` e `usuarios_projetos`:
+só servidor. Tipos e status: leitura para logado.
+
+**Ordem de publicação:** (1) `SUPABASE_JWT_SECRET` no Vercel; (2) publicar o código; (3) conferir o cookie `ubx_db`;
+(4) rodar o SQL do RLS; (5) conferir as telas. Se algo quebrar, rodar o `_reverter.sql`.
+
+**Depois de um período em produção (fase 4b):** remover o "1" padrão de `app_projeto_default()` para que um insert
+de servidor sem projeto falhe em vez de cair no UBX.
 
 ## 5. Tamanho (relativo)
 

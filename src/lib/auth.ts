@@ -2,6 +2,7 @@ import { createHash } from 'crypto'
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import type { SessionPayload } from '@/types/database'
+import { DB_COOKIE } from '@/lib/db-token'
 
 const SESSION_COOKIE = 'ubx_session'
 const PROJETO_COOKIE = 'ubx_projeto'
@@ -75,6 +76,7 @@ export async function clearSessionCookie() {
   const cookieStore = await cookies()
   cookieStore.delete(SESSION_COOKIE)
   cookieStore.delete(PROJETO_COOKIE)
+  cookieStore.delete(DB_COOKIE)
 }
 
 export { SESSION_COOKIE, PROJETO_COOKIE }

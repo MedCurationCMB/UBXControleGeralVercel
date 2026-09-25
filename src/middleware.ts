@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { jwtVerify } from 'jose'
 import { SESSION_COOKIE } from '@/lib/auth'
+import { garantirTokenDb } from '@/lib/db-token'
 
 const PUBLIC_ROUTES = ['/login', '/recuperar-senha', '/api/auth/login', '/api/auth/recuperar-senha']
 const ADMIN_ROUTES = ['/admin', '/api/admin']
@@ -52,7 +53,10 @@ export async function middleware(req: NextRequest) {
       }
     }
 
-    return NextResponse.next()
+    const res = NextResponse.next()
+    // Token do banco (RLS). Não no logout: a rota apaga o cookie na mesma resposta.
+    if (pathname !== '/api/auth/logout') await garantirTokenDb(req, res, Number(payload.userId))
+    return res
   } catch {
     // Token inválido ou expirado
     const loginUrl = new URL('/login', req.url)
