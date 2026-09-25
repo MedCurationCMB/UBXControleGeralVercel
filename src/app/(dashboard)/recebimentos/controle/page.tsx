@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
-import { RefreshCw, Plus, Pencil, X, Trash2, Download, Upload, FileSpreadsheet } from 'lucide-react'
+import { RefreshCw, Plus, Pencil, X, Trash2, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react'
 import { baixarXlsx, dataParaXlsx } from '@/lib/exportar-xlsx'
 
 // ---- Types ----
@@ -51,6 +51,8 @@ function getSituacao(c: Controle): string {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
   return venc < hoje ? 'Atrasado' : 'Em dia'
 }
+
+const PAGE_SIZE = 100
 
 const SITUACAO_BADGE: Record<string, string> = {
   'Quitado': 'bg-green-100 text-green-700',
@@ -596,7 +598,8 @@ export default function ControleRecebimentosPage() {
   const [tipos, setTipos] = useState<TipoRecebimento[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
-  const [exportando, setExportando] = useState(false)
+  const [exportando, setExportando] = useState<'pagina' | 'tudo' | null>(null)
+  const [page, setPage] = useState(0)
   const [user, setUser] = useState<{ username: string } | null>(null)
 
   const [filtroEmpresa, setFiltroEmpresa] = useState('')
@@ -654,6 +657,9 @@ export default function ControleRecebimentosPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Volta para a primeira página quando os filtros mudam
+  useEffect(() => { setPage(0) }, [filtroEmpresa, filtroCategoria, filtroStatusRec, filtroSituacao])
+
   const rows: Row[] = useMemo(() =>
     controles.map(c => {
       const ped = c.pedido_id ? pedidos[c.pedido_id] : undefined
@@ -688,6 +694,11 @@ export default function ControleRecebimentosPage() {
     [...filtered].sort((a, b) => (a.pedido_id ?? 0) - (b.pedido_id ?? 0) || a.id - b.id),
     [filtered])
 
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
+  const visiveis = useMemo(() => sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE), [sorted, page])
+  // Se a página atual deixou de existir (ex.: excluiu o último registro dela), volta para a última
+  useEffect(() => { if (page > totalPages - 1) setPage(totalPages - 1) }, [page, totalPages])
+
   const totalAReceber = useMemo(() => filtered.reduce((s, r) => s + (r.valor_pagar ?? 0), 0), [filtered])
   const totalRecebido = useMemo(() => filtered.reduce((s, r) => s + (r.valor_pagamento ?? 0), 0), [filtered])
   const saldoRestante = totalAReceber - totalRecebido
@@ -703,9 +714,8 @@ export default function ControleRecebimentosPage() {
 
   const pedidosList = pedidosForAdd
 
-  // Exporta todos os registros que batem com os filtros atuais (esta tela não é paginada)
-  const exportar = async () => {
-    setExportando(true); setErro('')
+  const exportar = async (modo: 'pagina' | 'tudo') => {
+    setExportando(modo); setErro('')
     try {
       await baixarXlsx('Recebimentos', [
         { header: 'ID', key: 'id', width: 10 },
@@ -722,7 +732,7 @@ export default function ControleRecebimentosPage() {
         { header: 'Status', key: 'status_recebimento', width: 18 },
         { header: 'Tipo', key: 'tipo_recebimento', width: 18 },
         { header: 'Situação', key: 'situacao', width: 16 },
-      ], sorted.map(r => ({
+      ], (modo === 'pagina' ? visiveis : sorted).map(r => ({
         ...r,
         status_pedido: r.status_pedido || '-',
         observacao: r.observacao ?? '-',
@@ -730,11 +740,11 @@ export default function ControleRecebimentosPage() {
         data_pagamento: dataParaXlsx(r.data_pagamento),
         status_recebimento: statusNome(r.status_recebimento),
         tipo_recebimento: tipoNome(r.tipo_recebimento),
-      })), `controle_recebimentos_${new Date().toISOString().slice(0, 10)}.xlsx`)
+      })), `controle_recebimentos_${modo === 'pagina' ? `pagina_${page + 1}` : 'completo'}_${new Date().toISOString().slice(0, 10)}.xlsx`)
     } catch {
       setErro('Não foi possível gerar a planilha. Tente novamente.')
     } finally {
-      setExportando(false)
+      setExportando(null)
     }
   }
 
@@ -754,12 +764,20 @@ export default function ControleRecebimentosPage() {
             Alterar Status em Lote
           </button>
           <button
-            onClick={exportar}
-            disabled={exportando || loading || sorted.length === 0}
+            onClick={() => exportar('pagina')}
+            disabled={!!exportando || loading || visiveis.length === 0}
             className="btn-secondary gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Exporta todos os registros que batem com os filtros atuais"
+            title="Exporta somente os registros exibidos nesta página"
           >
-            <Download size={15} /> {exportando ? 'Exportando...' : 'Exportar (.xlsx)'}
+            <Download size={15} /> {exportando === 'pagina' ? 'Exportando...' : 'Exportar Página (.xlsx)'}
+          </button>
+          <button
+            onClick={() => exportar('tudo')}
+            disabled={!!exportando || loading || sorted.length === 0}
+            className="btn-secondary gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Exporta todos os registros que batem com os filtros atuais, de todas as páginas"
+          >
+            <Download size={15} /> {exportando === 'tudo' ? 'Exportando...' : 'Exportar Tudo (.xlsx)'}
           </button>
           <button onClick={load} className="btn-secondary p-2" title="Atualizar">
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -808,7 +826,7 @@ export default function ControleRecebimentosPage() {
           </div>
         </div>
         <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">
-          {loading ? 'Carregando...' : `${filtered.length} recebimento(s) de ${controles.length} total`}
+          {loading ? 'Carregando...' : `${filtered.length} recebimento(s) de ${controles.length} total — página ${page + 1} de ${totalPages}`}
         </p>
       </div>
 
@@ -862,7 +880,7 @@ export default function ControleRecebimentosPage() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map(r => (
+                {visiveis.map(r => (
                   <tr key={r.id} className="table-row">
                     <td className="table-cell font-mono text-xs text-slate-400">#{r.id}</td>
                     <td className="table-cell font-mono text-xs">
@@ -905,6 +923,29 @@ export default function ControleRecebimentosPage() {
               </tbody>
             </table>
           </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
+              <button
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={14} /> Anterior
+              </button>
+              <span className="text-sm text-slate-600">
+                Página <span className="font-semibold">{page + 1}</span> de{' '}
+                <span className="font-semibold">{totalPages}</span>
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                disabled={page >= totalPages - 1}
+                className="btn-secondary text-sm gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Próximo <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
