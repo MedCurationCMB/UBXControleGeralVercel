@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { RefreshCw, Plus, Pencil, X, Trash2, Download, Upload, FileSpreadsheet } from 'lucide-react'
+import { baixarXlsx, dataParaXlsx } from '@/lib/exportar-xlsx'
 
 // ---- Types ----
 interface RecebimentoStatus { id: number; nome_status: string }
@@ -27,11 +28,12 @@ interface Row extends Controle {
 // O Supabase limita cada consulta a 1000 linhas, então busca em páginas.
 const BATCH = 1000
 async function fetchTodos<T>(
-  page: (from: number, to: number) => PromiseLike<{ data: T[] | null }>
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error?: { message: string } | null }>
 ): Promise<T[]> {
   const all: T[] = []
   for (let from = 0; ; from += BATCH) {
-    const { data } = await page(from, from + BATCH - 1)
+    const { data, error } = await page(from, from + BATCH - 1)
+    if (error) throw new Error(error.message)
     all.push(...(data ?? []))
     if ((data?.length ?? 0) < BATCH) return all
   }
@@ -205,6 +207,7 @@ function AdicionarModal({
   const [loteLoading, setLoteLoading] = useState(false)
   const [loteError, setLoteError] = useState('')
   const [loteSuccess, setLoteSuccess] = useState('')
+  const [loteRejeitadas, setLoteRejeitadas] = useState<{ linha: number; motivo: string }[]>([])
   const loteRef = useRef<HTMLInputElement>(null)
 
   const tipoSelecionado = tipos.find(t => String(t.id) === tipoRec)
@@ -272,11 +275,12 @@ function AdicionarModal({
 
   const handleLoteImport = async () => {
     if (!loteFile) return
-    setLoteLoading(true); setLoteError(''); setLoteSuccess('')
+    setLoteLoading(true); setLoteError(''); setLoteSuccess(''); setLoteRejeitadas([])
     const fd = new FormData(); fd.append('file', loteFile)
     const res = await fetch('/api/controle-recebimentos/importar-lote', { method: 'POST', body: fd })
-    const data = await res.json()
+    const data = await res.json().catch(() => ({}))
     setLoteLoading(false)
+    setLoteRejeitadas(data.rejeitadas ?? [])
     if (!res.ok) { setLoteError(data.error ?? 'Erro ao importar'); return }
     setLoteSuccess(`${data.count} recebimento(s) importados com sucesso!`)
     setLoteFile(null)
@@ -380,9 +384,9 @@ function AdicionarModal({
           <div className="space-y-4">
             <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded p-3 space-y-1">
               <p className="font-medium text-slate-800">Instruções:</p>
-              <p>• <strong>pedido_id</strong>: OBRIGATÓRIO — ID de pedido existente</p>
+              <p>• <strong>pedido_id</strong>: OBRIGATÓRIO — ID de pedido autorizado</p>
               <p>• <strong>data_vencimento</strong>: OBRIGATÓRIO — formato DD/MM/AAAA</p>
-              <p>• <strong>valor_pagar</strong>: OBRIGATÓRIO — separador decimal é ponto (1000.00)</p>
+              <p>• <strong>valor_pagar</strong>: OBRIGATÓRIO — maior que zero (1000.00 ou 1000,00)</p>
               <p>• <strong>tipo_recebimento</strong>: OBRIGATÓRIO — ID numérico do tipo cadastrado</p>
               <p>• <strong>data_pagamento</strong> e <strong>valor_pagamento</strong>: opcionais</p>
             </div>
@@ -414,6 +418,17 @@ function AdicionarModal({
 
             {loteError && <p className="text-sm text-red-600">{loteError}</p>}
             {loteSuccess && <p className="text-sm text-green-600">{loteSuccess}</p>}
+            {loteRejeitadas.length > 0 && (
+              <div className="text-sm bg-amber-50 border border-amber-200 rounded p-3 space-y-1">
+                <p className="font-medium text-amber-800">
+                  {loteRejeitadas.length} linha(s) rejeitada(s) e NÃO importadas. Corrija só elas e importe de novo (não reenvie as que já entraram):
+                </p>
+                <ul className="max-h-40 overflow-y-auto text-amber-900 space-y-0.5">
+                  {loteRejeitadas.slice(0, 50).map(r => <li key={r.linha}>Linha {r.linha}: {r.motivo}</li>)}
+                  {loteRejeitadas.length > 50 && <li>...e mais {loteRejeitadas.length - 50}.</li>}
+                </ul>
+              </div>
+            )}
 
             <div className="flex justify-end gap-3">
               <button onClick={onClose} className="btn-secondary">Cancelar</button>
@@ -580,6 +595,8 @@ export default function ControleRecebimentosPage() {
   const [statuses, setStatuses] = useState<RecebimentoStatus[]>([])
   const [tipos, setTipos] = useState<TipoRecebimento[]>([])
   const [loading, setLoading] = useState(true)
+  const [erro, setErro] = useState('')
+  const [exportando, setExportando] = useState(false)
   const [user, setUser] = useState<{ username: string } | null>(null)
 
   const [filtroEmpresa, setFiltroEmpresa] = useState('')
@@ -592,41 +609,46 @@ export default function ControleRecebimentosPage() {
   const [showLote, setShowLote] = useState(false)
 
   const load = useCallback(async () => {
-    setLoading(true)
-    const [ctrls, { data: sts }, { data: tps }, u, pedsAdd, { data: emps }, { data: cats }] = await Promise.all([
-      fetchTodos<Controle>((a, b) =>
-        supabase.from('controle_recebimento').select('*').order('id', { ascending: false }).range(a, b)),
-      supabase.from('recebimento_status').select('*').order('id'),
-      supabase.from('tipos_recebimento').select('*').order('id'),
-      fetch('/api/auth/me').then(r => r.json()),
-      fetchTodos<Pedido>((a, b) =>
-        supabase.from('pedidos_solicitados_receita')
+    setLoading(true); setErro('')
+    try {
+      const [ctrls, { data: sts }, { data: tps }, u, pedsAdd, { data: emps }, { data: cats }] = await Promise.all([
+        fetchTodos<Controle>((a, b) =>
+          supabase.from('controle_recebimento').select('*').order('id', { ascending: false }).range(a, b)),
+        supabase.from('recebimento_status').select('*').order('id'),
+        supabase.from('tipos_recebimento').select('*').order('id'),
+        fetch('/api/auth/me').then(r => r.json()),
+        fetchTodos<Pedido>((a, b) =>
+          supabase.from('pedidos_solicitados_receita')
+            .select('id, empresa, categoria, cliente, valor_pedido, status, observacao')
+            .eq('status', 'Autorizado').eq('cancelado', false)
+            .order('id', { ascending: false }).range(a, b)),
+        supabase.from('empresas').select('empresa'),
+        supabase.from('categorias_receita').select('empresa, categoria'),
+      ])
+      setStatuses(sts ?? [])
+      setTipos(tps ?? [])
+      setUser(u?.username ? u : null)
+      setPedidosForAdd(pedsAdd)
+      setEmpresasCad([...new Set((emps ?? []).map(r => r.empresa).filter(Boolean))].sort())
+      setCategoriasCad(cats ?? [])
+
+      setControles(ctrls)
+
+      // .in() vai na URL, então busca os pedidos em blocos pequenos
+      const pedidoIds = [...new Set(ctrls.filter(c => c.pedido_id).map(c => c.pedido_id as number))]
+      const map: Record<number, Pedido> = {}
+      for (let k = 0; k < pedidoIds.length; k += 200) {
+        const { data: peds, error } = await supabase
+          .from('pedidos_solicitados_receita')
           .select('id, empresa, categoria, cliente, valor_pedido, status, observacao')
-          .eq('status', 'Autorizado').eq('cancelado', false)
-          .order('id', { ascending: false }).range(a, b)),
-      supabase.from('empresas').select('empresa'),
-      supabase.from('categorias_receita').select('empresa, categoria'),
-    ])
-    setStatuses(sts ?? [])
-    setTipos(tps ?? [])
-    setUser(u?.username ? u : null)
-    setPedidosForAdd(pedsAdd)
-    setEmpresasCad([...new Set((emps ?? []).map(r => r.empresa).filter(Boolean))].sort())
-    setCategoriasCad(cats ?? [])
-
-    setControles(ctrls)
-
-    // .in() vai na URL, então busca os pedidos em blocos pequenos
-    const pedidoIds = [...new Set(ctrls.filter(c => c.pedido_id).map(c => c.pedido_id as number))]
-    const map: Record<number, Pedido> = {}
-    for (let k = 0; k < pedidoIds.length; k += 200) {
-      const { data: peds } = await supabase
-        .from('pedidos_solicitados_receita')
-        .select('id, empresa, categoria, cliente, valor_pedido, status, observacao')
-        .in('id', pedidoIds.slice(k, k + 200))
-      peds?.forEach(p => { map[p.id] = p })
+          .in('id', pedidoIds.slice(k, k + 200))
+        if (error) throw new Error(error.message)
+        peds?.forEach(p => { map[p.id] = p })
+      }
+      setPedidos(map)
+    } catch (e) {
+      setErro(`Não foi possível carregar os recebimentos: ${(e as Error).message}. Clique em atualizar para tentar de novo.`)
     }
-    setPedidos(map)
     setLoading(false)
   }, [])
 
@@ -681,6 +703,41 @@ export default function ControleRecebimentosPage() {
 
   const pedidosList = pedidosForAdd
 
+  // Exporta todos os registros que batem com os filtros atuais (esta tela não é paginada)
+  const exportar = async () => {
+    setExportando(true); setErro('')
+    try {
+      await baixarXlsx('Recebimentos', [
+        { header: 'ID', key: 'id', width: 10 },
+        { header: 'Pedido', key: 'pedido_id', width: 10 },
+        { header: 'Empresa', key: 'empresa', width: 24 },
+        { header: 'Categoria', key: 'categoria', width: 18 },
+        { header: 'Cliente', key: 'cliente', width: 26 },
+        { header: 'Status Autorização', key: 'status_pedido', width: 20 },
+        { header: 'Descrição', key: 'observacao', width: 26 },
+        { header: 'Vencimento', key: 'data_vencimento', width: 14, formato: 'data' },
+        { header: 'Valor a Receber', key: 'valor_pagar', width: 16, formato: 'moeda' },
+        { header: 'Recebimento', key: 'data_pagamento', width: 14, formato: 'data' },
+        { header: 'Valor Recebido', key: 'valor_pagamento', width: 16, formato: 'moeda' },
+        { header: 'Status', key: 'status_recebimento', width: 18 },
+        { header: 'Tipo', key: 'tipo_recebimento', width: 18 },
+        { header: 'Situação', key: 'situacao', width: 16 },
+      ], sorted.map(r => ({
+        ...r,
+        status_pedido: r.status_pedido || '-',
+        observacao: r.observacao ?? '-',
+        data_vencimento: dataParaXlsx(r.data_vencimento),
+        data_pagamento: dataParaXlsx(r.data_pagamento),
+        status_recebimento: statusNome(r.status_recebimento),
+        tipo_recebimento: tipoNome(r.tipo_recebimento),
+      })), `controle_recebimentos_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } catch {
+      setErro('Não foi possível gerar a planilha. Tente novamente.')
+    } finally {
+      setExportando(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -696,11 +753,21 @@ export default function ControleRecebimentosPage() {
           <button onClick={() => setShowLote(true)} className="btn-secondary text-sm">
             Alterar Status em Lote
           </button>
+          <button
+            onClick={exportar}
+            disabled={exportando || loading || sorted.length === 0}
+            className="btn-secondary gap-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Exporta todos os registros que batem com os filtros atuais"
+          >
+            <Download size={15} /> {exportando ? 'Exportando...' : 'Exportar (.xlsx)'}
+          </button>
           <button onClick={load} className="btn-secondary p-2" title="Atualizar">
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
+
+      {erro && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{erro}</div>}
 
       {/* Filters */}
       <div className="card">

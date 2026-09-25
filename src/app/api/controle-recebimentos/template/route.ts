@@ -22,12 +22,16 @@ export async function GET() {
     fgColor: { argb: 'FFE2E8F0' },
   }
 
-  sheet.addRow({ pedido_id: 1, data_vencimento: '31/01/2025', valor_pagar: 1500.00, tipo_recebimento: 1 })
-  sheet.addRow({ pedido_id: 2, data_vencimento: '28/02/2025', valor_pagar: 800.00, tipo_recebimento: 3, data_pagamento: '25/02/2025', valor_pagamento: 800.00 })
-
-  const notesRow = sheet.addRow([])
-  notesRow.getCell(1).value = '-- tipo_recebimento: use o ID numérico do tipo de recebimento cadastrado --'
-  notesRow.font = { italic: true, color: { argb: 'FF6B7280' } }
+  // Sem linhas de exemplo: elas seriam importadas como recebimentos reais se ficassem na planilha.
+  // As linhas de anotação (começam com "--") são ignoradas na importação.
+  const notas = [
+    '-- tipo_recebimento: use o ID numérico do tipo de recebimento cadastrado --',
+    '-- Datas em DD/MM/AAAA (ex.: 31/01/2026). Valores: 1500.50 ou 1500,50. Só pedidos autorizados. Apague estas linhas antes de importar (opcional). --',
+  ]
+  for (const n of notas) {
+    const r = sheet.addRow([n])
+    r.font = { italic: true, color: { argb: 'FF6B7280' } }
+  }
 
   const bufferData = await workbook.xlsx.writeBuffer()
 

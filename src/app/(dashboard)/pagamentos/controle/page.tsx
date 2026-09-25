@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { RefreshCw, Plus, Pencil, X, Trash2, Check, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight, Info, FileOutput } from 'lucide-react'
+import { baixarXlsx, dataParaXlsx } from '@/lib/exportar-xlsx'
 import RemessaRetornoModal from '@/components/controle-pagamentos/RemessaRetornoModal'
 
 // ---- Types ----
@@ -33,14 +34,6 @@ const fmtMoeda = (v: number | null | undefined) =>
   v != null ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'
 const fmtData = (d: string | null | undefined) =>
   d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '-'
-
-function getSituacao(c: Controle): string {
-  if (c.valor_pagamento != null && c.valor_pagar != null && c.valor_pagamento >= c.valor_pagar) return 'Quitado'
-  if (!c.data_vencimento) return 'Sem vencimento'
-  const venc = new Date(c.data_vencimento + 'T12:00:00')
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
-  return venc < hoje ? 'Atrasado' : 'Em dia'
-}
 
 const SITUACAO_BADGE: Record<string, string> = {
   'Quitado': 'bg-green-100 text-green-700',
@@ -223,6 +216,7 @@ function AdicionarModal({
   const [loteLoading, setLoteLoading] = useState(false)
   const [loteError, setLoteError] = useState('')
   const [loteSuccess, setLoteSuccess] = useState('')
+  const [loteRejeitadas, setLoteRejeitadas] = useState<{ linha: number; motivo: string }[]>([])
   const loteRef = useRef<HTMLInputElement>(null)
 
   const isBoleto = tipoPag === '3'
@@ -330,11 +324,12 @@ function AdicionarModal({
 
   const handleLoteImport = async () => {
     if (!loteFile) return
-    setLoteLoading(true); setLoteError(''); setLoteSuccess('')
+    setLoteLoading(true); setLoteError(''); setLoteSuccess(''); setLoteRejeitadas([])
     const fd = new FormData(); fd.append('file', loteFile)
     const res = await fetch('/api/controle-pagamentos/importar-lote', { method: 'POST', body: fd })
-    const data = await res.json()
+    const data = await res.json().catch(() => ({}))
     setLoteLoading(false)
+    setLoteRejeitadas(data.rejeitadas ?? [])
     if (!res.ok) { setLoteError(data.error ?? 'Erro ao importar'); return }
     setLoteSuccess(`${data.count} pagamento(s) importados com sucesso!`)
     setLoteFile(null)
@@ -457,9 +452,9 @@ function AdicionarModal({
           <div className="space-y-4">
             <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded p-3 space-y-1">
               <p className="font-medium text-slate-800">Instruções:</p>
-              <p>• <strong>pedido_id</strong>: OBRIGATÓRIO — ID de pedido existente</p>
+              <p>• <strong>pedido_id</strong>: OBRIGATÓRIO — ID de pedido autorizado</p>
               <p>• <strong>data_vencimento</strong>: OBRIGATÓRIO — formato DD/MM/AAAA</p>
-              <p>• <strong>valor_pagar</strong>: OBRIGATÓRIO — separador decimal é ponto (1000.00)</p>
+              <p>• <strong>valor_pagar</strong>: OBRIGATÓRIO — maior que zero (1000.00 ou 1000,00)</p>
               <p>• <strong>tipo_pagamento</strong>: OBRIGATÓRIO — 1=PIX, 2=Dinheiro, 3=Boleto, 4=Cartão de Crédito, 5=Ainda à Definir</p>
               <p>• <strong>data_pagamento</strong> e <strong>valor_pagamento</strong>: opcionais</p>
             </div>
@@ -491,6 +486,17 @@ function AdicionarModal({
 
             {loteError && <p className="text-sm text-red-600">{loteError}</p>}
             {loteSuccess && <p className="text-sm text-green-600">{loteSuccess}</p>}
+            {loteRejeitadas.length > 0 && (
+              <div className="text-sm bg-amber-50 border border-amber-200 rounded p-3 space-y-1">
+                <p className="font-medium text-amber-800">
+                  {loteRejeitadas.length} linha(s) rejeitada(s) e NÃO importadas. Corrija só elas e importe de novo (não reenvie as que já entraram):
+                </p>
+                <ul className="max-h-40 overflow-y-auto text-amber-900 space-y-0.5">
+                  {loteRejeitadas.slice(0, 50).map(r => <li key={r.linha}>Linha {r.linha}: {r.motivo}</li>)}
+                  {loteRejeitadas.length > 50 && <li>...e mais {loteRejeitadas.length - 50}.</li>}
+                </ul>
+              </div>
+            )}
 
             <div className="flex justify-end gap-3">
               <button onClick={onClose} className="btn-secondary">Cancelar</button>
@@ -757,67 +763,32 @@ export default function ControlePage() {
 
   const [exporting, setExporting] = useState(false)
   const [exportingAll, setExportingAll] = useState(false)
+  const [exportErro, setExportErro] = useState('')
 
-  const gerarPlanilha = async (data: Row[], filename: string) => {
-    const ExcelJS = (await import('exceljs')).default
-    const workbook = new ExcelJS.Workbook()
-    const sheet = workbook.addWorksheet('Pagamentos')
-
-    sheet.columns = [
-      { header: 'ID', key: 'id', width: 10 },
-      { header: 'Pedido', key: 'pedido_id', width: 10 },
-      { header: 'Empresa', key: 'empresa', width: 24 },
-      { header: 'Categoria', key: 'categoria', width: 18 },
-      { header: 'Fornecedor', key: 'fornecedor', width: 26 },
-      { header: 'Status Autorização', key: 'status_pedido', width: 20 },
-      { header: 'Descrição', key: 'observacao', width: 26 },
-      { header: 'Vencimento', key: 'data_vencimento', width: 14 },
-      { header: 'Valor a Pagar', key: 'valor_pagar', width: 16 },
-      { header: 'Pagamento', key: 'data_pagamento', width: 14 },
-      { header: 'Valor Pago', key: 'valor_pagamento', width: 16 },
-      { header: 'Status', key: 'status_pagamento', width: 18 },
-      { header: 'Tipo', key: 'tipo_pagamento', width: 18 },
-      { header: 'Situação', key: 'situacao', width: 16 },
-    ]
-
-    const headerRow = sheet.getRow(1)
-    headerRow.font = { bold: true }
-    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }
-
-    data.forEach(r => {
-      const row = sheet.addRow({
-        id: r.id,
-        pedido_id: r.pedido_id,
-        empresa: r.empresa,
-        categoria: r.categoria,
-        fornecedor: r.fornecedor,
-        status_pedido: r.status_pedido || '-',
-        observacao: r.observacao ?? '-',
-        data_vencimento: r.data_vencimento ? new Date(r.data_vencimento + 'T12:00:00') : null,
-        valor_pagar: r.valor_pagar,
-        data_pagamento: r.data_pagamento ? new Date(r.data_pagamento + 'T12:00:00') : null,
-        valor_pagamento: r.valor_pagamento,
-        status_pagamento: statusNome(r.status_pagamento),
-        tipo_pagamento: tipoNome(r.tipo_pagamento),
-        situacao: r.situacao,
-      })
-      row.getCell('data_vencimento').numFmt = 'dd/mm/yyyy'
-      row.getCell('data_pagamento').numFmt = 'dd/mm/yyyy'
-      row.getCell('valor_pagar').numFmt = '"R$" #,##0.00'
-      row.getCell('valor_pagamento').numFmt = '"R$" #,##0.00'
-    })
-
-    const buffer = await workbook.xlsx.writeBuffer()
-    const blob = new Blob([new Uint8Array(buffer as ArrayBuffer)], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  const gerarPlanilha = (data: Row[], filename: string) => baixarXlsx('Pagamentos', [
+    { header: 'ID', key: 'id', width: 10 },
+    { header: 'Pedido', key: 'pedido_id', width: 10 },
+    { header: 'Empresa', key: 'empresa', width: 24 },
+    { header: 'Categoria', key: 'categoria', width: 18 },
+    { header: 'Fornecedor', key: 'fornecedor', width: 26 },
+    { header: 'Status Autorização', key: 'status_pedido', width: 20 },
+    { header: 'Descrição', key: 'observacao', width: 26 },
+    { header: 'Vencimento', key: 'data_vencimento', width: 14, formato: 'data' },
+    { header: 'Valor a Pagar', key: 'valor_pagar', width: 16, formato: 'moeda' },
+    { header: 'Pagamento', key: 'data_pagamento', width: 14, formato: 'data' },
+    { header: 'Valor Pago', key: 'valor_pagamento', width: 16, formato: 'moeda' },
+    { header: 'Status', key: 'status_pagamento', width: 18 },
+    { header: 'Tipo', key: 'tipo_pagamento', width: 18 },
+    { header: 'Situação', key: 'situacao', width: 16 },
+  ], data.map(r => ({
+    ...r,
+    status_pedido: r.status_pedido || '-',
+    observacao: r.observacao ?? '-',
+    data_vencimento: dataParaXlsx(r.data_vencimento),
+    data_pagamento: dataParaXlsx(r.data_pagamento),
+    status_pagamento: statusNome(r.status_pagamento),
+    tipo_pagamento: tipoNome(r.tipo_pagamento),
+  })), filename)
 
   const exportarPagina = async () => {
     setExporting(true)
@@ -830,7 +801,7 @@ export default function ControlePage() {
   }
 
   const exportarTudo = async () => {
-    setExportingAll(true)
+    setExportingAll(true); setExportErro('')
     try {
       const params = new URLSearchParams()
       if (filtroEmpresa) params.set('empresa', filtroEmpresa)
@@ -840,9 +811,15 @@ export default function ControlePage() {
       params.set('export', 'true')
 
       const res = await fetch(`/api/controle-pagamentos/listar?${params}`)
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !Array.isArray(data.rows)) {
+        setExportErro(`Não foi possível exportar: ${data.error ?? 'erro ao buscar os dados'}. Tente novamente.`)
+        return
+      }
       const dataStr = new Date().toISOString().slice(0, 10)
-      await gerarPlanilha(data.rows ?? [], `controle_pagamentos_completo_${dataStr}.xlsx`)
+      await gerarPlanilha(data.rows, `controle_pagamentos_completo_${dataStr}.xlsx`)
+    } catch {
+      setExportErro('Não foi possível exportar: falha de conexão. Tente novamente.')
     } finally {
       setExportingAll(false)
     }
@@ -887,6 +864,8 @@ export default function ControlePage() {
           </button>
         </div>
       </div>
+
+      {exportErro && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{exportErro}</div>}
 
       {/* Filters */}
       <div className="card">

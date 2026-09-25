@@ -1,74 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
-import { getSituacao, fetchAllPedidoIds } from '@/lib/controle-pagamentos-server'
+import { getSituacao, consultaControles, type FiltrosControle } from '@/lib/controle-pagamentos-server'
 import { getSession } from '@/lib/auth'
 
+interface Pedido {
+  empresa: string; categoria: string; fornecedor: string; status: string; observacao: string | null
+}
 interface Controle {
   id: number; pedido_id: number | null
   data_vencimento: string | null; valor_pagar: number | null
   data_pagamento: string | null; valor_pagamento: number | null
   status_pagamento: number | null; tipo_pagamento: number | null
-}
-
-interface Pedido {
-  id: number; empresa: string; categoria: string; fornecedor: string
-  valor_pedido: number; status: string; observacao: string | null; cancelado: boolean
+  pedidos_solicitados: Pedido | null
 }
 
 const FETCH_PAGE = 1000
 
-async function enrich(supabase: ReturnType<typeof createServerClient>, ctrls: Controle[]) {
-  const uniquePedidoIds = [...new Set(ctrls.filter(c => c.pedido_id).map(c => c.pedido_id as number))]
-  const pedidoMap: Record<number, Pedido> = {}
-  for (let i = 0; i < uniquePedidoIds.length; i += FETCH_PAGE) {
-    const chunk = uniquePedidoIds.slice(i, i + FETCH_PAGE)
-    const { data: peds } = await supabase
-      .from('pedidos_solicitados')
-      .select('id, empresa, categoria, fornecedor, valor_pedido, status, observacao, cancelado')
-      .in('id', chunk)
-    ;(peds ?? []).forEach((p: Pedido) => { pedidoMap[p.id] = p })
+function montarLinha({ pedidos_solicitados: ped, ...c }: Controle) {
+  return {
+    ...c,
+    empresa: ped?.empresa ?? '',
+    categoria: ped?.categoria ?? '',
+    fornecedor: ped?.fornecedor ?? '',
+    status_pedido: ped?.status ?? '',
+    observacao: ped?.observacao ?? null,
+    situacao: getSituacao(c),
   }
-  return ctrls.map(c => {
-    const ped = c.pedido_id ? pedidoMap[c.pedido_id] : undefined
-    return {
-      ...c,
-      empresa: ped?.empresa ?? '',
-      categoria: ped?.categoria ?? '',
-      fornecedor: ped?.fornecedor ?? '',
-      status_pedido: ped?.status ?? '',
-      observacao: ped?.observacao ?? null,
-      situacao: getSituacao(c),
-    }
-  })
 }
 
-async function fetchAllControles(
-  supabase: ReturnType<typeof createServerClient>,
-  pedidoIds: number[] | null,
-  status_pagamento: string,
-  projetoId: number
-) {
-  let offset = 0
+async function fetchAllControles(supabase: ReturnType<typeof createServerClient>, projetoId: number, f: FiltrosControle) {
   const all: Controle[] = []
-  while (true) {
-    let q = supabase
-      .from('controle_pagamentos')
-      .select('*')
-      .eq('projeto_id', projetoId)
+  for (let offset = 0; ; offset += FETCH_PAGE) {
+    const { data, error } = await consultaControles(supabase, projetoId, f, '*', { comPedido: true })
       .order('id', { ascending: false })
       .range(offset, offset + FETCH_PAGE - 1)
-
-    if (pedidoIds) q = q.in('pedido_id', pedidoIds)
-    if (status_pagamento) q = q.eq('status_pagamento', parseInt(status_pagamento))
-
-    const { data, error } = await q
     if (error) throw new Error(error.message)
-    const batch = (data ?? []) as Controle[]
+    const batch = (data ?? []) as unknown as Controle[]
     all.push(...batch)
-    if (batch.length < FETCH_PAGE) break
-    offset += FETCH_PAGE
+    if (batch.length < FETCH_PAGE) return all
   }
-  return all
 }
 
 export async function GET(req: NextRequest) {
@@ -77,66 +47,33 @@ export async function GET(req: NextRequest) {
   const projetoId = session.projetoId
   const supabase = createServerClient()
   const { searchParams } = req.nextUrl
-  const empresa = searchParams.get('empresa') || ''
-  const categoria = searchParams.get('categoria') || ''
-  const status_pagamento = searchParams.get('status_pagamento') || ''
+  const filtros: FiltrosControle = {
+    empresa: searchParams.get('empresa') || '',
+    categoria: searchParams.get('categoria') || '',
+    status_pagamento: searchParams.get('status_pagamento') || '',
+  }
   const situacao = searchParams.get('situacao') || ''
   const isExport = searchParams.get('export') === 'true'
   const page = parseInt(searchParams.get('page') || '0')
   const pageSize = parseInt(searchParams.get('page_size') || '100')
 
-  let pedidoIds: number[] | null = null
-  if (empresa || categoria) {
-    pedidoIds = await fetchAllPedidoIds(supabase, empresa, categoria, projetoId)
-    if (pedidoIds.length === 0) {
-      return NextResponse.json({ rows: [], total: 0 })
-    }
-  }
-
-  // Export: return every row matching the filters, ignoring pagination.
-  if (isExport) {
+  // Export, ou filtro por situação (campo calculado): resolve tudo antes de paginar.
+  if (isExport || situacao) {
     let all: Controle[]
     try {
-      all = await fetchAllControles(supabase, pedidoIds, status_pagamento, projetoId)
+      all = await fetchAllControles(supabase, projetoId, filtros)
     } catch (error) {
       return NextResponse.json({ error: (error as Error).message }, { status: 500 })
     }
-    const filtered = situacao ? all.filter(c => getSituacao(c) === situacao) : all
-    const rows = await enrich(supabase, filtered)
-    return NextResponse.json({ rows, total: rows.length })
+    const rows = all.map(montarLinha).filter(r => !situacao || r.situacao === situacao)
+    if (isExport) return NextResponse.json({ rows, total: rows.length })
+    return NextResponse.json({ rows: rows.slice(page * pageSize, (page + 1) * pageSize), total: rows.length })
   }
 
-  // Fast path: no situacao filter — paginate directly in the database.
-  if (!situacao) {
-    let q = supabase
-      .from('controle_pagamentos')
-      .select('*', { count: 'exact' })
-      .eq('projeto_id', projetoId)
-      .order('id', { ascending: false })
-      .range(page * pageSize, (page + 1) * pageSize - 1)
-
-    if (pedidoIds) q = q.in('pedido_id', pedidoIds)
-    if (status_pagamento) q = q.eq('status_pagamento', parseInt(status_pagamento))
-
-    const { data, count, error } = await q
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-    const rows = await enrich(supabase, (data ?? []) as Controle[])
-    return NextResponse.json({ rows, total: count ?? 0 })
-  }
-
-  // situacao is a computed field, so matching rows must be resolved before paginating.
-  let all: Controle[]
-  try {
-    all = await fetchAllControles(supabase, pedidoIds, status_pagamento, projetoId)
-  } catch (error) {
-    return NextResponse.json({ error: (error as Error).message }, { status: 500 })
-  }
-
-  const filtered = all.filter(c => getSituacao(c) === situacao)
-  const total = filtered.length
-  const pageSlice = filtered.slice(page * pageSize, (page + 1) * pageSize)
-  const rows = await enrich(supabase, pageSlice)
-
-  return NextResponse.json({ rows, total })
+  // Sem filtro de situação: pagina direto no banco.
+  const { data, count, error } = await consultaControles(supabase, projetoId, filtros, '*', { comPedido: true, count: true })
+    .order('id', { ascending: false })
+    .range(page * pageSize, (page + 1) * pageSize - 1)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ rows: ((data ?? []) as unknown as Controle[]).map(montarLinha), total: count ?? 0 })
 }

@@ -6,32 +6,38 @@ export interface ControleRow {
   data_vencimento: string | null
 }
 
+// "Hoje" no fuso de Brasília: o servidor roda em UTC e, depois das 21h, o dia virava "amanhã".
+const hojeBrasilia = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+
 export function getSituacao(c: ControleRow): string {
   if (c.valor_pagamento != null && c.valor_pagar != null && c.valor_pagamento >= c.valor_pagar) return 'Quitado'
   if (!c.data_vencimento) return 'Sem vencimento'
-  const venc = new Date(c.data_vencimento + 'T12:00:00')
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
-  return venc < hoje ? 'Atrasado' : 'Em dia'
+  return c.data_vencimento.slice(0, 10) < hojeBrasilia() ? 'Atrasado' : 'Em dia'
 }
 
-export async function fetchAllPedidoIds(
+export interface FiltrosControle { empresa: string; categoria: string; status_pagamento: string }
+
+const PEDIDO_COLS = 'empresa, categoria, fornecedor, status, observacao'
+
+// Consulta de controle_pagamentos já filtrada pelo projeto. Empresa/categoria são filtradas por join
+// no banco (pedidos_solicitados!inner) — antes eram uma lista de IDs na URL, que estourava com ~2.000 pedidos.
+// comPedido: traz os dados do pedido junto (listagem/exportação); o resumo só precisa dos valores.
+export function consultaControles(
   supabase: ReturnType<typeof createServerClient>,
-  empresa: string,
-  categoria: string,
-  projetoId: number
-): Promise<number[]> {
-  const PAGE = 1000
-  let offset = 0
-  const ids: number[] = []
-  while (true) {
-    let q = supabase.from('pedidos_solicitados').select('id').eq('projeto_id', projetoId).range(offset, offset + PAGE - 1)
-    if (empresa) q = q.eq('empresa', empresa)
-    if (categoria) q = q.eq('categoria', categoria)
-    const { data } = await q
-    const batch = (data ?? []) as { id: number }[]
-    ids.push(...batch.map(p => p.id))
-    if (batch.length < PAGE) break
-    offset += PAGE
-  }
-  return ids
+  projetoId: number,
+  f: FiltrosControle,
+  colunas: string,
+  opts: { comPedido: boolean; count?: boolean }
+) {
+  const filtraPedido = !!(f.empresa || f.categoria)
+  const embed = filtraPedido ? `pedidos_solicitados!inner(${PEDIDO_COLS})`
+    : opts.comPedido ? `pedidos_solicitados(${PEDIDO_COLS})` : ''
+  let q = supabase
+    .from('controle_pagamentos')
+    .select(embed ? `${colunas}, ${embed}` : colunas, opts.count ? { count: 'exact' } : undefined)
+    .eq('projeto_id', projetoId)
+  if (f.empresa) q = q.eq('pedidos_solicitados.empresa', f.empresa)
+  if (f.categoria) q = q.eq('pedidos_solicitados.categoria', f.categoria)
+  if (f.status_pagamento) q = q.eq('status_pagamento', parseInt(f.status_pagamento))
+  return q
 }
