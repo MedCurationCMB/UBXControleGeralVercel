@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
       const { data: pedido, error: errPedido } = await supabaseServer
         .from('pedidos_solicitados')
         .insert({
+          projeto_id: session.projetoId,
           empresa: String(first.empresa ?? ''),
           categoria: String(first.categoria ?? ''),
           fornecedor: String(first.fornecedor ?? ''),

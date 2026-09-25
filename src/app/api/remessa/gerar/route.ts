@@ -263,7 +263,7 @@ export async function POST(req: NextRequest) {
   const supabase = createServerClient()
 
   // Fetch conta pagadora
-  const { data: conta } = await supabase.from('conta_pagador').select('*').eq('id', conta_id).single()
+  const { data: conta } = await supabase.from('conta_pagador').select('*').eq('id', conta_id).eq('projeto_id', session.projetoId).single()
   if (!conta) return NextResponse.json({ error: 'Conta pagadora não encontrada' }, { status: 404 })
 
   // Get next sequencial number
@@ -272,13 +272,14 @@ export async function POST(req: NextRequest) {
     .from('controle_sequencial')
     .select('valor')
     .eq('tipo', 'remessa_cnab')
+    .eq('projeto_id', session.projetoId)
     .maybeSingle()
 
   if (seqRow) {
     sequencial = parseInt(seqRow.valor) + 1
-    await supabase.from('controle_sequencial').update({ valor: String(sequencial) }).eq('tipo', 'remessa_cnab')
+    await supabase.from('controle_sequencial').update({ valor: String(sequencial) }).eq('tipo', 'remessa_cnab').eq('projeto_id', session.projetoId)
   } else {
-    await supabase.from('controle_sequencial').insert({ tipo: 'remessa_cnab', valor: '1' })
+    await supabase.from('controle_sequencial').insert({ tipo: 'remessa_cnab', valor: '1', projeto_id: session.projetoId })
   }
 
   const cnpjLimpo = String(conta.cnpj ?? '').replace(/\D/g, '')
@@ -377,6 +378,7 @@ export async function POST(req: NextRequest) {
     b2FileId = fileId
 
     await supabase.from('documentos').insert({
+      projeto_id: session.projetoId,
       pedido_id: null,
       pagamento_id: null,
       usuario: session.username,
@@ -394,6 +396,7 @@ export async function POST(req: NextRequest) {
   await supabase
     .from('controle_pagamentos')
     .update({ status_pagamento: 2 })
+    .eq('projeto_id', session.projetoId)
     .in('id', pagamentoIds)
 
   return NextResponse.json({

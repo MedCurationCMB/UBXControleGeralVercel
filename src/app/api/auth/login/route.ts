@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase/server'
-import { hashPassword, createSession, setSessionCookie } from '@/lib/auth'
+import { hashPassword, createSession, setSessionCookie, setProjetoCookie, PROJETO_COOKIE } from '@/lib/auth'
+import { projetosDoUsuario, hierarquiaEfetiva } from '@/lib/projetos'
 import type { Usuario } from '@/types/database'
 
 export async function POST(req: NextRequest) {
@@ -38,17 +39,32 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const projetos = await projetosDoUsuario(user.id, user.hierarquia)
+    if (projetos.length === 0) {
+      return NextResponse.json(
+        { error: 'Você não tem acesso a nenhum projeto. Entre em contato com o administrador.' },
+        { status: 403 }
+      )
+    }
+    // Reabre o último projeto usado, se ainda tiver acesso; senão o primeiro
+    const ultimo = Number(req.cookies.get(PROJETO_COOKIE)?.value)
+    const projeto = projetos.find(p => p.id === ultimo) ?? projetos[0]
+    const hierarquia = hierarquiaEfetiva(user.hierarquia, projeto.papel)
+
     const token = await createSession({
       userId: user.id,
       username: user.username,
       email: user.email,
-      hierarquia: user.hierarquia,
+      hierarquia,
       status_cadastro: user.status_cadastro!,
+      projetoId: projeto.id,
+      projetoNome: projeto.nome,
     })
 
     await setSessionCookie(token)
+    await setProjetoCookie(projeto.id)
 
-    return NextResponse.json({ ok: true, hierarquia: user.hierarquia })
+    return NextResponse.json({ ok: true, hierarquia })
   } catch (err) {
     console.error('Login error:', err)
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })

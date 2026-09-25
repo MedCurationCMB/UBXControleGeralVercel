@@ -27,16 +27,19 @@ export async function POST(req: NextRequest) {
     const { data: itens } = await supabaseServer
       .from(tabela)
       .select(`*, pedidos_solicitados(empresa, fornecedor, cliente)`)
+      .eq('projeto_id', session.projetoId)
       .eq(statusField, 1) // 1 = Pendente
       .lte('data_vencimento', limite.toISOString().split('T')[0])
 
     if (!itens?.length) return NextResponse.json({ ok: true, enviados: 0 })
 
     // Busca usuários para notificar
+    const { data: membros } = await supabaseServer.from('usuarios_projetos').select('usuario_id').eq('projeto_id', session.projetoId)
     const { data: usuarios } = await supabaseServer
       .from('usuarios')
       .select('email')
       .eq('status_cadastro', 'Autorizado')
+      .in('id', (membros ?? []).map(m => m.usuario_id))
 
     if (!usuarios?.length) return NextResponse.json({ ok: true, enviados: 0 })
 

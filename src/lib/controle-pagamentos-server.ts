@@ -17,13 +17,14 @@ export function getSituacao(c: ControleRow): string {
 export async function fetchAllPedidoIds(
   supabase: ReturnType<typeof createServerClient>,
   empresa: string,
-  categoria: string
+  categoria: string,
+  projetoId: number
 ): Promise<number[]> {
   const PAGE = 1000
   let offset = 0
   const ids: number[] = []
   while (true) {
-    let q = supabase.from('pedidos_solicitados').select('id').range(offset, offset + PAGE - 1)
+    let q = supabase.from('pedidos_solicitados').select('id').eq('projeto_id', projetoId).range(offset, offset + PAGE - 1)
     if (empresa) q = q.eq('empresa', empresa)
     if (categoria) q = q.eq('categoria', categoria)
     const { data } = await q

@@ -79,13 +79,19 @@ Ajustes de desenho que o teste trouxe:
 |---|---|---|
 | **0. Preparação** | Backup completo; cópia de teste do banco (projeto Supabase à parte); spike do cabeçalho/RLS; decisões da seção 6 | igual hoje |
 | **1. Banco** (pronta e testada no banco de teste: `banco/migracoes/2026-09-25_multi_projeto_fase1.sql`, teste em `banco/testes/fase1_isolamento.sql`) | `projetos`, `usuarios_projetos`, UBX = 1; `projeto_id` nas tabelas raiz (nulo, preenche com 1, NOT NULL, DEFAULT 1 temporário); únicos por projeto; triggers de orçamento e de parcelas com `projeto_id` | igual hoje (tudo é UBX) |
-| **2. Aplicação** | Projeto ativo na sessão; seletor no menu; cliente Supabase com cabeçalho; rotas de API filtrando; configs (fluxo, contratos, logo) por projeto; pasta do B2 por projeto | usuários só do UBX; sem mudança visível |
+| **1b. Banco (complemento)** | `documentos(_receita)` (arquivos de remessa/retorno não têm pedido) e `controle_pagamentos`/`controle_recebimento` ganham `projeto_id` próprio, herdado do pedido por trigger (`banco/migracoes/2026-09-25_multi_projeto_fase1b.sql`). Rodar **antes** de publicar a fase 2 | igual hoje |
+| **2. Aplicação** (pronta e testada no banco de teste) | Projeto ativo na sessão; seletor no menu; cliente Supabase com cabeçalho; rotas de API filtrando; configs (fluxo, contratos, logo) por projeto; pasta do B2 por projeto | usuários só do UBX; sem mudança visível |
 | **3. Administração** | Tela de projetos (criar/desativar); vínculo usuário × projeto × papel; escolha do projeto no login; **cria o PROJETO DEV** (configs, cadastros e usuários de teste) | produção com UBX + DEV |
 | **4. Segurança (RLS)** | Políticas nas tabelas raiz e filhas; remove o DEFAULT 1; roteiro de isolamento entre UBX e DEV (usuário de um projeto não lê nem grava no outro) | ativa a proteção real |
 | **5. Owner: relatórios e dashboards** | Página só do owner com visão de todos os projetos, filtros por projeto/empresa/período, totais de pedidos, orçamento × consumido, pagamentos e recebimentos | só owner vê |
 
 Ordem importa: as fases 1–2 não mudam nada para o usuário; o risco mora na fase 4 (RLS pode bloquear telas
 que hoje funcionam), por isso ela roda antes na cópia de teste, com roteiro de teste de cada tela.
+
+**Ordem recomendada da entrega:** RLS (fase 4) antes de qualquer uso real do PROJETO DEV. Até o RLS, as rotas de
+servidor já isolam por projeto, mas as telas que consultam o Supabase direto do navegador não filtram: um
+usuário no DEV veria dados do UBX. Por isso a fase 3 pode criar o projeto, mas não deve haver dados nem usuários
+no DEV antes da fase 4.
 
 ## 5. Tamanho (relativo)
 

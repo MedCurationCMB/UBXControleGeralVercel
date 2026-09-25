@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
     const { fileId } = await uploadFile(buffer, fileName, contentType)
 
     const { error } = await supabaseServer.from('modelo_contrato').insert({
+      projeto_id: session.projetoId,
       nome,
       estilo,
       arquivo_id: fileId,

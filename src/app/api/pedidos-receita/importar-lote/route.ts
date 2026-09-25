@@ -47,12 +47,12 @@ export async function POST(req: NextRequest) {
     const clientesSet = [...new Set(rows.map(r => String(r.cliente ?? '')))]
 
     const [{ data: empData }, { data: catData }, { data: cliData }] = await Promise.all([
-      supabaseServer.from('empresas').select('nome').in('nome', empresasSet),
-      supabaseServer.from('categorias_receita').select('empresa, categoria'),
-      supabaseServer.from('clientes').select('nome').in('nome', clientesSet),
+      supabaseServer.from('empresas').select('empresa').eq('projeto_id', session.projetoId).in('empresa', empresasSet),
+      supabaseServer.from('categorias_receita').select('empresa, categoria').eq('projeto_id', session.projetoId),
+      supabaseServer.from('clientes').select('nome').eq('projeto_id', session.projetoId).in('nome', clientesSet),
     ])
 
-    const empresasValidas = new Set((empData ?? []).map(e => e.nome as string))
+    const empresasValidas = new Set((empData ?? []).map(e => e.empresa as string))
     const categoriasValidas = new Set((catData ?? []).map(r => `${r.empresa}||${r.categoria}`))
     const clientesValidos = new Set((cliData ?? []).map(c => c.nome as string))
 
@@ -91,6 +91,7 @@ export async function POST(req: NextRequest) {
       const { data: pedido, error: errPedido } = await supabaseServer
         .from('pedidos_solicitados_receita')
         .insert({
+          projeto_id: session.projetoId,
           empresa: String(first.empresa ?? ''),
           categoria: String(first.categoria ?? ''),
           cliente: String(first.cliente ?? ''),

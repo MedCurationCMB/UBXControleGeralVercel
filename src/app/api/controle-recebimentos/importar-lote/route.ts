@@ -79,6 +79,7 @@ export async function POST(req: NextRequest) {
     const { data: pedData } = await supabaseServer
       .from('pedidos_solicitados_receita')
       .select('id')
+      .eq('projeto_id', session.projetoId)
       .in('id', pedidoIds)
     const pedidosValidos = new Set((pedData ?? []).map(p => p.id as number))
     const invalidPedidos = pedidoIds.filter(id => !pedidosValidos.has(id))

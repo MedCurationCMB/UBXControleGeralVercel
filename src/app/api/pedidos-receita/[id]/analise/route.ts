@@ -18,6 +18,7 @@ export async function GET(
     .from('pedidos_solicitados_receita')
     .select('analise_texto, arquivo_texto, empresa, categoria, cliente, valor_pedido, observacao')
     .eq('id', pedidoId)
+    .eq('projeto_id', session.projetoId)
     .maybeSingle()
 
   if (!pedido) return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 })
@@ -60,6 +61,7 @@ ${textoOcr}`
       .from('pedidos_solicitados_receita')
       .update({ analise_texto: analise })
       .eq('id', pedidoId)
+      .eq('projeto_id', session.projetoId)
 
     return NextResponse.json({ analise, cached: false })
   } catch (err) {

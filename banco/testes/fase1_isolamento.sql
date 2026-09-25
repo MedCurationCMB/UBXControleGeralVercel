@@ -77,6 +77,15 @@ BEGIN
   IF n <> 1 THEN RAISE EXCEPTION 'FALHA: sem cabecalho deveria cair no projeto 1, caiu no %', n; END IF;
   RAISE NOTICE 'OK  6. cabecalho define o projeto; sem cabecalho (ou vazio) cai no UBX';
 
+  -- 6b. (fase 1b) controle e documentos herdam o projeto do pedido; documento sem pedido usa o padrao/cabecalho
+  SELECT projeto_id INTO n FROM controle_pagamentos WHERE pedido_id = ped2 LIMIT 1;
+  IF n <> 2 THEN RAISE EXCEPTION 'FALHA: controle_pagamentos nao herdou o projeto do pedido (veio %)', n; END IF;
+  PERFORM set_config('request.headers', '{"x-projeto-id":"2"}', true);
+  INSERT INTO documentos (tipo_documento, nome_documento, anexo_id, usuario) VALUES (-3, 'ZZ remessa', 'zz', 'teste') RETURNING projeto_id INTO n;
+  IF n <> 2 THEN RAISE EXCEPTION 'FALHA: documento sem pedido deveria seguir o cabecalho (2), veio %', n; END IF;
+  PERFORM set_config('request.headers', '', true);
+  RAISE NOTICE 'OK  6b. controle e documentos herdam o projeto do pedido; documento sem pedido segue o cabecalho';
+
   -- 7. usuarios atuais estao todos vinculados ao UBX
   SELECT count(*) INTO n FROM usuarios u WHERE NOT EXISTS (SELECT 1 FROM usuarios_projetos up WHERE up.usuario_id = u.id AND up.projeto_id = 1);
   IF n <> 0 THEN RAISE EXCEPTION 'FALHA: % usuario(s) sem vinculo com o UBX', n; END IF;

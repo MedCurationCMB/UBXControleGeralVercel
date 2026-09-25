@@ -80,6 +80,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nenhuma linha válida encontrada' }, { status: 400 })
     }
 
+    // Só aceita pedidos do projeto ativo
+    const pedidoIds = [...new Set(rows.map(r => r.pedido_id))]
+    const { data: pedData } = await supabaseServer
+      .from('pedidos_solicitados').select('id').eq('projeto_id', session.projetoId).in('id', pedidoIds)
+    const pedidosValidos = new Set((pedData ?? []).map(p => p.id as number))
+    const invalidPedidos = pedidoIds.filter(id => !pedidosValidos.has(id))
+    if (invalidPedidos.length > 0) {
+      return NextResponse.json({ error: `Pedidos não encontrados neste projeto: ${invalidPedidos.join(', ')}` }, { status: 400 })
+    }
+
     const inserts = rows.map(r => ({
       pedido_id: r.pedido_id,
       data_vencimento: r.data_vencimento,

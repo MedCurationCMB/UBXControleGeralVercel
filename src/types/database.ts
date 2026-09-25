@@ -518,6 +518,8 @@ export interface SessionPayload {
   userId: number
   username: string
   email: string
-  hierarquia: TipoHierarquia
+  hierarquia: TipoHierarquia // efetiva no projeto ativo (owner continua owner)
   status_cadastro: StatusCadastroEnum
+  projetoId: number
+  projetoNome: string
 }

@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
     // Validate empresas
     const empresasSet = [...new Set(rows.map(r => r.empresa))]
     const { data: empData } = await supabaseServer
-      .from('categorias_receita').select('empresa, categoria')
+      .from('categorias_receita').select('empresa, categoria').eq('projeto_id', session.projetoId)
     const catValidas = new Set((empData ?? []).map(r => `${r.empresa}||${r.categoria}`))
 
     const invalid = rows.filter(r => !catValidas.has(`${r.empresa}||${r.categoria}`))
@@ -81,6 +81,7 @@ export async function POST(req: NextRequest) {
     const username = session.username ?? 'sistema'
 
     const inserts = rows.map(r => ({
+      projeto_id: session.projetoId,
       empresa: r.empresa,
       categoria: r.categoria,
       mes: r.mes,

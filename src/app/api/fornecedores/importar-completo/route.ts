@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
     // Check all exist
     const nomes = rows.map(r => r.nome)
-    const { data: existing } = await supabaseServer.from('fornecedores').select('id, nome').in('nome', nomes)
+    const { data: existing } = await supabaseServer.from('fornecedores').select('id, nome').eq('projeto_id', session.projetoId).in('nome', nomes)
     const existingMap = new Map((existing ?? []).map(f => [f.nome as string, f.id as number]))
 
     const naoExistentes = nomes.filter(n => !existingMap.has(n))

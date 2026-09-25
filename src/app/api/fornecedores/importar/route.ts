@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     if (nomes.length === 0) return NextResponse.json({ error: 'Nenhum nome encontrado no arquivo' }, { status: 400 })
 
     // Check for existing
-    const { data: existing } = await supabaseServer.from('fornecedores').select('nome').in('nome', nomes)
+    const { data: existing } = await supabaseServer.from('fornecedores').select('nome').eq('projeto_id', session.projetoId).in('nome', nomes)
     const existingSet = new Set((existing ?? []).map(f => f.nome as string))
     const existentes = nomes.filter(n => existingSet.has(n))
 
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    const { error: errIns } = await supabaseServer.from('fornecedores').insert(nomes.map(nome => ({ nome })))
+    const { error: errIns } = await supabaseServer.from('fornecedores').insert(nomes.map(nome => ({ nome, projeto_id: session.projetoId })))
     if (errIns) throw errIns
 
     return NextResponse.json({ ok: true, count: nomes.length })

@@ -11,7 +11,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="flex h-screen overflow-hidden bg-slate-50">
       <Sidebar hierarquia={session.hierarquia} />
       <div className="flex flex-col flex-1 overflow-hidden">
-        <Header username={session.username} hierarquia={session.hierarquia} />
+        <Header username={session.username} hierarquia={session.hierarquia} projetoId={session.projetoId} projetoNome={session.projetoNome} />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>

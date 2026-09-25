@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
       .from('modelo_contrato')
       .select('nome, arquivo_id')
       .eq('id', id)
+      .eq('projeto_id', session.projetoId)
       .single()
 
     if (error || !modelo) return NextResponse.json({ error: 'Modelo não encontrado' }, { status: 404 })

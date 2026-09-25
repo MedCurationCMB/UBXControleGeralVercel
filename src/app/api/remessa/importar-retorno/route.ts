@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
     .from('documentos')
     .select('id')
     .eq('nome_documento', file.name)
+    .eq('projeto_id', session.projetoId)
     .maybeSingle()
 
   if (existing) {
@@ -97,6 +98,7 @@ export async function POST(req: NextRequest) {
         status_pagamento: 3,
       })
       .eq('id', idNum)
+      .eq('projeto_id', session.projetoId)
 
     if (!error) updatedCount++
   }
@@ -110,6 +112,7 @@ export async function POST(req: NextRequest) {
     const { data: uploadedDoc } = await supabase
       .from('documentos')
       .insert({
+        projeto_id: session.projetoId,
         pedido_id: null,
         pagamento_id: null,
         usuario: session.username,

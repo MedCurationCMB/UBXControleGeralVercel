@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { getSituacao, fetchAllPedidoIds } from '@/lib/controle-pagamentos-server'
+import { getSession } from '@/lib/auth'
 
 interface Controle {
   id: number; pedido_id: number | null
@@ -44,7 +45,8 @@ async function enrich(supabase: ReturnType<typeof createServerClient>, ctrls: Co
 async function fetchAllControles(
   supabase: ReturnType<typeof createServerClient>,
   pedidoIds: number[] | null,
-  status_pagamento: string
+  status_pagamento: string,
+  projetoId: number
 ) {
   let offset = 0
   const all: Controle[] = []
@@ -52,6 +54,7 @@ async function fetchAllControles(
     let q = supabase
       .from('controle_pagamentos')
       .select('*')
+      .eq('projeto_id', projetoId)
       .order('id', { ascending: false })
       .range(offset, offset + FETCH_PAGE - 1)
 
@@ -69,6 +72,9 @@ async function fetchAllControles(
 }
 
 export async function GET(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  const projetoId = session.projetoId
   const supabase = createServerClient()
   const { searchParams } = req.nextUrl
   const empresa = searchParams.get('empresa') || ''
@@ -81,7 +87,7 @@ export async function GET(req: NextRequest) {
 
   let pedidoIds: number[] | null = null
   if (empresa || categoria) {
-    pedidoIds = await fetchAllPedidoIds(supabase, empresa, categoria)
+    pedidoIds = await fetchAllPedidoIds(supabase, empresa, categoria, projetoId)
     if (pedidoIds.length === 0) {
       return NextResponse.json({ rows: [], total: 0 })
     }
@@ -91,7 +97,7 @@ export async function GET(req: NextRequest) {
   if (isExport) {
     let all: Controle[]
     try {
-      all = await fetchAllControles(supabase, pedidoIds, status_pagamento)
+      all = await fetchAllControles(supabase, pedidoIds, status_pagamento, projetoId)
     } catch (error) {
       return NextResponse.json({ error: (error as Error).message }, { status: 500 })
     }
@@ -105,6 +111,7 @@ export async function GET(req: NextRequest) {
     let q = supabase
       .from('controle_pagamentos')
       .select('*', { count: 'exact' })
+      .eq('projeto_id', projetoId)
       .order('id', { ascending: false })
       .range(page * pageSize, (page + 1) * pageSize - 1)
 
@@ -121,7 +128,7 @@ export async function GET(req: NextRequest) {
   // situacao is a computed field, so matching rows must be resolved before paginating.
   let all: Controle[]
   try {
-    all = await fetchAllControles(supabase, pedidoIds, status_pagamento)
+    all = await fetchAllControles(supabase, pedidoIds, status_pagamento, projetoId)
   } catch (error) {
     return NextResponse.json({ error: (error as Error).message }, { status: 500 })
   }

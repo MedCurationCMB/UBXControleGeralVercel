@@ -24,6 +24,14 @@ export async function POST(req: NextRequest) {
 
     if (!file) return NextResponse.json({ error: 'Arquivo obrigatório' }, { status: 400 })
 
+    // O pedido precisa ser do projeto ativo
+    if (pedidoId) {
+      const { data: ped } = await supabaseServer
+        .from(modulo === 'recebimentos' ? 'pedidos_solicitados_receita' : 'pedidos_solicitados')
+        .select('id').eq('id', parseInt(pedidoId)).eq('projeto_id', session.projetoId).maybeSingle()
+      if (!ped) return NextResponse.json({ error: 'Pedido não encontrado neste projeto' }, { status: 404 })
+    }
+
     const buffer = Buffer.from(await file.arrayBuffer())
     const mimeType = file.type as 'image/jpeg' | 'image/png' | 'application/pdf'
     const nomeArquivo = generateFileName('doc', file.name)
@@ -34,6 +42,7 @@ export async function POST(req: NextRequest) {
     // Salva no banco
     const tabela = modulo === 'recebimentos' ? 'documentos_receita' : 'documentos'
     const registro: Record<string, unknown> = {
+      projeto_id: session.projetoId,
       tipo_documento: tipoDocumento,
       anexo_id: fileId,
       anexo_url: downloadUrl,

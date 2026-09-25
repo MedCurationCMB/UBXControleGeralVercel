@@ -94,6 +94,7 @@ export async function POST(
           .from('pedidos_solicitados')
           .select('id,empresa,categoria,fornecedor,valor_pedido,status,data_solicitacao,data_autorizacao,emergencia,observacao')
           .eq('id', pedidoId)
+          .eq('projeto_id', session.projetoId)
           .maybeSingle(),
         supabaseServer
           .from('pedidos_solicitados_fluxo')
@@ -105,11 +106,13 @@ export async function POST(
           .from('modelo_contrato')
           .select('arquivo_id,nome')
           .eq('id', modelo_variavel_id)
+          .eq('projeto_id', session.projetoId)
           .maybeSingle(),
         supabaseServer
           .from('modelo_contrato')
           .select('arquivo_id,nome')
           .eq('id', modelo_estatico_id)
+          .eq('projeto_id', session.projetoId)
           .maybeSingle(),
       ])
 

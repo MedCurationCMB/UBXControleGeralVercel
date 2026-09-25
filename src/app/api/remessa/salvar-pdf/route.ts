@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
 
     const supabase = createServerClient()
     await supabase.from('documentos').insert({
+      projeto_id: session.projetoId,
       pedido_id: null,
       pagamento_id: null,
       usuario: session.username,

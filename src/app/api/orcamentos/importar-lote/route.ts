@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Load valid empresas and categorias
-    const { data: cats } = await supabaseServer.from('categorias').select('empresa, categoria')
+    const { data: cats } = await supabaseServer.from('categorias').select('empresa, categoria').eq('projeto_id', session.projetoId)
     const empresasValidas = new Set((cats ?? []).map(c => c.empresa as string))
     const catsPorEmpresa = new Map<string, Set<string>>()
     for (const c of cats ?? []) {
@@ -88,6 +88,7 @@ export async function POST(req: NextRequest) {
       const observacao = obj['observação'] ? String(obj['observação']).trim() : null
 
       inserts.push({
+        projeto_id: session.projetoId,
         empresa,
         categoria,
         mes,

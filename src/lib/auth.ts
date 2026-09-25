@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import type { SessionPayload } from '@/types/database'
 
 const SESSION_COOKIE = 'ubx_session'
+const PROJETO_COOKIE = 'ubx_projeto'
 const SESSION_MAX_AGE = 60 * 60 * 24 // 24 horas em segundos
 
 function getSecretKey() {
@@ -40,7 +41,10 @@ export async function getSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies()
   const token = cookieStore.get(SESSION_COOKIE)?.value
   if (!token) return null
-  return verifySession(token)
+  const s = await verifySession(token)
+  if (!s) return null
+  // Sessões emitidas antes do multi-projeto não têm projeto: são do UBX (id 1)
+  return { ...s, projetoId: s.projetoId ?? 1, projetoNome: s.projetoNome ?? 'UBX' }
 }
 
 export async function setSessionCookie(token: string) {
@@ -54,9 +58,23 @@ export async function setSessionCookie(token: string) {
   })
 }
 
+// Projeto ativo para o navegador: o cliente Supabase lê este cookie e manda o cabeçalho x-projeto-id.
+// Não é confiável por si só (o servidor usa a sessão); o RLS da fase 4 valida o vínculo.
+export async function setProjetoCookie(projetoId: number) {
+  const cookieStore = await cookies()
+  cookieStore.set(PROJETO_COOKIE, String(projetoId), {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: SESSION_MAX_AGE,
+    path: '/',
+  })
+}
+
 export async function clearSessionCookie() {
   const cookieStore = await cookies()
   cookieStore.delete(SESSION_COOKIE)
+  cookieStore.delete(PROJETO_COOKIE)
 }
 
-export { SESSION_COOKIE }
+export { SESSION_COOKIE, PROJETO_COOKIE }
