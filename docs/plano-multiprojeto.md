@@ -29,11 +29,10 @@ funcionando. Recomeçar do zero custaria refazer o que já está pronto (fluxos,
 **Ganham `projeto_id`** (entidades raiz, NOT NULL, FK para `projetos`):
 `empresas`, `categorias`, `categorias_receita`, `fornecedores`, `clientes`, `orcamentos_usuarios(_receita)`,
 `controle_orcamento(_receita)`, `registro_orcamentos(_receita)`, `registro_orcamento_analise(_receita)`,
-`pedidos_solicitados(_receita)`, `requisicoes(_receita)`, `conta_pagador`, `conta_receita`,
+`pedidos_solicitados(_receita)`, `pedidos_solicitados_fluxo(_receita)`, `requisicoes(_receita)`, `conta_pagador`, `conta_receita`,
 `modelo_contrato`, `modelo_contrato_venda`, `informacoes_boleto(_receita)`, `controle_sequencial(_recebimento)`.
 
-**Herdam pelo pedido, sem coluna nova** (usam `pedido_id`): `pedidos_solicitados_fluxo(_receita)`,
-`controle_pagamentos`, `controle_recebimento`, `documentos(_receita)`, `comentarios(_receita)`.
+**Herdam pelo pedido, sem coluna nova** (usam `pedido_id`): `controle_pagamentos`, `controle_recebimento`, `documentos(_receita)`, `comentarios(_receita)`.
 
 **Continuam globais**: `usuarios`, `tipos_*`, `*_status`, `pedido_status(_receita)`, `smtp_config`,
 `email_config`, `reset_tokens`, `assistente_virtual`.
@@ -41,7 +40,10 @@ funcionando. Recomeçar do zero custaria refazer o que já está pronto (fluxos,
 **`config`** ganha `projeto_id`. Por projeto: `fluxo_sistema`, `fluxo_sistema_receita`, `contratos_liberados`,
 `logo`. SMTP e e-mail ficam gerais (uma configuração para todos os projetos). Único passa a ser `(projeto_id, chave)`.
 
-**Únicos** viram `(projeto_id, nome)` etc.
+**Únicos e chaves estrangeiras** passam a incluir `projeto_id`: `(projeto_id, nome)`, `(projeto_id, empresa, categoria)`
+e assim por diante. São ~20 FKs por nome (empresa/categoria/fornecedor/cliente) recriadas como compostas, para um
+projeto não usar a categoria ou o fornecedor de outro. O cronograma (`*_fluxo`) ganhou `projeto_id` porque o
+orçamento é somado em cima dele; uma trigger copia o projeto do pedido.
 
 ## 3. Como o projeto chega às consultas (ponto central)
 
@@ -76,7 +78,7 @@ Ajustes de desenho que o teste trouxe:
 | Fase | O que entrega | Sistema durante a fase |
 |---|---|---|
 | **0. Preparação** | Backup completo; cópia de teste do banco (projeto Supabase à parte); spike do cabeçalho/RLS; decisões da seção 6 | igual hoje |
-| **1. Banco** | `projetos`, `usuarios_projetos`, UBX = 1; `projeto_id` nas tabelas raiz (nulo, preenche com 1, NOT NULL, DEFAULT 1 temporário); únicos por projeto; triggers de orçamento e de parcelas com `projeto_id` | igual hoje (tudo é UBX) |
+| **1. Banco** (pronta e testada no banco de teste: `banco/migracoes/2026-09-25_multi_projeto_fase1.sql`, teste em `banco/testes/fase1_isolamento.sql`) | `projetos`, `usuarios_projetos`, UBX = 1; `projeto_id` nas tabelas raiz (nulo, preenche com 1, NOT NULL, DEFAULT 1 temporário); únicos por projeto; triggers de orçamento e de parcelas com `projeto_id` | igual hoje (tudo é UBX) |
 | **2. Aplicação** | Projeto ativo na sessão; seletor no menu; cliente Supabase com cabeçalho; rotas de API filtrando; configs (fluxo, contratos, logo) por projeto; pasta do B2 por projeto | usuários só do UBX; sem mudança visível |
 | **3. Administração** | Tela de projetos (criar/desativar); vínculo usuário × projeto × papel; escolha do projeto no login; **cria o PROJETO DEV** (configs, cadastros e usuários de teste) | produção com UBX + DEV |
 | **4. Segurança (RLS)** | Políticas nas tabelas raiz e filhas; remove o DEFAULT 1; roteiro de isolamento entre UBX e DEV (usuário de um projeto não lê nem grava no outro) | ativa a proteção real |
