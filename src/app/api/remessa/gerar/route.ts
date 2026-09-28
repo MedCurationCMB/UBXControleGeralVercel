@@ -328,6 +328,7 @@ export async function POST(req: NextRequest) {
 
   // Build transactions
   const transactions: Tx[] = []
+  const boletosSemCodigo: number[] = []
   for (const t of txInputs) {
     const dataPag = new Date(t.data_pagamento + 'T12:00:00')
 
@@ -345,13 +346,18 @@ export async function POST(req: NextRequest) {
     } else if (t.tipo_pagamento === 3) {
       const info = boletoInfoMap[t.pagamento_id] ?? {}
       const dataVenc = info.data_vencimento ? new Date(`${info.data_vencimento}T12:00:00`) : dataPag
+      const codigoBarras = linhaDigitavelParaCodigoBarras(String(info.codigo_barras ?? ''))
+      if (codigoBarras.length !== 44) {
+        boletosSemCodigo.push(t.pagamento_id)
+        continue
+      }
       transactions.push({
         tipo_pagamento: '3',
         data_pagamento: dataPag,
         data_vencimento: dataVenc,
         valor_pagamento: t.valor_pagamento,
         doc_empresa: t.doc_empresa ?? String(t.pagamento_id),
-        codigo_barras: linhaDigitavelParaCodigoBarras(String(info.codigo_barras ?? '')),
+        codigo_barras: codigoBarras,
         nome_beneficiario: String(info.nome_beneficiario ?? ''),
         valor_nominal: Number(info.valor_nominal ?? t.valor_pagamento),
         valor_desconto: Number(info.valor_desconto ?? 0),
@@ -365,6 +371,12 @@ export async function POST(req: NextRequest) {
         doc_empresa_adicional: String(info.doc_empresa_adicional ?? ''),
       })
     }
+  }
+
+  if (boletosSemCodigo.length > 0) {
+    return NextResponse.json({
+      error: `Pagamento(s) #${boletosSemCodigo.join(', #')} sem código de barras válido do boleto. Abra o pagamento, confira/informe o código de barras e tente gerar a remessa novamente.`,
+    }, { status: 422 })
   }
 
   const cnabContent = generateCnabFile(company, transactions)
