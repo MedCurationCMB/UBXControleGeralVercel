@@ -66,10 +66,10 @@ async function fetchPedidosAutorizados(): Promise<Pedido[]> {
 
 // ---- Edit Modal ----
 function EditModal({
-  row, statuses, tipos, onClose, onSaved
+  row, statuses, tipos, onClose, onSaved, user
 }: {
   row: Row; statuses: PagamentoStatus[]; tipos: TipoPagamento[]
-  onClose: () => void; onSaved: () => void
+  onClose: () => void; onSaved: () => void; user: { username: string } | null
 }) {
   const [form, setForm] = useState({
     data_vencimento: row.data_vencimento ?? '',
@@ -79,10 +79,24 @@ function EditModal({
     status_pagamento: row.status_pagamento != null ? String(row.status_pagamento) : '',
     tipo_pagamento: row.tipo_pagamento != null ? String(row.tipo_pagamento) : '',
   })
+  const [codigoBarras, setCodigoBarras] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    let ativo = true
+    ;(async () => {
+      const { data: doc } = await supabase.from('documentos').select('id')
+        .eq('tipo_documento', 4).eq('pagamento_id', row.id).maybeSingle()
+      if (!doc) return
+      const { data: info } = await supabase.from('informacoes_boleto')
+        .select('codigo_barras').eq('boleto_id', doc.id).maybeSingle()
+      if (ativo) setCodigoBarras(info?.codigo_barras ?? '')
+    })()
+    return () => { ativo = false }
+  }, [row.id])
 
   const handleSave = async () => {
     setSaving(true)
@@ -95,8 +109,34 @@ function EditModal({
       status_pagamento: form.status_pagamento ? Number(form.status_pagamento) : null,
       tipo_pagamento: form.tipo_pagamento ? Number(form.tipo_pagamento) : null,
     }).eq('id', row.id)
+    if (error) { setSaving(false); setError(error.message); return }
+
+    if (form.tipo_pagamento === '3') {
+      const codigo = codigoBarras.replace(/\D/g, '')
+      if (codigo) {
+        let { data: doc } = await supabase.from('documentos').select('id')
+          .eq('tipo_documento', 4).eq('pagamento_id', row.id).maybeSingle()
+        if (!doc) {
+          const { data: novoDoc } = await supabase.from('documentos').insert({
+            pedido_id: row.pedido_id, pagamento_id: row.id, tipo_documento: 4,
+            anexo_id: '', usuario: user?.username ?? '', data_upload: new Date().toISOString(),
+            nome_documento: 'Código de barras informado manualmente',
+          }).select('id').single()
+          doc = novoDoc
+        }
+        if (doc) {
+          const { data: info } = await supabase.from('informacoes_boleto')
+            .select('id').eq('boleto_id', doc.id).maybeSingle()
+          if (info) {
+            await supabase.from('informacoes_boleto').update({ codigo_barras: codigo }).eq('id', info.id)
+          } else {
+            await supabase.from('informacoes_boleto').insert({ boleto_id: doc.id, codigo_barras: codigo })
+          }
+        }
+      }
+    }
+
     setSaving(false)
-    if (error) { setError(error.message); return }
     onSaved()
   }
 
@@ -158,6 +198,14 @@ function EditModal({
             <input type="number" step="0.01" className="input" value={form.valor_pagamento}
               onChange={e => setForm(f => ({ ...f, valor_pagamento: e.target.value }))} />
           </div>
+          {form.tipo_pagamento === '3' && (
+            <div className="col-span-2">
+              <label className="label">Código de Barras (Boleto)</label>
+              <input type="text" className="input" value={codigoBarras}
+                placeholder="Linha digitável ou código de barras do boleto"
+                onChange={e => setCodigoBarras(e.target.value)} />
+            </div>
+          )}
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -1055,6 +1103,7 @@ export default function ControlePage() {
           tipos={tipos}
           onClose={() => setEditRow(null)}
           onSaved={() => { setEditRow(null); reload() }}
+          user={user}
         />
       )}
 
