@@ -537,19 +537,22 @@ function ComentariosModal({ open, onClose, pedidoId, username }: {
 
 // --- Documentos Modal ---
 function DocumentosModal({
-  open, onClose, pedidoId, pedidoArquivosIds,
+  open, onClose, pedidoId, pedidoArquivosIds, recebimentos,
 }: {
   open: boolean; onClose: () => void; pedidoId: number
-  pedidoArquivosIds: string[] | null
+  pedidoArquivosIds: string[] | null; recebimentos: Recebimento[]
 }) {
   const [docs, setDocs] = useState<Documento[]>([])
   const [tiposDocs, setTiposDocs] = useState<TipoDoc[]>([])
   const [loading, setLoading] = useState(false)
   const [tipoId, setTipoId] = useState<number | ''>('')
+  const [recebimentoId, setRecebimentoId] = useState<number | ''>('')
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState('')
   const [uploadError, setUploadError] = useState('')
+  const [codigoPendente, setCodigoPendente] = useState<{ docId: number; valor: string } | null>(null)
+  const [salvandoCodigo, setSalvandoCodigo] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set(['Documentos de Solicitação']))
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -571,11 +574,24 @@ function DocumentosModal({
 
   useEffect(() => { if (open) load() }, [open, load])
 
+  const isBoleto = tipoId === 4
+
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault()
     setUploadError('')
     if (!file) { setUploadError('Selecione um arquivo.'); return }
     if (tipoId === '') { setUploadError('Selecione o tipo de documento.'); return }
+    if (isBoleto && recebimentoId === '') { setUploadError('Selecione o recebimento para associar o boleto.'); return }
+
+    // Verifica se o recebimento já tem boleto
+    if (isBoleto) {
+      const { data: existing } = await supabase.from('documentos_receita')
+        .select('id').eq('tipo_documento', 4).eq('pedido_id', pedidoId).eq('recebimento_id', recebimentoId)
+      if (existing && existing.length > 0) {
+        setUploadError('Este recebimento já possui boleto anexado. Apague o existente para enviar outro.')
+        return
+      }
+    }
 
     setUploading(true)
     const fd = new FormData()
@@ -583,17 +599,41 @@ function DocumentosModal({
     fd.append('pedido_id', String(pedidoId))
     fd.append('tipo_documento', String(tipoId))
     fd.append('modulo', 'recebimentos')
+    if (isBoleto && recebimentoId !== '') fd.append('recebimento_id', String(recebimentoId))
+    if (isBoleto) fd.append('extrair_boleto', 'true')
 
     const r = await fetch('/api/documentos/upload', { method: 'POST', body: fd })
+    const resData = await r.json()
     setUploading(false)
 
-    if (!r.ok) { setUploadError('Erro ao enviar.'); return }
+    if (!r.ok) { setUploadError(resData.error ?? 'Erro ao enviar.'); return }
+
+    // Não conseguiu ler o código de barras do boleto automaticamente: pede pro usuário digitar agora.
+    if (isBoleto && !resData.dadosBoleto?.codigo_barras && resData.documento?.id) {
+      setCodigoPendente({ docId: resData.documento.id, valor: '' })
+    }
 
     setFile(null); if (fileRef.current) fileRef.current.value = ''
-    setTipoId('')
+    setTipoId(''); setRecebimentoId('')
     setUploadMsg('Documento enviado!')
     setTimeout(() => setUploadMsg(''), 2000)
     load()
+  }
+
+  const handleSalvarCodigo = async () => {
+    if (!codigoPendente) return
+    const codigo = codigoPendente.valor.replace(/\D/g, '')
+    if (!codigo) return
+    setSalvandoCodigo(true)
+    const { data: info } = await supabase.from('informacoes_boleto_receita')
+      .select('id').eq('boleto_id', codigoPendente.docId).maybeSingle()
+    if (info) {
+      await supabase.from('informacoes_boleto_receita').update({ codigo_barras: codigo }).eq('id', info.id)
+    } else {
+      await supabase.from('informacoes_boleto_receita').insert({ boleto_id: codigoPendente.docId, codigo_barras: codigo })
+    }
+    setSalvandoCodigo(false)
+    setCodigoPendente(null)
   }
 
   const grouped: Record<string, Documento[]> = {}
@@ -614,7 +654,7 @@ function DocumentosModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Tipo de Documento *</label>
-              <select className="input" value={tipoId} onChange={e => setTipoId(e.target.value === '' ? '' : Number(e.target.value))}>
+              <select className="input" value={tipoId} onChange={e => { setTipoId(e.target.value === '' ? '' : Number(e.target.value)); setRecebimentoId('') }}>
                 <option value="">Selecionar tipo...</option>
                 {tiposDocs.filter(t => t.id > 0).map(t => <option key={t.id} value={t.id}>{t.tipo}</option>)}
               </select>
@@ -630,12 +670,43 @@ function DocumentosModal({
             </div>
           </div>
 
+          {isBoleto && (
+            <div>
+              <label className="label">Recebimento associado *</label>
+              <select className="input" value={recebimentoId} onChange={e => setRecebimentoId(e.target.value === '' ? '' : Number(e.target.value))}>
+                <option value="">Selecionar recebimento...</option>
+                {recebimentos.map(r => (
+                  <option key={r.id} value={r.id}>
+                    #{r.id} — Venc. {fmtData(r.data_vencimento)} — {fmtMoeda(r.valor_pagar)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
           {uploadMsg && <p className="text-xs text-green-600">{uploadMsg}</p>}
           <button type="submit" disabled={uploading || !file || tipoId === ''} className="btn-primary text-sm gap-1">
             <Upload size={13} /> {uploading ? 'Enviando...' : 'Enviar Documento'}
           </button>
         </form>
+
+        {codigoPendente && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+            <p className="text-xs text-amber-800">
+              Não foi possível ler o código de barras deste boleto automaticamente. Digite abaixo pra não travar a remessa depois:
+            </p>
+            <div className="flex gap-2">
+              <input type="text" className="input flex-1" placeholder="Linha digitável ou código de barras do boleto"
+                value={codigoPendente.valor}
+                onChange={e => setCodigoPendente(c => c && { ...c, valor: e.target.value })} />
+              <button type="button" onClick={handleSalvarCodigo} disabled={salvandoCodigo || !codigoPendente.valor.trim()}
+                className="btn-primary text-sm shrink-0">
+                {salvandoCodigo ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {pedidoArquivosIds && pedidoArquivosIds.length > 0 && (
           <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -757,6 +828,7 @@ export default function AcompanharRecebimentoDetalhePage() {
 
   const [pedido, setPedido] = useState<Pedido | null>(null)
   const [fluxo, setFluxo] = useState<FluxoRow[]>([])
+  const [recebimentos, setRecebimentos] = useState<Recebimento[]>([])
   const [statusNome, setStatusNome] = useState<string | null>(null)
   const [user, setUser] = useState<{ username: string; hierarquia?: string } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -768,13 +840,14 @@ export default function AcompanharRecebimentoDetalhePage() {
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
-    const [{ data: p, error: pErr }, { data: fl }, u] = await Promise.all([
+    const [{ data: p, error: pErr }, { data: fl }, { data: recs }, u] = await Promise.all([
       supabase.from('pedidos_solicitados_receita').select('*').eq('id', pedidoId).maybeSingle(),
       supabase.from('pedidos_solicitados_fluxo_receita').select('*').eq('pedido_id', pedidoId).order('ano').order('mes'),
+      supabase.from('controle_recebimento').select('*').eq('pedido_id', pedidoId).order('data_vencimento'),
       fetch('/api/auth/me').then(r => r.json()),
     ])
     if (pErr || !p) { setError('Pedido não encontrado.'); setLoading(false); return }
-    setPedido(p as Pedido); setFluxo(fl ?? []); setUser(u)
+    setPedido(p as Pedido); setFluxo(fl ?? []); setRecebimentos(recs ?? []); setUser(u)
     if ((p as Pedido).pedido_status_receita) {
       const { data: st } = await supabase.from('pedido_status_receita').select('nome_status').eq('id', (p as Pedido).pedido_status_receita).maybeSingle()
       setStatusNome((st as StatusPedido | null)?.nome_status ?? null)
@@ -941,7 +1014,7 @@ export default function AcompanharRecebimentoDetalhePage() {
       <ComentariosModal open={showComents} onClose={() => setShowComents(false)}
         pedidoId={pedidoId} username={user?.username ?? ''} />
       <DocumentosModal open={showDocs} onClose={() => setShowDocs(false)}
-        pedidoId={pedidoId} pedidoArquivosIds={pedido.arquivos_pdf_ids} />
+        pedidoId={pedidoId} pedidoArquivosIds={pedido.arquivos_pdf_ids} recebimentos={recebimentos} />
     </div>
   )
 }
