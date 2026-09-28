@@ -547,6 +547,8 @@ function DocumentosModal({
   const [uploading, setUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState('')
   const [uploadError, setUploadError] = useState('')
+  const [codigoPendente, setCodigoPendente] = useState<{ docId: number; valor: string } | null>(null)
+  const [salvandoCodigo, setSalvandoCodigo] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set(['Documentos de Solicitação']))
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -593,6 +595,7 @@ function DocumentosModal({
     fd.append('pedido_id', String(pedidoId))
     fd.append('tipo_documento', String(tipoId))
     if (isBoleto && pagamentoId !== '') fd.append('pagamento_id', String(pagamentoId))
+    if (isBoleto) fd.append('extrair_boleto', 'true')
 
     const r = await fetch('/api/documentos/upload', { method: 'POST', body: fd })
     const resData = await r.json()
@@ -610,11 +613,26 @@ function DocumentosModal({
       })
     }
 
+    // Não conseguiu ler o código de barras do boleto automaticamente: pede pro usuário digitar agora.
+    if (isBoleto && !resData.dadosBoleto?.codigo_barras && resData.documento?.id) {
+      setCodigoPendente({ docId: resData.documento.id, valor: '' })
+    }
+
     setFile(null); if (fileRef.current) fileRef.current.value = ''
     setTipoId(''); setPagamentoId(''); setComentario('')
     setUploadMsg('Documento enviado!')
     setTimeout(() => setUploadMsg(''), 2000)
     load()
+  }
+
+  const handleSalvarCodigo = async () => {
+    if (!codigoPendente) return
+    const codigo = codigoPendente.valor.replace(/\D/g, '')
+    if (!codigo) return
+    setSalvandoCodigo(true)
+    await supabase.from('informacoes_boleto').insert({ boleto_id: codigoPendente.docId, codigo_barras: codigo })
+    setSalvandoCodigo(false)
+    setCodigoPendente(null)
   }
 
   // Group documents by tipo_nome
@@ -679,6 +697,23 @@ function DocumentosModal({
             <Upload size={13} /> {uploading ? 'Enviando...' : 'Enviar Documento'}
           </button>
         </form>
+
+        {codigoPendente && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+            <p className="text-xs text-amber-800">
+              Não foi possível ler o código de barras deste boleto automaticamente. Digite abaixo pra não travar a remessa depois:
+            </p>
+            <div className="flex gap-2">
+              <input type="text" className="input flex-1" placeholder="Linha digitável ou código de barras do boleto"
+                value={codigoPendente.valor}
+                onChange={e => setCodigoPendente(c => c && { ...c, valor: e.target.value })} />
+              <button type="button" onClick={handleSalvarCodigo} disabled={salvandoCodigo || !codigoPendente.valor.trim()}
+                className="btn-primary text-sm shrink-0">
+                {salvandoCodigo ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Documentos de Solicitação (arquivos_pdf_ids) */}
         {pedidoArquivosIds && pedidoArquivosIds.length > 0 && (
