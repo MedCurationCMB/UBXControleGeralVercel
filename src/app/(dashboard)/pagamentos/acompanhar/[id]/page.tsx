@@ -630,7 +630,13 @@ function DocumentosModal({
     const codigo = codigoPendente.valor.replace(/\D/g, '')
     if (!codigo) return
     setSalvandoCodigo(true)
-    await supabase.from('informacoes_boleto').insert({ boleto_id: codigoPendente.docId, codigo_barras: codigo })
+    const { data: info } = await supabase.from('informacoes_boleto')
+      .select('id').eq('boleto_id', codigoPendente.docId).maybeSingle()
+    if (info) {
+      await supabase.from('informacoes_boleto').update({ codigo_barras: codigo }).eq('id', info.id)
+    } else {
+      await supabase.from('informacoes_boleto').insert({ boleto_id: codigoPendente.docId, codigo_barras: codigo })
+    }
     setSalvandoCodigo(false)
     setCodigoPendente(null)
   }
