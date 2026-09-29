@@ -37,6 +37,7 @@
     "next": "^16.2.9",
     "nodemailer": "^9.0.1",
     "pizzip": "^3.2.0",
+    "pluggy-sdk": "^0.91.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.54.2",
