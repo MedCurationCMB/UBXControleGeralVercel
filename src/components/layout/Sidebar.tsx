@@ -12,7 +12,7 @@ import {
   LayoutDashboard, FileText, CheckSquare, Clock, PlusSquare,
   CreditCard, FolderOpen, Users, Building2, Tag, List,
   FileSignature, TrendingUp, TrendingDown, Settings, ShieldCheck,
-  ChevronLeft, ChevronRight, Receipt, ClipboardList, ClipboardCheck, Layers, BarChart3,
+  ChevronLeft, ChevronRight, Receipt, ClipboardList, ClipboardCheck, Layers, BarChart3, Landmark,
 } from 'lucide-react'
 
 interface NavItem {
@@ -84,6 +84,7 @@ const navGroups: NavGroup[] = [
     title: 'Configurações',
     items: [
       { label: 'Empresas / CC', href: '/empresas', icon: Building2 },
+      { label: 'Extratos Bancários', href: '/extratos-bancarios', icon: Landmark },
       { label: 'Relatórios', href: '/relatorios', icon: BarChart3, ownerOnly: true },
       { label: 'Projetos e Acessos', href: '/projetos', icon: Layers, adminOnly: true },
       { label: 'Painel Admin', href: '/admin', icon: ShieldCheck, adminOnly: true },
