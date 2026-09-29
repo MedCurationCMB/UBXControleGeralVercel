@@ -993,19 +993,37 @@ function parseRetClient(text: string): ParsedRecord[] {
   const lines = text.split(/\r?\n/).map(l => l.padEnd(240, ' ')).filter(l => l.trim())
   const records: ParsedRecord[] = []
   for (const line of lines) {
-    if (line[7] !== '3' || line[13] !== 'A') continue
-    const nominalStr = line.slice(119, 134).trim()
-    const efetivoStr = line.slice(162, 177).trim()
-    const dataEfetivacao = line.slice(154, 162).trim()
-    records.push({
-      docEmpresa: line.slice(73, 93).trim(),
-      dataPagamento: line.slice(93, 101).trim(),
-      valorNominal: (parseInt(nominalStr) || 0) / 100,
-      dataEfetivacao,
-      valorEfetivo: (parseInt(efetivoStr) || 0) / 100,
-      ocorrencia: line.slice(230, 240).trim(),
-      status: dataEfetivacao && dataEfetivacao !== '00000000' ? 'Pago' : 'Não Pago',
-    })
+    if (line[7] !== '3') continue
+
+    if (line[13] === 'A') {
+      const nominalStr = line.slice(119, 134).trim()
+      const efetivoStr = line.slice(162, 177).trim()
+      const dataEfetivacao = line.slice(154, 162).trim()
+      records.push({
+        docEmpresa: line.slice(73, 93).trim(),
+        dataPagamento: line.slice(93, 101).trim(),
+        valorNominal: (parseInt(nominalStr) || 0) / 100,
+        dataEfetivacao,
+        valorEfetivo: (parseInt(efetivoStr) || 0) / 100,
+        ocorrencia: line.slice(230, 240).trim(),
+        status: dataEfetivacao && dataEfetivacao !== '00000000' ? 'Pago' : 'Não Pago',
+      })
+    }
+
+    if (line[13] === 'J' && line.slice(17, 19) !== '52') {
+      const nominalStr = line.slice(99, 114).trim()
+      const pagoStr = line.slice(152, 167).trim()
+      const dataPagamento = line.slice(144, 152).trim()
+      records.push({
+        docEmpresa: line.slice(182, 202).trim(),
+        dataPagamento: line.slice(91, 99).trim(),
+        valorNominal: (parseInt(nominalStr) || 0) / 100,
+        dataEfetivacao: dataPagamento,
+        valorEfetivo: (parseInt(pagoStr) || 0) / 100,
+        ocorrencia: line.slice(223, 230).trim(),
+        status: dataPagamento && dataPagamento !== '00000000' ? 'Pago' : 'Não Pago',
+      })
+    }
   }
   return records
 }
