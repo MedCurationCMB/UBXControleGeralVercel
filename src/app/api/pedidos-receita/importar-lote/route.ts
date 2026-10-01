@@ -3,7 +3,7 @@ import { getSession } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabase/server'
 import ExcelJS from 'exceljs'
 
-const REQUIRED_COLS = ['id_pedido_importado', 'empresa', 'categoria', 'cliente', 'mes', 'ano', 'valor_referente']
+const REQUIRED_COLS = ['empresa', 'categoria', 'cliente', 'mes', 'ano', 'valor_referente']
 
 export async function POST(req: NextRequest) {
   const session = await getSession()
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       row.eachCell((cell, colNum) => {
         if (headers[colNum]) obj[headers[colNum]] = cell.value
       })
-      if (obj.id_pedido_importado != null && obj.empresa) rows.push(obj)
+      if (obj.empresa) rows.push(obj)
     })
 
     if (rows.length === 0) return NextResponse.json({ error: 'Arquivo sem dados' }, { status: 400 })
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     // Group by id_pedido_importado
     const groups = new Map<string, typeof rows>()
     for (const row of rows) {
-      const key = String(row.id_pedido_importado)
+      const key = row.id_pedido_importado != null ? String(row.id_pedido_importado) : `${row.empresa}|${row.categoria}|${row.cliente}`
       if (!groups.has(key)) groups.set(key, [])
       groups.get(key)!.push(row)
     }

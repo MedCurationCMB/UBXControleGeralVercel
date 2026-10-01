@@ -6,7 +6,6 @@ export async function GET() {
   const sheet = workbook.addWorksheet('Pedidos')
 
   sheet.columns = [
-    { header: 'id_pedido_importado', key: 'id_pedido_importado', width: 22 },
     { header: 'empresa', key: 'empresa', width: 25 },
     { header: 'categoria', key: 'categoria', width: 25 },
     { header: 'fornecedor', key: 'fornecedor', width: 25 },
@@ -25,8 +24,8 @@ export async function GET() {
   }
 
   // Example rows (one pedido with two months)
-  sheet.addRow({ id_pedido_importado: 1, empresa: 'Empresa Exemplo', categoria: 'Categoria Exemplo', fornecedor: 'Fornecedor Exemplo', mes: 3, ano: 2025, valor_referente: 1000.00 })
-  sheet.addRow({ id_pedido_importado: 1, empresa: 'Empresa Exemplo', categoria: 'Categoria Exemplo', fornecedor: 'Fornecedor Exemplo', mes: 4, ano: 2025, valor_referente: 1000.00 })
+  sheet.addRow({ empresa: 'Empresa Exemplo', categoria: 'Categoria Exemplo', fornecedor: 'Fornecedor Exemplo', mes: 3, ano: 2025, valor_referente: 1000.00 })
+  sheet.addRow({ empresa: 'Empresa Exemplo', categoria: 'Categoria Exemplo', fornecedor: 'Fornecedor Exemplo', mes: 4, ano: 2025, valor_referente: 1000.00 })
 
   const bufferData = await workbook.xlsx.writeBuffer()
 

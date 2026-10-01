@@ -88,8 +88,8 @@ function ImportModal({ onClose }: { onClose: () => void }) {
           <>
             <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded p-3 space-y-1">
               <p className="font-medium text-slate-800">Colunas obrigatórias:</p>
-              <p className="font-mono text-xs">id_pedido_importado, empresa, categoria, cliente, mes, ano, valor_referente</p>
-              <p className="text-xs text-slate-500 mt-1">Linhas com o mesmo <strong>id_pedido_importado</strong> formam um único pedido com múltiplos períodos.</p>
+              <p className="font-mono text-xs">empresa, categoria, cliente, mes, ano, valor_referente</p>
+              <p className="text-xs text-slate-500 mt-1">Linhas com a mesma <strong>empresa, categoria e cliente</strong> formam um único pedido com múltiplos períodos.</p>
             </div>
 
             <button onClick={downloadTemplate} className="btn-secondary gap-2 w-full justify-center">
