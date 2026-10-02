@@ -15,6 +15,7 @@ interface Controle {
   data_vencimento: string | null; valor_pagar: number | null
   data_pagamento: string | null; valor_pagamento: number | null
   status_pagamento: number | null; tipo_pagamento: number | null
+  extrato_lancamento_id?: number | null
 }
 interface Pedido {
   id: number; empresa: string; categoria: string; fornecedor: string
@@ -23,6 +24,7 @@ interface Pedido {
 interface Row extends Controle {
   empresa: string; categoria: string; fornecedor: string
   status_pedido: string; observacao: string | null; situacao: string
+  extrato?: { data: string; descricao: string } | null
 }
 interface Resumo {
   total_pagar: number; total_pago: number; saldo_restante: number
@@ -704,6 +706,70 @@ function AlterarStatusLoteModal({
   )
 }
 
+// ---- Vincular com extrato bancário ----
+interface LinhaExtrato { id: number; data: string; descricao: string; valor: number; sugerido: boolean }
+
+function VincularExtratoModal({ row, onClose, onDone }: { row: Row; onClose: () => void; onDone: () => void }) {
+  const [linhas, setLinhas] = useState<LinhaExtrato[] | null>(null)
+  const [erro, setErro] = useState('')
+
+  useEffect(() => {
+    fetch(`/api/extratos-bancarios/vinculos?conta_id=${row.id}`)
+      .then(r => r.json())
+      .then(d => setLinhas(d.lancamentos ?? []))
+      .catch(() => setLinhas([]))
+  }, [row.id])
+
+  const vincular = async (lancamentoId: number) => {
+    setErro('')
+    const r = await fetch('/api/extratos-bancarios/vinculos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lancamento_id: lancamentoId, conta_id: row.id }),
+    })
+    if (r.ok) return onDone()
+    setErro((await r.json().catch(() => ({}))).error ?? 'Erro ao vincular')
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
+        <p className="font-semibold text-slate-900">
+          Vincular ao extrato — #{row.id} · {row.fornecedor} · {fmtMoeda(row.valor_pagamento ?? row.valor_pagar)}
+        </p>
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+        {linhas === null ? (
+          <p className="text-sm text-slate-400">Carregando...</p>
+        ) : linhas.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            Nenhuma linha de saída do extrato, sem vínculo, com esse valor{row.data_pagamento ? ` em ${fmtData(row.data_pagamento)}` : ''}.
+            Se a data de pagamento da conta estiver diferente do extrato, ajuste-a e tente de novo.
+          </p>
+        ) : (
+          <div className="max-h-[50vh] overflow-auto">
+            <table className="w-full text-sm">
+              <tbody>
+                {linhas.map(l => (
+                  <tr key={l.id} className="table-row">
+                    <td className="table-cell whitespace-nowrap">{fmtData(l.data)}</td>
+                    <td className="table-cell max-w-xs truncate" title={l.descricao}>{l.descricao}</td>
+                    <td className="table-cell text-right whitespace-nowrap">{fmtMoeda(l.valor)}</td>
+                    <td className="table-cell text-right whitespace-nowrap">
+                      {l.sugerido && <span className="text-xs text-amber-600 mr-2">mesma data</span>}
+                      <button onClick={() => vincular(l.id)} className="btn-primary">Vincular</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <button onClick={onClose} className="btn-secondary">Fechar</button>
+      </div>
+    </div>
+  )
+}
+
 // ---- Main Page ----
 export default function ControlePage() {
   const [statuses, setStatuses] = useState<PagamentoStatus[]>([])
@@ -731,9 +797,11 @@ export default function ControlePage() {
   const [filtroCategoria, setFiltroCategoria] = useState('')
   const [filtroStatusPag, setFiltroStatusPag] = useState('')
   const [filtroSituacao, setFiltroSituacao] = useState('')
+  const [filtroVinculo, setFiltroVinculo] = useState('')
 
   // Modals
   const [editRow, setEditRow] = useState<Row | null>(null)
+  const [vincularRow, setVincularRow] = useState<Row | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [showLote, setShowLote] = useState(false)
   const [showRemessa, setShowRemessa] = useState(false)
@@ -758,7 +826,7 @@ export default function ControlePage() {
   }, [])
 
   // Reset page when server-side filters change
-  useEffect(() => { setPage(0) }, [filtroEmpresa, filtroCategoria, filtroStatusPag, filtroSituacao])
+  useEffect(() => { setPage(0) }, [filtroEmpresa, filtroCategoria, filtroStatusPag, filtroSituacao, filtroVinculo])
 
   // Load resumo from API (full dataset aggregates)
   const loadResumo = useCallback(async () => {
@@ -784,6 +852,7 @@ export default function ControlePage() {
     if (filtroCategoria) params.set('categoria', filtroCategoria)
     if (filtroStatusPag) params.set('status_pagamento', filtroStatusPag)
     if (filtroSituacao) params.set('situacao', filtroSituacao)
+    if (filtroVinculo) params.set('vinculo', filtroVinculo)
     params.set('page', String(page))
     params.set('page_size', String(PAGE_SIZE))
 
@@ -797,12 +866,21 @@ export default function ControlePage() {
       setTotal(0)
     }
     setTableLoading(false)
-  }, [page, filtroEmpresa, filtroCategoria, filtroStatusPag, filtroSituacao])
+  }, [page, filtroEmpresa, filtroCategoria, filtroStatusPag, filtroSituacao, filtroVinculo])
 
   useEffect(() => { loadResumo() }, [loadResumo])
   useEffect(() => { loadTable() }, [loadTable])
 
   const reload = () => { loadResumo(); loadTable() }
+
+  const desvincularExtrato = async (r: Row) => {
+    await fetch('/api/extratos-bancarios/vinculos', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lancamento_id: r.extrato_lancamento_id }),
+    })
+    loadTable()
+  }
 
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
@@ -917,7 +995,7 @@ export default function ControlePage() {
 
       {/* Filters */}
       <div className="card">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
             <label className="label">Empresa</label>
             <select className="input" value={filtroEmpresa}
@@ -950,6 +1028,14 @@ export default function ControlePage() {
               {['Em dia', 'Atrasado', 'Quitado', 'Sem vencimento'].map(s =>
                 <option key={s} value={s}>{s}</option>
               )}
+            </select>
+          </div>
+          <div>
+            <label className="label">Vínculo com extrato</label>
+            <select className="input" value={filtroVinculo} onChange={e => setFiltroVinculo(e.target.value)}>
+              <option value="">Todos</option>
+              <option value="sem">Sem vínculo</option>
+              <option value="com">Com vínculo</option>
             </select>
           </div>
         </div>
@@ -1017,6 +1103,7 @@ export default function ControlePage() {
                   <th className="table-cell font-medium">Status</th>
                   <th className="table-cell font-medium">Tipo</th>
                   <th className="table-cell font-medium">Situação</th>
+                  <th className="table-cell font-medium">Extrato</th>
                   <th className="table-cell font-medium w-10"></th>
                 </tr>
               </thead>
@@ -1057,6 +1144,18 @@ export default function ControlePage() {
                       <span className={`badge text-xs ${SITUACAO_BADGE[r.situacao] ?? 'bg-slate-100 text-slate-500'}`}>
                         {r.situacao}
                       </span>
+                    </td>
+                    <td className="table-cell min-w-40">
+                      {r.extrato ? (
+                        <>
+                          <span className="text-green-700 text-xs block truncate max-w-[160px]" title={r.extrato.descricao}>
+                            {fmtData(r.extrato.data)} · {r.extrato.descricao}
+                          </span>
+                          <button onClick={() => desvincularExtrato(r)} className="text-xs text-slate-400 hover:text-red-500 underline">desvincular</button>
+                        </>
+                      ) : (
+                        <button onClick={() => setVincularRow(r)} className="text-xs text-blue-600 underline">vincular...</button>
+                      )}
                     </td>
                     <td className="table-cell">
                       <button onClick={() => setEditRow(r)}
@@ -1104,6 +1203,14 @@ export default function ControlePage() {
           onClose={() => setEditRow(null)}
           onSaved={() => { setEditRow(null); reload() }}
           user={user}
+        />
+      )}
+
+      {vincularRow && (
+        <VincularExtratoModal
+          row={vincularRow}
+          onClose={() => setVincularRow(null)}
+          onDone={() => { setVincularRow(null); loadTable() }}
         />
       )}
 

@@ -14,6 +14,50 @@ async function carregarLancamento(supabase: ReturnType<typeof createServerClient
   return data as { id: number; data: string; valor: number } | null
 }
 
+// Linhas de saída do extrato, ainda sem vínculo, compatíveis com uma conta a pagar (mesmo valor e,
+// se a conta já tem data de pagamento, mesma data). Mais próximas da data da conta primeiro.
+export async function GET(req: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+
+  const contaId = Number(req.nextUrl.searchParams.get('conta_id'))
+  if (!Number.isInteger(contaId)) return NextResponse.json({ error: 'conta_id é obrigatório' }, { status: 400 })
+
+  const supabase = createServerClient()
+  const { data: c } = await supabase
+    .from('controle_pagamentos')
+    .select('data_vencimento, data_pagamento, valor_pagar, valor_pagamento')
+    .eq('id', contaId)
+    .eq('projeto_id', session.projetoId)
+    .maybeSingle()
+  if (!c) return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404 })
+
+  const valor = Math.round((c.valor_pagamento ?? c.valor_pagar ?? 0) * 100) / 100
+  let q = supabase
+    .from('extratos_bancarios_lancamentos')
+    .select('id, data, descricao, valor, extratos_bancarios!inner(projeto_id)')
+    .eq('extratos_bancarios.projeto_id', session.projetoId)
+    .eq('valor', -valor)
+  if (c.data_pagamento) q = q.eq('data', c.data_pagamento)
+  const { data: ls, error } = await q
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const ids = (ls ?? []).map(l => l.id as number)
+  const { data: usados } = ids.length
+    ? await supabase.from('controle_pagamentos').select('extrato_lancamento_id').in('extrato_lancamento_id', ids)
+    : { data: [] }
+  const usadosSet = new Set((usados ?? []).map(u => u.extrato_lancamento_id as number))
+
+  const dataChave = c.data_pagamento ?? c.data_vencimento
+  const dist = (d: string) => (dataChave ? Math.abs(Date.parse(d) - Date.parse(dataChave)) : 0)
+  const lancamentos = (ls ?? [])
+    .filter(l => !usadosSet.has(l.id as number))
+    .map(l => ({ id: l.id as number, data: l.data as string, descricao: l.descricao as string, valor: l.valor as number, sugerido: l.data === dataChave }))
+    .sort((a, b) => dist(a.data) - dist(b.data))
+    .slice(0, 20)
+  return NextResponse.json({ lancamentos })
+}
+
 export async function POST(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })

@@ -11,10 +11,22 @@ interface Controle {
   data_vencimento: string | null; valor_pagar: number | null
   data_pagamento: string | null; valor_pagamento: number | null
   status_pagamento: number | null; tipo_pagamento: number | null
+  extrato_lancamento_id: number | null
   pedidos_solicitados: Pedido | null
 }
 
 const FETCH_PAGE = 1000
+
+// Anexa data/descrição da linha do extrato vinculada a cada conta
+async function comExtrato<T extends { extrato_lancamento_id: number | null }>(supabase: ReturnType<typeof createServerClient>, rows: T[]) {
+  const ids = [...new Set(rows.map(r => r.extrato_lancamento_id).filter((x): x is number => x != null))]
+  const porId = new Map<number, { data: string; descricao: string }>()
+  if (ids.length) {
+    const { data } = await supabase.from('extratos_bancarios_lancamentos').select('id, data, descricao').in('id', ids)
+    for (const l of data ?? []) porId.set(l.id as number, { data: l.data as string, descricao: l.descricao as string })
+  }
+  return rows.map(r => ({ ...r, extrato: r.extrato_lancamento_id != null ? porId.get(r.extrato_lancamento_id) ?? null : null }))
+}
 
 function montarLinha({ pedidos_solicitados: ped, ...c }: Controle) {
   return {
@@ -51,6 +63,7 @@ export async function GET(req: NextRequest) {
     empresa: searchParams.get('empresa') || '',
     categoria: searchParams.get('categoria') || '',
     status_pagamento: searchParams.get('status_pagamento') || '',
+    vinculo: searchParams.get('vinculo') || '',
   }
   const situacao = searchParams.get('situacao') || ''
   const isExport = searchParams.get('export') === 'true'
@@ -66,8 +79,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: (error as Error).message }, { status: 500 })
     }
     const rows = all.map(montarLinha).filter(r => !situacao || r.situacao === situacao)
-    if (isExport) return NextResponse.json({ rows, total: rows.length })
-    return NextResponse.json({ rows: rows.slice(page * pageSize, (page + 1) * pageSize), total: rows.length })
+    if (isExport) return NextResponse.json({ rows: await comExtrato(supabase, rows), total: rows.length })
+    return NextResponse.json({ rows: await comExtrato(supabase, rows.slice(page * pageSize, (page + 1) * pageSize)), total: rows.length })
   }
 
   // Sem filtro de situação: pagina direto no banco.
@@ -75,5 +88,5 @@ export async function GET(req: NextRequest) {
     .order('id', { ascending: false })
     .range(page * pageSize, (page + 1) * pageSize - 1)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ rows: ((data ?? []) as unknown as Controle[]).map(montarLinha), total: count ?? 0 })
+  return NextResponse.json({ rows: await comExtrato(supabase, ((data ?? []) as unknown as Controle[]).map(montarLinha)), total: count ?? 0 })
 }

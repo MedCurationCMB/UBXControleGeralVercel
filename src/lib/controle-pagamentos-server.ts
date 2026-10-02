@@ -15,7 +15,7 @@ export function getSituacao(c: ControleRow): string {
   return c.data_vencimento.slice(0, 10) < hojeBrasilia() ? 'Atrasado' : 'Em dia'
 }
 
-export interface FiltrosControle { empresa: string; categoria: string; status_pagamento: string }
+export interface FiltrosControle { empresa: string; categoria: string; status_pagamento: string; vinculo?: string } // vinculo: 'sem' | 'com' (só a listagem usa)
 
 const PEDIDO_COLS = 'empresa, categoria, fornecedor, status, observacao'
 
@@ -39,5 +39,7 @@ export function consultaControles(
   if (f.empresa) q = q.eq('pedidos_solicitados.empresa', f.empresa)
   if (f.categoria) q = q.eq('pedidos_solicitados.categoria', f.categoria)
   if (f.status_pagamento) q = q.eq('status_pagamento', parseInt(f.status_pagamento))
+  if (f.vinculo === 'sem') q = q.is('extrato_lancamento_id', null)
+  if (f.vinculo === 'com') q = q.not('extrato_lancamento_id', 'is', null)
   return q
 }
