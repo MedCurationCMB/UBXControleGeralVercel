@@ -18,11 +18,12 @@ export default function VincularExtratoModal({ tipo, contaId, titulo, dataPagame
 }) {
   const [linhas, setLinhas] = useState<LinhaExtrato[] | null>(null)
   const [erro, setErro] = useState('')
+  const [periodos, setPeriodos] = useState<{ periodo_inicio: string; periodo_fim: string }[]>([])
 
   useEffect(() => {
     fetch(`/api/extratos-bancarios/vinculos?tipo=${tipo}&conta_id=${contaId}`)
       .then(r => r.json())
-      .then(d => setLinhas(d.lancamentos ?? []))
+      .then(d => { setLinhas(d.lancamentos ?? []); setPeriodos(d.periodos ?? []) })
       .catch(() => setLinhas([]))
   }, [tipo, contaId])
 
@@ -48,6 +49,9 @@ export default function VincularExtratoModal({ tipo, contaId, titulo, dataPagame
           <p className="text-sm text-slate-500">
             Nenhuma linha de {tipo === 'pagar' ? 'saída' : 'entrada'} do extrato, sem vínculo, com esse valor{dataPagamento ? ` em ${dataBr(dataPagamento)}` : ''}.
             Se a data de {tipo === 'pagar' ? 'pagamento' : 'recebimento'} da conta estiver diferente do extrato, ajuste-a e tente de novo.
+            <span className="block mt-2 text-xs text-slate-400">
+              Extratos importados: {periodos.length ? periodos.map(p => `${dataBr(p.periodo_inicio)} a ${dataBr(p.periodo_fim)}`).join(' · ') : 'nenhum'}
+            </span>
           </p>
         ) : (
           <div className="max-h-[50vh] overflow-auto">

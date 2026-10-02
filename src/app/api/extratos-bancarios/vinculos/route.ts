@@ -57,7 +57,12 @@ export async function GET(req: NextRequest) {
     .map(l => ({ id: l.id as number, data: l.data as string, descricao: l.descricao as string, valor: l.valor as number, sugerido: l.data === dataChave }))
     .sort((a, b) => dist(a.data) - dist(b.data))
     .slice(0, 20)
-  return NextResponse.json({ lancamentos })
+  const { data: periodos } = await supabase
+    .from('extratos_bancarios')
+    .select('periodo_inicio, periodo_fim')
+    .eq('projeto_id', session.projetoId)
+    .order('periodo_inicio')
+  return NextResponse.json({ lancamentos, periodos: periodos ?? [] })
 }
 
 export async function POST(req: NextRequest) {
