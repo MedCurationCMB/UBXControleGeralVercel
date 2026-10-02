@@ -6,6 +6,7 @@ import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { RefreshCw, Plus, Pencil, X, Trash2, Check, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight, Info, FileOutput } from 'lucide-react'
 import { baixarXlsx, dataParaXlsx } from '@/lib/exportar-xlsx'
 import RemessaRetornoModal from '@/components/controle-pagamentos/RemessaRetornoModal'
+import VincularExtratoModal from '@/components/extratos/VincularExtratoModal'
 
 // ---- Types ----
 interface PagamentoStatus { id: number; nome_status: string }
@@ -706,70 +707,6 @@ function AlterarStatusLoteModal({
   )
 }
 
-// ---- Vincular com extrato bancário ----
-interface LinhaExtrato { id: number; data: string; descricao: string; valor: number; sugerido: boolean }
-
-function VincularExtratoModal({ row, onClose, onDone }: { row: Row; onClose: () => void; onDone: () => void }) {
-  const [linhas, setLinhas] = useState<LinhaExtrato[] | null>(null)
-  const [erro, setErro] = useState('')
-
-  useEffect(() => {
-    fetch(`/api/extratos-bancarios/vinculos?conta_id=${row.id}`)
-      .then(r => r.json())
-      .then(d => setLinhas(d.lancamentos ?? []))
-      .catch(() => setLinhas([]))
-  }, [row.id])
-
-  const vincular = async (lancamentoId: number) => {
-    setErro('')
-    const r = await fetch('/api/extratos-bancarios/vinculos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lancamento_id: lancamentoId, conta_id: row.id }),
-    })
-    if (r.ok) return onDone()
-    setErro((await r.json().catch(() => ({}))).error ?? 'Erro ao vincular')
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
-        <p className="font-semibold text-slate-900">
-          Vincular ao extrato — #{row.id} · {row.fornecedor} · {fmtMoeda(row.valor_pagamento ?? row.valor_pagar)}
-        </p>
-        {erro && <p className="text-sm text-red-600">{erro}</p>}
-        {linhas === null ? (
-          <p className="text-sm text-slate-400">Carregando...</p>
-        ) : linhas.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            Nenhuma linha de saída do extrato, sem vínculo, com esse valor{row.data_pagamento ? ` em ${fmtData(row.data_pagamento)}` : ''}.
-            Se a data de pagamento da conta estiver diferente do extrato, ajuste-a e tente de novo.
-          </p>
-        ) : (
-          <div className="max-h-[50vh] overflow-auto">
-            <table className="w-full text-sm">
-              <tbody>
-                {linhas.map(l => (
-                  <tr key={l.id} className="table-row">
-                    <td className="table-cell whitespace-nowrap">{fmtData(l.data)}</td>
-                    <td className="table-cell max-w-xs truncate" title={l.descricao}>{l.descricao}</td>
-                    <td className="table-cell text-right whitespace-nowrap">{fmtMoeda(l.valor)}</td>
-                    <td className="table-cell text-right whitespace-nowrap">
-                      {l.sugerido && <span className="text-xs text-amber-600 mr-2">mesma data</span>}
-                      <button onClick={() => vincular(l.id)} className="btn-primary">Vincular</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <button onClick={onClose} className="btn-secondary">Fechar</button>
-      </div>
-    </div>
-  )
-}
-
 // ---- Main Page ----
 export default function ControlePage() {
   const [statuses, setStatuses] = useState<PagamentoStatus[]>([])
@@ -1208,7 +1145,10 @@ export default function ControlePage() {
 
       {vincularRow && (
         <VincularExtratoModal
-          row={vincularRow}
+          tipo="pagar"
+          contaId={vincularRow.id}
+          titulo={`#${vincularRow.id} · ${vincularRow.fornecedor} · ${fmtMoeda(vincularRow.valor_pagamento ?? vincularRow.valor_pagar)}`}
+          dataPagamento={vincularRow.data_pagamento}
           onClose={() => setVincularRow(null)}
           onDone={() => { setVincularRow(null); loadTable() }}
         />

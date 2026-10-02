@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { RefreshCw, Plus, Pencil, X, Trash2, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react'
 import { baixarXlsx, dataParaXlsx } from '@/lib/exportar-xlsx'
+import VincularExtratoModal from '@/components/extratos/VincularExtratoModal'
 
 // ---- Types ----
 interface RecebimentoStatus { id: number; nome_status: string }
@@ -14,6 +15,7 @@ interface Controle {
   data_vencimento: string | null; valor_pagar: number | null
   data_pagamento: string | null; valor_pagamento: number | null
   status_recebimento: number | null; tipo_recebimento: number | null
+  extrato_lancamento_id?: number | null
 }
 interface Pedido {
   id: number; empresa: string; categoria: string; cliente: string
@@ -22,6 +24,7 @@ interface Pedido {
 interface Row extends Controle {
   empresa: string; categoria: string; cliente: string
   status_pedido: string; observacao: string | null; situacao: string
+  extrato?: { data: string; descricao: string } | null
 }
 
 // ---- Helpers ----
@@ -590,6 +593,7 @@ function AlterarStatusLoteModal({
 // ---- Main Page ----
 export default function ControleRecebimentosPage() {
   const [controles, setControles] = useState<Controle[]>([])
+  const [extratos, setExtratos] = useState<Record<number, { data: string; descricao: string }>>({})
   const [pedidos, setPedidos] = useState<Record<number, Pedido>>({})
   const [pedidosForAdd, setPedidosForAdd] = useState<Pedido[]>([])
   const [empresasCad, setEmpresasCad] = useState<string[]>([])
@@ -606,7 +610,9 @@ export default function ControleRecebimentosPage() {
   const [filtroCategoria, setFiltroCategoria] = useState('')
   const [filtroStatusRec, setFiltroStatusRec] = useState('')
   const [filtroSituacao, setFiltroSituacao] = useState('')
+  const [filtroVinculo, setFiltroVinculo] = useState('')
 
+  const [vincularRow, setVincularRow] = useState<Row | null>(null)
   const [editRow, setEditRow] = useState<Row | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [showLote, setShowLote] = useState(false)
@@ -637,6 +643,15 @@ export default function ControleRecebimentosPage() {
 
       setControles(ctrls)
 
+      // Linhas do extrato vinculadas (falha aqui não impede de usar a tela)
+      const lancIds = [...new Set(ctrls.map(c => c.extrato_lancamento_id).filter((x): x is number => x != null))]
+      const lancs: { id: number; data: string; descricao: string }[] = lancIds.length
+        ? await fetch('/api/extratos-bancarios/lancamentos', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: lancIds }),
+          }).then(r => r.json()).then(d => d.lancamentos ?? []).catch(() => [])
+        : []
+      setExtratos(Object.fromEntries(lancs.map(l => [l.id, l])))
+
       // .in() vai na URL, então busca os pedidos em blocos pequenos
       const pedidoIds = [...new Set(ctrls.filter(c => c.pedido_id).map(c => c.pedido_id as number))]
       const map: Record<number, Pedido> = {}
@@ -658,7 +673,7 @@ export default function ControleRecebimentosPage() {
   useEffect(() => { load() }, [load])
 
   // Volta para a primeira página quando os filtros mudam
-  useEffect(() => { setPage(0) }, [filtroEmpresa, filtroCategoria, filtroStatusRec, filtroSituacao])
+  useEffect(() => { setPage(0) }, [filtroEmpresa, filtroCategoria, filtroStatusRec, filtroSituacao, filtroVinculo])
 
   const rows: Row[] = useMemo(() =>
     controles.map(c => {
@@ -671,8 +686,9 @@ export default function ControleRecebimentosPage() {
         status_pedido: ped?.status ?? '',
         observacao: ped?.observacao ?? null,
         situacao: getSituacao(c),
+        extrato: c.extrato_lancamento_id != null ? extratos[c.extrato_lancamento_id] ?? null : null,
       }
-    }), [controles, pedidos])
+    }), [controles, pedidos, extratos])
 
   // Filtros vêm do cadastro (empresas/categorias), não das linhas carregadas
   const empresas = empresasCad
@@ -687,8 +703,9 @@ export default function ControleRecebimentosPage() {
     if (filtroCategoria) list = list.filter(r => r.categoria === filtroCategoria)
     if (filtroStatusRec) list = list.filter(r => String(r.status_recebimento) === filtroStatusRec)
     if (filtroSituacao) list = list.filter(r => r.situacao === filtroSituacao)
+    if (filtroVinculo) list = list.filter(r => (r.extrato_lancamento_id != null) === (filtroVinculo === 'com'))
     return list
-  }, [rows, filtroEmpresa, filtroCategoria, filtroStatusRec, filtroSituacao])
+  }, [rows, filtroEmpresa, filtroCategoria, filtroStatusRec, filtroSituacao, filtroVinculo])
 
   const sorted = useMemo(() =>
     [...filtered].sort((a, b) => (a.pedido_id ?? 0) - (b.pedido_id ?? 0) || a.id - b.id),
@@ -708,6 +725,15 @@ export default function ControleRecebimentosPage() {
     filtered.filter(r => r.situacao === 'Atrasado')
       .reduce((s, r) => s + (r.valor_pagar ?? 0) - (r.valor_pagamento ?? 0), 0),
     [filtered])
+
+  const desvincularExtrato = async (r: Row) => {
+    await fetch('/api/extratos-bancarios/vinculos', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lancamento_id: r.extrato_lancamento_id }),
+    })
+    load()
+  }
 
   const statusNome = (id: number | null) => statuses.find(s => s.id === id)?.nome_status ?? '-'
   const tipoNome = (id: number | null) => tipos.find(t => t.id === id)?.tipos ?? '-'
@@ -789,7 +815,7 @@ export default function ControleRecebimentosPage() {
 
       {/* Filters */}
       <div className="card">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
             <label className="label">Empresa</label>
             <select className="input" value={filtroEmpresa}
@@ -822,6 +848,14 @@ export default function ControleRecebimentosPage() {
               {['Em dia', 'Atrasado', 'Quitado', 'Sem vencimento'].map(s =>
                 <option key={s} value={s}>{s}</option>
               )}
+            </select>
+          </div>
+          <div>
+            <label className="label">Vínculo com extrato</label>
+            <select className="input" value={filtroVinculo} onChange={e => setFiltroVinculo(e.target.value)}>
+              <option value="">Todos</option>
+              <option value="sem">Sem vínculo</option>
+              <option value="com">Com vínculo</option>
             </select>
           </div>
         </div>
@@ -876,6 +910,7 @@ export default function ControleRecebimentosPage() {
                   <th className="table-cell font-medium">Status</th>
                   <th className="table-cell font-medium">Tipo</th>
                   <th className="table-cell font-medium">Situação</th>
+                  <th className="table-cell font-medium">Extrato</th>
                   <th className="table-cell font-medium w-10"></th>
                 </tr>
               </thead>
@@ -912,6 +947,18 @@ export default function ControleRecebimentosPage() {
                         {r.situacao}
                       </span>
                     </td>
+                    <td className="table-cell min-w-40">
+                      {r.extrato ? (
+                        <>
+                          <span className="text-green-700 text-xs block truncate max-w-[160px]" title={r.extrato.descricao}>
+                            {fmtData(r.extrato.data)} · {r.extrato.descricao}
+                          </span>
+                          <button onClick={() => desvincularExtrato(r)} className="text-xs text-slate-400 hover:text-red-500 underline">desvincular</button>
+                        </>
+                      ) : (
+                        <button onClick={() => setVincularRow(r)} className="text-xs text-blue-600 underline">vincular...</button>
+                      )}
+                    </td>
                     <td className="table-cell">
                       <button onClick={() => setEditRow(r)}
                         className="p-1.5 rounded hover:bg-slate-100 text-slate-500" title="Editar">
@@ -947,6 +994,17 @@ export default function ControleRecebimentosPage() {
             </div>
           )}
         </div>
+      )}
+
+      {vincularRow && (
+        <VincularExtratoModal
+          tipo="receber"
+          contaId={vincularRow.id}
+          titulo={`#${vincularRow.id} · ${vincularRow.cliente} · ${fmtMoeda(vincularRow.valor_pagamento ?? vincularRow.valor_pagar)}`}
+          dataPagamento={vincularRow.data_pagamento}
+          onClose={() => setVincularRow(null)}
+          onDone={() => { setVincularRow(null); load() }}
+        />
       )}
 
       {editRow && (
