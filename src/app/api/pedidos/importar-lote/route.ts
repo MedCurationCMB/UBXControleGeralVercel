@@ -49,6 +49,33 @@ export async function POST(req: NextRequest) {
 
     if (rows.length === 0) return NextResponse.json({ error: 'Arquivo sem dados' }, { status: 400 })
 
+    // Valida contra os cadastros do projeto (o banco tem FK em empresa+categoria e fornecedor)
+    const empresasSet = [...new Set(rows.map(r => String(r.empresa ?? '')))]
+    const fornecedoresSet = [...new Set(rows.map(r => String(r.fornecedor ?? '')))]
+    const [{ data: empData }, { data: catData }, { data: fornData }] = await Promise.all([
+      supabaseServer.from('empresas').select('empresa').eq('projeto_id', session.projetoId).in('empresa', empresasSet),
+      supabaseServer.from('categorias').select('empresa, categoria').eq('projeto_id', session.projetoId),
+      supabaseServer.from('fornecedores').select('nome').eq('projeto_id', session.projetoId).in('nome', fornecedoresSet),
+    ])
+    const empresasValidas = new Set((empData ?? []).map(e => e.empresa as string))
+    const categoriasValidas = new Set((catData ?? []).map(r => `${r.empresa}||${r.categoria}`))
+    const fornecedoresValidos = new Set((fornData ?? []).map(f => f.nome as string))
+
+    const invalidEmpresas = empresasSet.filter(e => !empresasValidas.has(e))
+    if (invalidEmpresas.length > 0) {
+      return NextResponse.json({ error: `Empresas não encontradas: ${invalidEmpresas.join(', ')}` }, { status: 400 })
+    }
+    const invalidCats = rows
+      .filter(r => !categoriasValidas.has(`${r.empresa}||${r.categoria}`))
+      .map(r => `${r.categoria} (${r.empresa})`)
+    if (invalidCats.length > 0) {
+      return NextResponse.json({ error: `Categorias inválidas: ${[...new Set(invalidCats)].join(', ')}` }, { status: 400 })
+    }
+    const invalidForn = fornecedoresSet.filter(f => !fornecedoresValidos.has(f))
+    if (invalidForn.length > 0) {
+      return NextResponse.json({ error: `Fornecedores não cadastrados: ${invalidForn.join(', ')}` }, { status: 400 })
+    }
+
     // Group rows by id_pedido_importado
     const groups = new Map<string, typeof rows>()
     for (const row of rows) {
@@ -82,7 +109,9 @@ export async function POST(req: NextRequest) {
         .select('id')
         .single()
 
-      if (errPedido || !pedido) continue
+      if (errPedido || !pedido) {
+        return NextResponse.json({ error: `Falha ao criar pedido de ${first.fornecedor} (${count} já importado(s)): ${errPedido?.message}` }, { status: 500 })
+      }
 
       const fluxos = pedidoRows.map(r => ({
         pedido_id: pedido.id,
@@ -94,7 +123,11 @@ export async function POST(req: NextRequest) {
         valor_referente: Number(r.valor_referente ?? 0),
       }))
 
-      await supabaseServer.from('pedidos_solicitados_fluxo').insert(fluxos)
+      const { error: errFluxo } = await supabaseServer.from('pedidos_solicitados_fluxo').insert(fluxos)
+      if (errFluxo) {
+        await supabaseServer.from('pedidos_solicitados').delete().eq('id', pedido.id)
+        return NextResponse.json({ error: `Falha ao gravar os períodos de ${first.fornecedor} (${count} já importado(s)): ${errFluxo.message}` }, { status: 500 })
+      }
       count++
     }
 

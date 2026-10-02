@@ -106,7 +106,9 @@ export async function POST(req: NextRequest) {
         .select('id')
         .single()
 
-      if (errPedido || !pedido) continue
+      if (errPedido || !pedido) {
+        return NextResponse.json({ error: `Falha ao criar pedido de ${first.cliente} (${count} já importado(s)): ${errPedido?.message}` }, { status: 500 })
+      }
 
       const fluxos = pedidoRows.map(r => ({
         pedido_id: pedido.id,
@@ -118,7 +120,11 @@ export async function POST(req: NextRequest) {
         valor_referente: Number(r.valor_referente ?? 0),
       }))
 
-      await supabaseServer.from('pedidos_solicitados_fluxo_receita').insert(fluxos)
+      const { error: errFluxo } = await supabaseServer.from('pedidos_solicitados_fluxo_receita').insert(fluxos)
+      if (errFluxo) {
+        await supabaseServer.from('pedidos_solicitados_receita').delete().eq('id', pedido.id)
+        return NextResponse.json({ error: `Falha ao gravar os períodos de ${first.cliente} (${count} já importado(s)): ${errFluxo.message}` }, { status: 500 })
+      }
       count++
     }
 
