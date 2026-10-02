@@ -50,6 +50,7 @@ export default function ExtratosBancariosPage() {
   const [carregandoLista, setCarregandoLista] = useState(true)
   const [mensagem, setMensagem] = useState<{ tipo: 'erro' | 'aviso'; texto: string } | null>(null)
   const [modal, setModal] = useState<Lancamento | null>(null)
+  const [aba, setAba] = useState<'sem' | 'com' | 'todos'>('sem')
   const inputRef = useRef<HTMLInputElement>(null)
 
   const carregarLista = useCallback(async () => {
@@ -108,6 +109,12 @@ export default function ExtratosBancariosPage() {
   }
 
   const semVinculo = lancamentos.filter(l => !l.vinculo).length
+  const abas = [
+    { id: 'sem', rotulo: 'Sem vínculo', qtd: semVinculo },
+    { id: 'com', rotulo: 'Vinculados', qtd: lancamentos.length - semVinculo },
+    { id: 'todos', rotulo: 'Todos', qtd: lancamentos.length },
+  ] as const
+  const visiveis = lancamentos.filter(l => aba === 'todos' || !l.vinculo === (aba === 'sem'))
 
   const graficoDiario = useMemo(() => {
     const porDia = new Map<string, { entradas: number; saidas: number }>()
@@ -203,8 +210,19 @@ export default function ExtratosBancariosPage() {
 
           <div className="card p-5">
             <p className="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
-              <Landmark size={16} /> Lançamentos ({lancamentos.length}) · {semVinculo} sem vínculo
+              <Landmark size={16} /> Lançamentos
             </p>
+            <div className="flex gap-2 mb-3">
+              {abas.map(a => (
+                <button
+                  key={a.id}
+                  onClick={() => setAba(a.id)}
+                  className={`text-sm px-3 py-1 rounded-full border ${aba === a.id ? 'bg-blue-50 border-blue-300 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                >
+                  {a.rotulo} ({a.qtd})
+                </button>
+              ))}
+            </div>
             <div className="max-h-[70vh] overflow-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-white">
@@ -217,7 +235,10 @@ export default function ExtratosBancariosPage() {
                 </tr>
               </thead>
               <tbody>
-                {lancamentos.map((l, i) => (
+                {visiveis.length === 0 && (
+                  <tr><td colSpan={5} className="table-cell text-slate-400">Nenhum lançamento nesta aba.</td></tr>
+                )}
+                {visiveis.map((l, i) => (
                   <tr key={l.id ?? i} className="table-row">
                     <td className="table-cell whitespace-nowrap">{dataBr(l.data)}</td>
                     <td className="table-cell max-w-xs truncate" title={l.descricao}>{l.descricao}</td>
