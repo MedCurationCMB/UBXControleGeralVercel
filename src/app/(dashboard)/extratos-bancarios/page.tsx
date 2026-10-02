@@ -23,10 +23,24 @@ interface Lancamento {
   valor: number
   saldo_apos: number | null
   codigo_origem: string | null
+  tipo?: 'pagar' | 'receber'
+  vinculo?: { tipo: 'pagar' | 'receber'; conta_id: number; parte: string } | null
+  candidatos?: Candidato[]
+}
+
+interface Candidato {
+  id: number
+  parte: string
+  empresa: string
+  data_vencimento: string | null
+  data_pagamento: string | null
+  valor: number
+  sugerido: boolean
 }
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const dataBr = (iso: string) => iso.slice(8, 10) + '/' + iso.slice(5, 7) + '/' + iso.slice(0, 4)
+const rotuloConta = (tipo?: string) => (tipo === 'receber' ? 'Receber' : 'Pagar')
 
 export default function ExtratosBancariosPage() {
   const [extratos, setExtratos] = useState<ExtratoResumo[]>([])
@@ -35,6 +49,7 @@ export default function ExtratosBancariosPage() {
   const [enviando, setEnviando] = useState(false)
   const [carregandoLista, setCarregandoLista] = useState(true)
   const [mensagem, setMensagem] = useState<{ tipo: 'erro' | 'aviso'; texto: string } | null>(null)
+  const [modal, setModal] = useState<Lancamento | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const carregarLista = useCallback(async () => {
@@ -66,10 +81,33 @@ export default function ExtratosBancariosPage() {
       setMensagem({ tipo: d.duplicado ? 'aviso' : 'erro', texto: d.error ?? 'Erro ao importar o extrato' })
       return
     }
-    setLancamentos(d.lancamentos)
-    setSelecionadoId(d.extrato.id)
+    await abrirExtrato(d.extrato.id)
     await carregarLista()
   }
+
+  const vincular = async (l: Lancamento, contaId: number) => {
+    setMensagem(null)
+    const r = await fetch('/api/extratos-bancarios/vinculos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lancamento_id: l.id, conta_id: contaId }),
+    })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) setMensagem({ tipo: 'erro', texto: d.error ?? 'Erro ao vincular' })
+    setModal(null)
+    if (selecionadoId) await abrirExtrato(selecionadoId)
+  }
+
+  const desvincular = async (l: Lancamento) => {
+    await fetch('/api/extratos-bancarios/vinculos', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lancamento_id: l.id }),
+    })
+    if (selecionadoId) await abrirExtrato(selecionadoId)
+  }
+
+  const semVinculo = lancamentos.filter(l => !l.vinculo).length
 
   const graficoDiario = useMemo(() => {
     const porDia = new Map<string, { entradas: number; saidas: number }>()
@@ -165,7 +203,7 @@ export default function ExtratosBancariosPage() {
 
           <div className="card p-5 overflow-x-auto">
             <p className="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
-              <Landmark size={16} /> Lançamentos ({lancamentos.length})
+              <Landmark size={16} /> Lançamentos ({lancamentos.length}) · {semVinculo} sem vínculo
             </p>
             <table className="w-full text-sm">
               <thead>
@@ -174,6 +212,7 @@ export default function ExtratosBancariosPage() {
                   <th className="table-cell font-medium">Descrição</th>
                   <th className="table-cell font-medium text-right">Valor</th>
                   <th className="table-cell font-medium text-right">Saldo após</th>
+                  <th className="table-cell font-medium">Vínculo</th>
                 </tr>
               </thead>
               <tbody>
@@ -183,12 +222,62 @@ export default function ExtratosBancariosPage() {
                     <td className="table-cell max-w-md truncate" title={l.descricao}>{l.descricao}</td>
                     <td className={`table-cell text-right whitespace-nowrap ${l.valor < 0 ? 'text-red-600' : 'text-green-700'}`}>{brl(l.valor)}</td>
                     <td className="table-cell text-right whitespace-nowrap">{l.saldo_apos != null ? brl(l.saldo_apos) : '—'}</td>
+                    <td className="table-cell whitespace-nowrap">
+                      {l.vinculo ? (
+                        <span className="text-green-700">
+                          {rotuloConta(l.vinculo.tipo)} #{l.vinculo.conta_id} · {l.vinculo.parte}{' '}
+                          <button onClick={() => desvincular(l)} className="text-slate-400 hover:text-red-500 underline">desvincular</button>
+                        </span>
+                      ) : (
+                        <span className="text-amber-600">
+                          {l.candidatos?.[0]?.sugerido && (
+                            <>
+                              Sugestão: #{l.candidatos[0].id} · {l.candidatos[0].parte}{' '}
+                              <button onClick={() => vincular(l, l.candidatos![0].id)} className="text-blue-600 underline mr-2">confirmar</button>
+                            </>
+                          )}
+                          <button onClick={() => setModal(l)} className="text-blue-600 underline">vincular...</button>
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </>
+      )}
+
+      {modal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
+            <p className="font-semibold text-slate-900">
+              Vincular a conta a {rotuloConta(modal.tipo).toLowerCase()} — {dataBr(modal.data)} · {brl(modal.valor)}
+            </p>
+            <p className="text-xs text-slate-500 truncate" title={modal.descricao}>{modal.descricao}</p>
+            {modal.candidatos?.length ? (
+              <table className="w-full text-sm">
+                <tbody>
+                  {modal.candidatos.map(c => (
+                    <tr key={c.id} className="table-row">
+                      <td className="table-cell">#{c.id}</td>
+                      <td className="table-cell">{c.parte}<span className="block text-xs text-slate-400">{c.empresa}</span></td>
+                      <td className="table-cell whitespace-nowrap">
+                        {c.data_pagamento ? `pago ${dataBr(c.data_pagamento)}` : c.data_vencimento ? `venc. ${dataBr(c.data_vencimento)}` : 'sem data'}
+                      </td>
+                      <td className="table-cell text-right">
+                        <button onClick={() => vincular(modal, c.id)} className="btn-primary">Vincular</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="text-sm text-slate-500">Nenhuma conta sem vínculo com esse valor. Se a data de pagamento da conta estiver diferente, ajuste-a e tente de novo.</p>
+            )}
+            <button onClick={() => setModal(null)} className="btn-secondary">Fechar</button>
+          </div>
+        </div>
       )}
     </div>
   )
