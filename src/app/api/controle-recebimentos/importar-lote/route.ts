@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabase/server'
 import ExcelJS from 'exceljs'
 import { valorCelula, parseDate, parseNumero } from '@/lib/importacao-lote'
+import { beneficiariosPorPedido } from '@/lib/beneficiarios'
 
 const REQUIRED_COLS = ['pedido_id', 'data_vencimento', 'valor_pagar', 'tipo_recebimento']
 
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
 
     interface Linha {
       linha: number; pedido_id: number; data_vencimento: string; valor_pagar: number
-      tipo_recebimento: number; data_pagamento: string | null; valor_pagamento: number | null
+      tipo_recebimento: number; data_pagamento: string | null; valor_pagamento: number | null; beneficiario: string | null
     }
     const rows: Linha[] = []
     const rejeitadas: { linha: number; motivo: string }[] = []
@@ -76,6 +77,7 @@ export async function POST(req: NextRequest) {
       rows.push({
         linha: rowNum, pedido_id: pedidoId, data_vencimento: dataVenc as string, valor_pagar: valorPagar as number,
         tipo_recebimento: tipoRec, data_pagamento: dataPag as string | null, valor_pagamento: valorRec as number | null,
+        beneficiario: String(obj.cliente_beneficiario ?? '').trim() || null,
       })
     })
 
@@ -90,10 +92,28 @@ export async function POST(req: NextRequest) {
       if (pedErr) return NextResponse.json({ error: pedErr.message }, { status: 500 })
       ;(pedData ?? []).forEach(p => pedidosValidos.add(p.id as number))
     }
+    // O beneficiário (quem recebe) tem que ser um dos beneficiários do pedido; em branco, só vale se o pedido tiver um só
+    const beneficiarios = await beneficiariosPorPedido(supabaseServer, 'receber', [...pedidosValidos])
     const validas = rows.filter(r => {
-      if (pedidosValidos.has(r.pedido_id)) return true
-      rejeitadas.push({ linha: r.linha, motivo: `pedido #${r.pedido_id} não encontrado neste projeto, não autorizado ou cancelado` })
-      return false
+      if (!pedidosValidos.has(r.pedido_id)) {
+        rejeitadas.push({ linha: r.linha, motivo: `pedido #${r.pedido_id} não encontrado neste projeto, não autorizado ou cancelado` })
+        return false
+      }
+      const opcoes = beneficiarios.get(r.pedido_id) ?? []
+      if (r.beneficiario) {
+        const achado = opcoes.find(o => o.toLowerCase() === r.beneficiario!.toLowerCase())
+        if (!achado) {
+          rejeitadas.push({ linha: r.linha, motivo: `cliente_beneficiario '${r.beneficiario}' não está entre os beneficiários do pedido #${r.pedido_id} (${opcoes.join(', ')})` })
+          return false
+        }
+        r.beneficiario = achado
+      } else if (opcoes.length === 1) {
+        r.beneficiario = opcoes[0]
+      } else {
+        rejeitadas.push({ linha: r.linha, motivo: `pedido #${r.pedido_id} tem mais de um beneficiário (${opcoes.join(', ')}); informe cliente_beneficiario` })
+        return false
+      }
+      return true
     })
     rejeitadas.sort((a, b) => a.linha - b.linha)
 
@@ -103,6 +123,7 @@ export async function POST(req: NextRequest) {
 
     const inserts = validas.map(r => ({
       pedido_id: r.pedido_id,
+      cliente_beneficiario: r.beneficiario,
       data_vencimento: r.data_vencimento,
       valor_pagar: r.valor_pagar,
       tipo_recebimento: r.tipo_recebimento,

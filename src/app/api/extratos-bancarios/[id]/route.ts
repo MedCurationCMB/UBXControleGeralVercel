@@ -36,16 +36,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const vinculos = new Map<number, { tipo: TipoConta; conta_id: number; parte: string }>()
     const livres = {} as Record<TipoConta, Awaited<ReturnType<typeof carregarContasLivres>>>
     for (const tipo of tipos) {
-      const { tabela, pedido, parte } = CONTAS[tipo]
+      const { tabela, pedido, parte, benef } = CONTAS[tipo]
       const { data } = await supabase
         .from(tabela)
-        .select(`id, extrato_lancamento_id, ${pedido}(${parte})`)
+        .select(`id, extrato_lancamento_id, ${benef}, ${pedido}(${parte})`)
         .eq('projeto_id', session.projetoId)
         .gte('extrato_lancamento_id', min)
         .lte('extrato_lancamento_id', max)
       for (const r of (data ?? []) as unknown as Record<string, unknown>[]) {
         const ped = (r[pedido] ?? {}) as Record<string, string>
-        vinculos.set(r.extrato_lancamento_id as number, { tipo, conta_id: r.id as number, parte: ped[parte] ?? '' })
+        vinculos.set(r.extrato_lancamento_id as number, { tipo, conta_id: r.id as number, parte: (r[benef] as string | null) ?? ped[parte] ?? '' })
       }
       livres[tipo] = await carregarContasLivres(supabase, session.projetoId, tipo)
     }

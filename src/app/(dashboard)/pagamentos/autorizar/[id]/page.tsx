@@ -5,6 +5,7 @@ import { useContratosLiberados } from '@/lib/useContratosLiberados'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
+import { criarContasDoPedido } from '@/lib/contasDoPedido'
 import {
   ArrowLeft, CheckCircle, XCircle, AlertTriangle, RefreshCw,
   MessageSquare, FileText, Printer, Brain, Upload, Download,
@@ -23,7 +24,7 @@ interface Pedido {
   pedido_status: number | null; arquivo_texto: string | null; analise_texto: string | null
   usuario_solicitante?: string | null; ajuste_reenviado?: boolean
 }
-interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string }
+interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string; fornecedor_beneficiario?: string | null }
 interface Comentario { id: number; comentario: string; usuario: string; data_comentario: string; tipo_documento: number | null }
 interface Documento { id: number; nome_documento: string; anexo_id: string | null; anexo_url: string | null; tipo_documento: number | null; tipo_nome?: string; data_upload: string }
 interface TipoDoc { id: number; tipo: string }
@@ -635,13 +636,7 @@ export default function DetalhePedidoPage() {
         .update({ status: novoStatus }).eq('pedido_id', pedidoId)
 
       if (novoStatus === 'Autorizado') {
-        const { data: ex } = await supabase.from('controle_pagamentos')
-          .select('id').eq('pedido_id', pedidoId).maybeSingle()
-        if (!ex) {
-          await supabase.from('controle_pagamentos').insert({
-            pedido_id: pedidoId, valor_pagar: pedido.valor_pedido, status_pagamento: 1,
-          })
-        }
+        await criarContasDoPedido('pagar', pedidoId, pedido.fornecedor, Number(pedido.valor_pedido))
       }
     }
 
@@ -785,6 +780,7 @@ export default function DetalhePedidoPage() {
               <thead>
                 <tr className="table-header">
                   <th className="table-cell font-medium">Mês/Ano</th>
+                  <th className="table-cell font-medium">Beneficiário</th>
                   <th className="table-cell font-medium text-right">Valor</th>
                   <th className="table-cell font-medium">Status</th>
                 </tr>
@@ -793,6 +789,7 @@ export default function DetalhePedidoPage() {
                 {fluxo.map(r => (
                   <tr key={r.id} className="table-row">
                     <td className="table-cell">{r.mes}/{r.ano}</td>
+                    <td className="table-cell text-slate-600">{r.fornecedor_beneficiario ?? pedido.fornecedor}</td>
                     <td className="table-cell text-right font-medium">{fmtMoeda(Number(r.valor_referente))}</td>
                     <td className="table-cell">
                       <span className={`badge ${
@@ -805,6 +802,7 @@ export default function DetalhePedidoPage() {
                 ))}
                 <tr className="table-row bg-slate-50">
                   <td className="table-cell font-semibold">Total</td>
+                  <td className="table-cell" />
                   <td className="table-cell text-right font-bold text-slate-900">
                     {fmtMoeda(fluxo.reduce((s, r) => s + Number(r.valor_referente), 0))}
                   </td>

@@ -11,7 +11,7 @@ interface Controle {
   data_vencimento: string | null; valor_pagar: number | null
   data_pagamento: string | null; valor_pagamento: number | null
   status_pagamento: number | null; tipo_pagamento: number | null
-  extrato_lancamento_id: number | null
+  extrato_lancamento_id: number | null; fornecedor_beneficiario: string | null
   pedidos_solicitados: Pedido | null
 }
 
@@ -33,7 +33,7 @@ function montarLinha({ pedidos_solicitados: ped, ...c }: Controle) {
     ...c,
     empresa: ped?.empresa ?? '',
     categoria: ped?.categoria ?? '',
-    fornecedor: ped?.fornecedor ?? '',
+    fornecedor: c.fornecedor_beneficiario ?? ped?.fornecedor ?? '', // quem recebe
     status_pedido: ped?.status ?? '',
     observacao: ped?.observacao ?? null,
     situacao: getSituacao(c),

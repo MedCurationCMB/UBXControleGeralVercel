@@ -19,6 +19,7 @@ interface MesSelecionado {
   mesNome: string
   ano: number
   valorReferente: number
+  beneficiario: string
 }
 
 interface SaldoMes {
@@ -168,6 +169,8 @@ export default function SolicitarRecebimentoPage() {
   const [addAno, setAddAno] = useState('')
   const [addValor, setAddValor] = useState('')
   const [mesesSelecionados, setMesesSelecionados] = useState<MesSelecionado[]>([])
+  const [mesmoCliente, setMesmoCliente] = useState(true)
+  const [addBeneficiario, setAddBeneficiario] = useState('')
 
   // UI state
   const [saving, setSaving] = useState(false)
@@ -271,9 +274,15 @@ export default function SolicitarRecebimentoPage() {
 
     if (isNaN(valor) || valor <= 0) { setError('Informe um valor válido.'); return }
 
-    if (mesesSelecionados.some(m => m.mes === mesNum && m.ano === anoNum)) {
-      setError(`Período ${addMes}/${addAno} já adicionado.`); return
+    const beneficiario = mesmoCliente ? cliente : addBeneficiario
+    if (!beneficiario) { setError('Selecione o cliente beneficiário.'); return }
+    if (mesesSelecionados.some(m => m.mes === mesNum && m.ano === anoNum && m.beneficiario === beneficiario)) {
+      setError(`Período ${addMes}/${addAno} já adicionado para ${beneficiario}.`); return
     }
+    // vários beneficiários no mesmo período consomem o mesmo saldo
+    const jaNoPeriodo = mesesSelecionados
+      .filter(m => m.mes === mesNum && m.ano === anoNum)
+      .reduce((s, m) => s + m.valorReferente, 0)
 
     if (controlarOrcamento) {
       setAddingMes(true)
@@ -293,8 +302,8 @@ export default function SolicitarRecebimentoPage() {
       }
 
       const saldoAtual = saldoData.valor_orcamento - saldoData.valor_pedidos_solicitados
-      if (valor > saldoAtual) {
-        setError(`Valor ${fmtMoeda(valor)} excede o saldo disponível de ${fmtMoeda(saldoAtual)} para ${addMes}/${anoNum}.`)
+      if (valor + jaNoPeriodo > saldoAtual) {
+        setError(`Valor ${fmtMoeda(valor + jaNoPeriodo)} (com o já adicionado no período) excede o saldo disponível de ${fmtMoeda(saldoAtual)} para ${addMes}/${anoNum}.`)
         return
       }
     }
@@ -302,8 +311,9 @@ export default function SolicitarRecebimentoPage() {
     setError('')
     setMesesSelecionados(prev => [
       ...prev,
-      { mes: mesNum, mesNome: addMes, ano: anoNum, valorReferente: valor },
+      { mes: mesNum, mesNome: addMes, ano: anoNum, valorReferente: valor, beneficiario },
     ])
+    setAddBeneficiario('')
     setAddMes('')
     setAddAno('')
     setAddValor('')
@@ -347,6 +357,7 @@ export default function SolicitarRecebimentoPage() {
       mesesSelecionados.map(m => ({
         pedido_id: pedido.id,
         empresa, categoria, cliente,
+        cliente_beneficiario: m.beneficiario,
         mes: m.mes, ano: m.ano,
         valor_referente: m.valorReferente,
       }))
@@ -397,6 +408,8 @@ export default function SolicitarRecebimentoPage() {
     setEmergencial(false)
     setFiles([])
     setMesesSelecionados([])
+    setMesmoCliente(true)
+    setAddBeneficiario('')
     setSaldos([])
     setAddMes('')
     setAddAno('')
@@ -609,6 +622,27 @@ export default function SolicitarRecebimentoPage() {
             <h2 className="text-sm font-semibold text-slate-900 mb-4">Adicionar Valor</h2>
             {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
             <form onSubmit={handleAddMes}>
+              <div className="mb-3 space-y-2">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox" checked={mesmoCliente} disabled={mesesSelecionados.length > 0}
+                    onChange={e => { setMesmoCliente(e.target.checked); setAddBeneficiario('') }}
+                  />
+                  O beneficiário é o mesmo cliente
+                  {mesesSelecionados.length > 0 && <span className="text-xs text-slate-400">(remova os valores para alterar)</span>}
+                </label>
+                <div>
+                  <label className="label">Cliente beneficiário</label>
+                  <select
+                    className="input" disabled={mesmoCliente}
+                    value={mesmoCliente ? cliente : addBeneficiario}
+                    onChange={e => setAddBeneficiario(e.target.value)}
+                  >
+                    {mesmoCliente ? <option value={cliente}>{cliente}</option> : <option value="">Selecionar...</option>}
+                    {!mesmoCliente && clientes.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                 <div>
                   <label className="label">Mês</label>
@@ -658,6 +692,7 @@ export default function SolicitarRecebimentoPage() {
                     <tr className="table-header">
                       <th className="table-cell font-medium">#</th>
                       <th className="table-cell font-medium">Período</th>
+                      <th className="table-cell font-medium">Beneficiário</th>
                       <th className="table-cell font-medium text-right">Valor</th>
                       <th className="table-cell w-10"></th>
                     </tr>
@@ -667,6 +702,7 @@ export default function SolicitarRecebimentoPage() {
                       <tr key={i} className="table-row">
                         <td className="table-cell text-slate-500">{i + 1}</td>
                         <td className="table-cell">{m.mesNome}/{m.ano}</td>
+                        <td className="table-cell text-slate-600">{m.beneficiario}</td>
                         <td className="table-cell text-right font-medium">{fmtMoeda(m.valorReferente)}</td>
                         <td className="table-cell">
                           <button

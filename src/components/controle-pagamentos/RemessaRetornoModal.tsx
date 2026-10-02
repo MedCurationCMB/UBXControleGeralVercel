@@ -134,7 +134,7 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
     const [contasRes, pgRes, fornRes, tiposChaveRes] = await Promise.all([
       supabase.from('conta_pagador').select('id, nome_empresa').order('id'),
       supabase.from('controle_pagamentos')
-        .select('id, pedido_id, data_vencimento, valor_pagar, tipo_pagamento, status_pagamento')
+        .select('id, pedido_id, data_vencimento, valor_pagar, tipo_pagamento, status_pagamento, fornecedor_beneficiario')
         .eq('status_pagamento', 1),
       supabase.from('fornecedores').select('nome, chave_pix, cnpj_cpf, tipo_chave'),
       supabase.from('tipos_chave').select('id, tipo'),
@@ -167,7 +167,7 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
     const enriched: PagamentoRow[] = pgList.map(p => ({
       ...p,
       empresa: p.pedido_id ? pedidoMap[p.pedido_id]?.empresa ?? '' : '',
-      fornecedor: p.pedido_id ? pedidoMap[p.pedido_id]?.fornecedor ?? '' : '',
+      fornecedor: p.fornecedor_beneficiario ?? (p.pedido_id ? pedidoMap[p.pedido_id]?.fornecedor ?? '' : ''),
       categoria: p.pedido_id ? pedidoMap[p.pedido_id]?.categoria ?? '' : '',
     }))
     setAllPagamentos(enriched)

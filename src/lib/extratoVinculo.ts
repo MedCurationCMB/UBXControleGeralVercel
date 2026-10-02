@@ -6,8 +6,14 @@ import type { createServerClient } from '@/lib/supabase/server'
 export type TipoConta = 'pagar' | 'receber'
 
 export const CONTAS = {
-  pagar: { tabela: 'controle_pagamentos', pedido: 'pedidos_solicitados', parte: 'fornecedor' },
-  receber: { tabela: 'controle_recebimento', pedido: 'pedidos_solicitados_receita', parte: 'cliente' },
+  pagar: {
+    tabela: 'controle_pagamentos', pedido: 'pedidos_solicitados', fluxo: 'pedidos_solicitados_fluxo',
+    parte: 'fornecedor', benef: 'fornecedor_beneficiario', status: 'status_pagamento',
+  },
+  receber: {
+    tabela: 'controle_recebimento', pedido: 'pedidos_solicitados_receita', fluxo: 'pedidos_solicitados_fluxo_receita',
+    parte: 'cliente', benef: 'cliente_beneficiario', status: 'status_recebimento',
+  },
 } as const
 
 export const tipoDoValor = (valor: number): TipoConta => (valor < 0 ? 'pagar' : 'receber')
@@ -45,12 +51,12 @@ export async function carregarContasLivres(
   projetoId: number,
   tipo: TipoConta
 ): Promise<ContaLivre[]> {
-  const { tabela, pedido, parte } = CONTAS[tipo]
+  const { tabela, pedido, parte, benef } = CONTAS[tipo]
   const out: ContaLivre[] = []
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await supabase
       .from(tabela)
-      .select(`id, data_vencimento, data_pagamento, valor_pagar, valor_pagamento, ${pedido}(empresa, ${parte})`)
+      .select(`id, data_vencimento, data_pagamento, valor_pagar, valor_pagamento, ${benef}, ${pedido}(empresa, ${parte})`)
       .eq('projeto_id', projetoId)
       .is('extrato_lancamento_id', null)
       .order('id')
@@ -60,7 +66,7 @@ export async function carregarContasLivres(
       const ped = (r[pedido] ?? {}) as Record<string, string>
       out.push({
         id: r.id as number,
-        parte: ped[parte] ?? '',
+        parte: (r[benef] as string | null) ?? ped[parte] ?? '',
         empresa: ped.empresa ?? '',
         data_vencimento: r.data_vencimento as string | null,
         data_pagamento: r.data_pagamento as string | null,

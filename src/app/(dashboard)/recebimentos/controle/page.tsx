@@ -16,6 +16,7 @@ interface Controle {
   data_pagamento: string | null; valor_pagamento: number | null
   status_recebimento: number | null; tipo_recebimento: number | null
   extrato_lancamento_id?: number | null
+  cliente_beneficiario?: string | null
 }
 interface Pedido {
   id: number; empresa: string; categoria: string; cliente: string
@@ -199,6 +200,8 @@ function AdicionarModal({
   const [tab, setTab] = useState<'individual' | 'lote'>('individual')
 
   const [pedidoId, setPedidoId] = useState('')
+  const [beneficiarios, setBeneficiarios] = useState<string[]>([])
+  const [beneficiario, setBeneficiario] = useState('')
   const [dataVenc, setDataVenc] = useState('')
   const [valorPagar, setValorPagar] = useState('')
   const [tipoRec, setTipoRec] = useState('')
@@ -217,6 +220,15 @@ function AdicionarModal({
 
   const tipoSelecionado = tipos.find(t => String(t.id) === tipoRec)
   const isBoleto = tipoSelecionado?.tipos?.toLowerCase().includes('boleto') ?? false
+
+  // Beneficiários do pedido: o próprio cliente + os informados no fluxo
+  useEffect(() => {
+    setBeneficiario('')
+    if (!pedidoId) { setBeneficiarios([]); return }
+    const cli = pedidos.find(p => String(p.id) === pedidoId)?.cliente ?? ''
+    supabase.from('pedidos_solicitados_fluxo_receita').select('cliente_beneficiario').eq('pedido_id', parseInt(pedidoId))
+      .then(({ data }) => setBeneficiarios([...new Set([cli, ...(data ?? []).map(r => r.cliente_beneficiario as string | null).filter((b): b is string => !!b)])]))
+  }, [pedidoId, pedidos])
 
   const pedidosList = pedidos.map(p => ({
     id: p.id,
@@ -237,6 +249,7 @@ function AdicionarModal({
       .from('controle_recebimento')
       .insert({
         pedido_id: parseInt(pedidoId),
+        cliente_beneficiario: beneficiario || beneficiarios[0] || null,
         data_vencimento: dataVenc,
         valor_pagar: parseFloat(valorPagar),
         status_recebimento: statuses[0]?.id ?? 1,
@@ -325,6 +338,16 @@ function AdicionarModal({
                 {pedidosList.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
             </div>
+
+            {beneficiarios.length > 0 && (
+              <div>
+                <label className="label">Cliente beneficiário</label>
+                <select className="input" value={beneficiario || beneficiarios[0]} disabled={beneficiarios.length <= 1}
+                  onChange={e => setBeneficiario(e.target.value)}>
+                  {beneficiarios.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -682,7 +705,7 @@ export default function ControleRecebimentosPage() {
         ...c,
         empresa: ped?.empresa ?? '',
         categoria: ped?.categoria ?? '',
-        cliente: ped?.cliente ?? '',
+        cliente: c.cliente_beneficiario ?? ped?.cliente ?? '', // quem paga
         status_pedido: ped?.status ?? '',
         observacao: ped?.observacao ?? null,
         situacao: getSituacao(c),

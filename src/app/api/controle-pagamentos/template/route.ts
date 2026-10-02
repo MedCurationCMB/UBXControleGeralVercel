@@ -12,6 +12,7 @@ export async function GET() {
     { header: 'tipo_pagamento', key: 'tipo_pagamento', width: 18 },
     { header: 'data_pagamento', key: 'data_pagamento', width: 18 },
     { header: 'valor_pagamento', key: 'valor_pagamento', width: 16 },
+    { header: 'fornecedor_beneficiario', key: 'fornecedor_beneficiario', width: 28 },
   ]
 
   const headerRow = sheet.getRow(1)
@@ -25,6 +26,7 @@ export async function GET() {
   // Sem linhas de exemplo: elas seriam importadas como pagamentos reais se ficassem na planilha.
   // As linhas de anotação (começam com "--") são ignoradas na importação.
   const notas = [
+    '-- fornecedor_beneficiario: opcional se o pedido tem um só beneficiário; com vários, informe o nome exato. --',
     '-- Tipos: 1=PIX, 2=Dinheiro, 3=Boleto, 4=Cartão de Crédito, 5=Ainda à Definir --',
     '-- Datas em DD/MM/AAAA (ex.: 31/01/2026). Valores: 1500.50 ou 1500,50. Só pedidos autorizados. Apague estas linhas antes de importar (opcional). --',
   ]

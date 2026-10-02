@@ -44,7 +44,8 @@ export async function POST(req: NextRequest) {
 
     // Validate empresas, categorias, clientes
     const empresasSet = [...new Set(rows.map(r => String(r.empresa ?? '')))]
-    const clientesSet = [...new Set(rows.map(r => String(r.cliente ?? '')))]
+    const beneficiario = (r: Record<string, unknown>) => String(r.cliente_beneficiario ?? '').trim() || String(r.cliente ?? '')
+    const clientesSet = [...new Set(rows.flatMap(r => [String(r.cliente ?? ''), beneficiario(r)]))]
 
     const [{ data: empData }, { data: catData }, { data: cliData }] = await Promise.all([
       supabaseServer.from('empresas').select('empresa').eq('projeto_id', session.projetoId).in('empresa', empresasSet),
@@ -115,6 +116,7 @@ export async function POST(req: NextRequest) {
         empresa: String(first.empresa ?? ''),
         categoria: String(first.categoria ?? ''),
         cliente: String(first.cliente ?? ''),
+        cliente_beneficiario: beneficiario(r),
         mes: Number(r.mes ?? 0),
         ano: Number(r.ano ?? 0),
         valor_referente: Number(r.valor_referente ?? 0),

@@ -250,6 +250,8 @@ function AdicionarModal({
   const [tab, setTab] = useState<'individual' | 'lote'>('individual')
 
   const [pedidoId, setPedidoId] = useState('')
+  const [beneficiarios, setBeneficiarios] = useState<string[]>([])
+  const [beneficiario, setBeneficiario] = useState('')
   const [dataVenc, setDataVenc] = useState('')
   const [valorPagar, setValorPagar] = useState('')
   const [tipoPag, setTipoPag] = useState('')
@@ -271,6 +273,15 @@ function AdicionarModal({
   const loteRef = useRef<HTMLInputElement>(null)
 
   const isBoleto = tipoPag === '3'
+
+  // Beneficiários do pedido: o próprio fornecedor + os informados no fluxo
+  useEffect(() => {
+    setBeneficiario('')
+    if (!pedidoId) { setBeneficiarios([]); return }
+    const forn = pedidos.find(p => String(p.id) === pedidoId)?.fornecedor ?? ''
+    supabase.from('pedidos_solicitados_fluxo').select('fornecedor_beneficiario').eq('pedido_id', parseInt(pedidoId))
+      .then(({ data }) => setBeneficiarios([...new Set([forn, ...(data ?? []).map(r => r.fornecedor_beneficiario as string | null).filter((b): b is string => !!b)])]))
+  }, [pedidoId, pedidos])
   const pedidosList = pedidos.map(p => ({
     id: p.id,
     label: `Pedido #${p.id} — ${p.fornecedor} (${p.empresa})`
@@ -326,6 +337,7 @@ function AdicionarModal({
       .from('controle_pagamentos')
       .insert({
         pedido_id: parseInt(pedidoId),
+        fornecedor_beneficiario: beneficiario || beneficiarios[0] || null,
         data_vencimento: dataVenc,
         valor_pagar: parseFloat(valorPagar),
         status_pagamento: 1,
@@ -420,6 +432,16 @@ function AdicionarModal({
                 {pedidosList.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
             </div>
+
+            {beneficiarios.length > 0 && (
+              <div>
+                <label className="label">Fornecedor beneficiário</label>
+                <select className="input" value={beneficiario || beneficiarios[0]} disabled={beneficiarios.length <= 1}
+                  onChange={e => setBeneficiario(e.target.value)}>
+                  {beneficiarios.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div>

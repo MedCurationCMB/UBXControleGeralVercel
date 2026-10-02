@@ -9,6 +9,7 @@ export async function GET() {
     { header: 'empresa', key: 'empresa', width: 25 },
     { header: 'categoria', key: 'categoria', width: 25 },
     { header: 'fornecedor', key: 'fornecedor', width: 25 },
+    { header: 'fornecedor_beneficiario', key: 'fornecedor_beneficiario', width: 28 },
     { header: 'mes', key: 'mes', width: 8 },
     { header: 'ano', key: 'ano', width: 8 },
     { header: 'valor_referente', key: 'valor_referente', width: 16 },
@@ -24,8 +25,12 @@ export async function GET() {
   }
 
   // Example rows (one pedido with two months)
-  sheet.addRow({ empresa: 'Empresa Exemplo', categoria: 'Categoria Exemplo', fornecedor: 'Fornecedor Exemplo', mes: 3, ano: 2025, valor_referente: 1000.00 })
-  sheet.addRow({ empresa: 'Empresa Exemplo', categoria: 'Categoria Exemplo', fornecedor: 'Fornecedor Exemplo', mes: 4, ano: 2025, valor_referente: 1000.00 })
+  sheet.addRow({ empresa: 'Empresa Exemplo', categoria: 'Categoria Exemplo', fornecedor: 'Fornecedor Exemplo', fornecedor_beneficiario: 'Fornecedor Exemplo', mes: 3, ano: 2025, valor_referente: 1000.00 })
+  sheet.addRow({ empresa: 'Empresa Exemplo', categoria: 'Categoria Exemplo', fornecedor: 'Fornecedor Exemplo', fornecedor_beneficiario: 'Outro Beneficiario', mes: 4, ano: 2025, valor_referente: 1000.00 })
+
+  // Fora das colunas lidas pelo importador
+  sheet.getCell('I1').value = 'fornecedor_beneficiario: opcional; em branco = o próprio fornecedor. Precisa estar cadastrado.'
+  sheet.getCell('I1').font = { italic: true, color: { argb: 'FF6B7280' } }
 
   const bufferData = await workbook.xlsx.writeBuffer()
 

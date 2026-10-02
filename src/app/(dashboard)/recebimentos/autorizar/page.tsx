@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
+import { criarContasDoPedido } from '@/lib/contasDoPedido'
 import { useRouter } from 'next/navigation'
 import { CheckCircle, XCircle, AlertTriangle, RefreshCw, Search, ChevronRight } from 'lucide-react'
 import Confirm from '@/components/ui/Confirm'
@@ -107,14 +108,8 @@ export default function AutorizarRecebimentosPage() {
         .update({ status: novoStatus }).eq('pedido_id', id)
 
       if (novoStatus === 'Autorizado') {
-        const { data: ex } = await supabase.from('controle_recebimento')
-          .select('id').eq('pedido_id', id).maybeSingle()
-        if (!ex) {
-          const p = pedidos.find(p => p.id === id)
-          await supabase.from('controle_recebimento').insert({
-            pedido_id: id, valor_pagar: p?.valor_pedido, status_recebimento: 1,
-          })
-        }
+        const p = pedidos.find(p => p.id === id)
+        if (p) await criarContasDoPedido('receber', id, p.cliente, Number(p.valor_pedido))
       }
     }
 

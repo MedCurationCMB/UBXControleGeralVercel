@@ -26,7 +26,7 @@ interface Pedido {
   arquivos_pdf_ids: string[] | null
   usuario_solicitante?: string | null; ajuste_reenviado?: boolean
 }
-interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string }
+interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string; fornecedor_beneficiario?: string | null }
 interface Comentario {
   id: number; comentario: string; usuario: string; data_comentario: string
   anexo_url: string | null; documento_id: number | null
@@ -41,6 +41,7 @@ interface Pagamento {
   id: number; pedido_id: number; data_vencimento: string | null; valor_pagar: number
   data_pagamento: string | null; valor_pagamento: number | null
   status_pagamento: number | null; tipo_pagamento: number | null; anexo_url: string | null
+  fornecedor_beneficiario?: string | null
 }
 interface PagamentoStatus { id: number; nome_status: string }
 interface TipoPagamento { id: number; tipos: string }
@@ -68,9 +69,10 @@ function InfoField({ label, value }: { label: string; value: React.ReactNode }) 
 
 // --- Controle de Pagamentos Modal ---
 function ControlePagamentosModal({
-  open, onClose, pedidoId, username,
+  open, onClose, pedidoId, username, fornecedorPedido, beneficiarios,
 }: {
   open: boolean; onClose: () => void; pedidoId: number; username: string
+  fornecedorPedido: string; beneficiarios: string[]
 }) {
   const [tab, setTab] = useState<'individual' | 'lote' | 'comprovante'>('individual')
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([])
@@ -82,6 +84,8 @@ function ControlePagamentosModal({
   const [dataVenc, setDataVenc] = useState(new Date().toISOString().split('T')[0])
   const [valorPagar, setValorPagar] = useState('')
   const [tipoAdd, setTipoAdd] = useState<number | ''>('')
+  const [beneficiarioAdd, setBeneficiarioAdd] = useState('')
+  const opcoesBeneficiario = [...new Set([fornecedorPedido, ...beneficiarios])]
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
 
@@ -134,11 +138,13 @@ function ControlePagamentosModal({
       data_vencimento: dataVenc || null,
       valor_pagar: parseFloat(valorPagar),
       tipo_pagamento: tipoAdd,
+      fornecedor_beneficiario: beneficiarioAdd || fornecedorPedido,
     })
     if (error) { setAddError(error.message); setAdding(false); return }
     setDataVenc(new Date().toISOString().split('T')[0])
     setValorPagar('')
     setTipoAdd('')
+    setBeneficiarioAdd('')
     setAdding(false)
     load()
   }
@@ -212,7 +218,14 @@ function ControlePagamentosModal({
         <div className="space-y-4">
           <form onSubmit={handleAdd} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
             <p className="text-xs font-semibold text-slate-600 mb-3">Novo pagamento</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
+              <div>
+                <label className="label">Beneficiário</label>
+                <select className="input" value={beneficiarioAdd || fornecedorPedido} disabled={opcoesBeneficiario.length <= 1}
+                  onChange={e => setBeneficiarioAdd(e.target.value)}>
+                  {opcoesBeneficiario.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
               <div>
                 <label className="label">Vencimento</label>
                 <input className="input" type="date" value={dataVenc} onChange={e => setDataVenc(e.target.value)} />
@@ -246,6 +259,7 @@ function ControlePagamentosModal({
                 <thead className="sticky top-0 z-10 table-header">
                   <tr>
                     <th className="table-cell font-medium">ID</th>
+                    <th className="table-cell font-medium">Beneficiário</th>
                     <th className="table-cell font-medium">Vencimento</th>
                     <th className="table-cell font-medium text-right">A Pagar</th>
                     <th className="table-cell font-medium">Status</th>
@@ -260,6 +274,7 @@ function ControlePagamentosModal({
                     editId === p.id ? (
                       <tr key={p.id} className="bg-blue-50">
                         <td className="table-cell">{p.id}</td>
+                        <td className="table-cell">{p.fornecedor_beneficiario ?? fornecedorPedido}</td>
                         <td className="table-cell">{fmtData(p.data_vencimento)}</td>
                         <td className="table-cell text-right">{fmtMoeda(p.valor_pagar)}</td>
                         <td className="table-cell">
@@ -295,6 +310,7 @@ function ControlePagamentosModal({
                     ) : (
                       <tr key={p.id} className="table-row">
                         <td className="table-cell text-slate-500">{p.id}</td>
+                        <td className="table-cell">{p.fornecedor_beneficiario ?? fornecedorPedido}</td>
                         <td className="table-cell">{fmtData(p.data_vencimento)}</td>
                         <td className="table-cell text-right font-medium">{fmtMoeda(p.valor_pagar)}</td>
                         <td className="table-cell">
@@ -1266,6 +1282,7 @@ export default function AcompanharDetalhePage() {
               <thead>
                 <tr className="table-header">
                   <th className="table-cell font-medium">Mês/Ano</th>
+                  <th className="table-cell font-medium">Beneficiário</th>
                   <th className="table-cell font-medium text-right">Valor</th>
                   <th className="table-cell font-medium">Status</th>
                 </tr>
@@ -1274,6 +1291,7 @@ export default function AcompanharDetalhePage() {
                 {fluxo.map(r => (
                   <tr key={r.id} className="table-row">
                     <td className="table-cell">{r.mes}/{r.ano}</td>
+                    <td className="table-cell text-slate-600">{r.fornecedor_beneficiario ?? pedido.fornecedor}</td>
                     <td className="table-cell text-right font-medium">{fmtMoeda(Number(r.valor_referente))}</td>
                     <td className="table-cell">
                       <span className={`badge ${r.status === 'Autorizado' ? 'bg-green-100 text-green-700' : r.status === 'Não Autorizado' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>{r.status}</span>
@@ -1282,6 +1300,7 @@ export default function AcompanharDetalhePage() {
                 ))}
                 <tr className="table-row bg-slate-50">
                   <td className="table-cell font-semibold">Total</td>
+                  <td className="table-cell" />
                   <td className="table-cell text-right font-bold">{fmtMoeda(fluxo.reduce((s, r) => s + Number(r.valor_referente), 0))}</td>
                   <td className="table-cell" />
                 </tr>
@@ -1308,7 +1327,9 @@ export default function AcompanharDetalhePage() {
 
       {/* Modals */}
       <ControlePagamentosModal open={showPagamentos} onClose={() => setShowPagamentos(false)}
-        pedidoId={pedidoId} username={user?.username ?? ''} />
+        pedidoId={pedidoId} username={user?.username ?? ''}
+        fornecedorPedido={pedido.fornecedor}
+        beneficiarios={fluxo.map(r => r.fornecedor_beneficiario).filter((b): b is string => !!b)} />
       <ComentariosModal open={showComents} onClose={() => setShowComents(false)}
         pedidoId={pedidoId} username={user?.username ?? ''} />
       <DocumentosModal open={showDocs} onClose={() => setShowDocs(false)}

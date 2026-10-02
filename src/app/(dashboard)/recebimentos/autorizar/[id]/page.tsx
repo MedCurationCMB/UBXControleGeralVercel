@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
+import { criarContasDoPedido } from '@/lib/contasDoPedido'
 import {
   ArrowLeft, CheckCircle, XCircle, AlertTriangle, RefreshCw,
   MessageSquare, FileText, Upload, ExternalLink,
@@ -23,7 +24,7 @@ interface Pedido {
   arquivos_pdf_ids: string[] | null
   usuario_solicitante?: string | null; ajuste_reenviado?: boolean
 }
-interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string }
+interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string; cliente_beneficiario?: string | null }
 interface Comentario {
   id: number; comentario: string; usuario: string; data_comentario: string
   tipo_documento: number | null; anexo_id: string | null
@@ -37,6 +38,7 @@ interface Recebimento {
   id: number; pedido_id: number; data_vencimento: string | null; valor_pagar: number
   data_pagamento: string | null; valor_pagamento: number | null
   status_recebimento: number | null; tipo_recebimento: number | null; anexo_url: string | null
+  cliente_beneficiario?: string | null
 }
 interface RecebimentoStatus { id: number; nome_status: string }
 interface TipoRecebimento { id: number; tipos: string }
@@ -58,9 +60,10 @@ function InfoField({ label, value }: { label: string; value: React.ReactNode }) 
 
 // --- Controle de Recebimentos Modal ---
 function ControleRecebimentosModal({
-  open, onClose, pedidoId,
+  open, onClose, pedidoId, clientePedido, beneficiarios,
 }: {
   open: boolean; onClose: () => void; pedidoId: number
+  clientePedido: string; beneficiarios: string[]
 }) {
   const [tab, setTab] = useState<'individual' | 'lote' | 'comprovante'>('individual')
   const [recebimentos, setRecebimentos] = useState<Recebimento[]>([])
@@ -71,6 +74,8 @@ function ControleRecebimentosModal({
   const [dataVenc, setDataVenc] = useState(new Date().toISOString().split('T')[0])
   const [valorPagar, setValorPagar] = useState('')
   const [tipoAdd, setTipoAdd] = useState<number | ''>('')
+  const [beneficiarioAdd, setBeneficiarioAdd] = useState('')
+  const opcoesBeneficiario = [...new Set([clientePedido, ...beneficiarios])]
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
 
@@ -120,11 +125,13 @@ function ControleRecebimentosModal({
       data_vencimento: dataVenc || null,
       valor_pagar: parseFloat(valorPagar),
       tipo_recebimento: tipoAdd,
+      cliente_beneficiario: beneficiarioAdd || clientePedido,
     })
     if (error) { setAddError(error.message); setAdding(false); return }
     setDataVenc(new Date().toISOString().split('T')[0])
     setValorPagar('')
     setTipoAdd('')
+    setBeneficiarioAdd('')
     setAdding(false)
     load()
   }
@@ -198,7 +205,14 @@ function ControleRecebimentosModal({
         <div className="space-y-4">
           <form onSubmit={handleAdd} className="p-4 bg-slate-50 rounded-lg border border-slate-200">
             <p className="text-xs font-semibold text-slate-600 mb-3">Novo recebimento</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
+              <div>
+                <label className="label">Beneficiário</label>
+                <select className="input" value={beneficiarioAdd || clientePedido} disabled={opcoesBeneficiario.length <= 1}
+                  onChange={e => setBeneficiarioAdd(e.target.value)}>
+                  {opcoesBeneficiario.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
               <div>
                 <label className="label">Vencimento</label>
                 <input className="input" type="date" value={dataVenc} onChange={e => setDataVenc(e.target.value)} />
@@ -232,6 +246,7 @@ function ControleRecebimentosModal({
                 <thead className="sticky top-0 z-10 table-header">
                   <tr>
                     <th className="table-cell font-medium">ID</th>
+                    <th className="table-cell font-medium">Beneficiário</th>
                     <th className="table-cell font-medium">Vencimento</th>
                     <th className="table-cell font-medium text-right">A Receber</th>
                     <th className="table-cell font-medium">Status</th>
@@ -246,6 +261,7 @@ function ControleRecebimentosModal({
                     editId === r.id ? (
                       <tr key={r.id} className="bg-blue-50">
                         <td className="table-cell">{r.id}</td>
+                        <td className="table-cell">{r.cliente_beneficiario ?? clientePedido}</td>
                         <td className="table-cell">{fmtData(r.data_vencimento)}</td>
                         <td className="table-cell text-right">{fmtMoeda(r.valor_pagar)}</td>
                         <td className="table-cell">
@@ -281,6 +297,7 @@ function ControleRecebimentosModal({
                     ) : (
                       <tr key={r.id} className="table-row">
                         <td className="table-cell text-slate-500">{r.id}</td>
+                        <td className="table-cell">{r.cliente_beneficiario ?? clientePedido}</td>
                         <td className="table-cell">{fmtData(r.data_vencimento)}</td>
                         <td className="table-cell text-right font-medium">{fmtMoeda(r.valor_pagar)}</td>
                         <td className="table-cell">
@@ -800,13 +817,7 @@ export default function AutorizarRecebimentoDetalhePage() {
         .update({ status: novoStatus }).eq('pedido_id', pedidoId)
 
       if (novoStatus === 'Autorizado') {
-        const { data: ex } = await supabase.from('controle_recebimento')
-          .select('id').eq('pedido_id', pedidoId).maybeSingle()
-        if (!ex) {
-          await supabase.from('controle_recebimento').insert({
-            pedido_id: pedidoId, valor_pagar: pedido.valor_pedido, status_recebimento: 1,
-          })
-        }
+        await criarContasDoPedido('receber', pedidoId, pedido.cliente, Number(pedido.valor_pedido))
       }
     }
 
@@ -928,6 +939,7 @@ export default function AutorizarRecebimentoDetalhePage() {
               <thead>
                 <tr className="table-header">
                   <th className="table-cell font-medium">Mês/Ano</th>
+                  <th className="table-cell font-medium">Beneficiário</th>
                   <th className="table-cell font-medium text-right">Valor</th>
                   <th className="table-cell font-medium">Status</th>
                 </tr>
@@ -936,6 +948,7 @@ export default function AutorizarRecebimentoDetalhePage() {
                 {fluxo.map(r => (
                   <tr key={r.id} className="table-row">
                     <td className="table-cell">{r.mes}/{r.ano}</td>
+                    <td className="table-cell text-slate-600">{r.cliente_beneficiario ?? pedido.cliente}</td>
                     <td className="table-cell text-right font-medium">{fmtMoeda(Number(r.valor_referente))}</td>
                     <td className="table-cell">
                       <span className={`badge ${
@@ -948,6 +961,7 @@ export default function AutorizarRecebimentoDetalhePage() {
                 ))}
                 <tr className="table-row bg-slate-50">
                   <td className="table-cell font-semibold">Total</td>
+                  <td className="table-cell" />
                   <td className="table-cell text-right font-bold">{fmtMoeda(fluxo.reduce((s, r) => s + Number(r.valor_referente), 0))}</td>
                   <td className="table-cell" />
                 </tr>
@@ -1006,7 +1020,8 @@ export default function AutorizarRecebimentoDetalhePage() {
 
       {/* Modals */}
       <ControleRecebimentosModal open={showRecebimentos} onClose={() => setShowRecebimentos(false)}
-        pedidoId={pedidoId} />
+        pedidoId={pedidoId} clientePedido={pedido.cliente}
+        beneficiarios={fluxo.map(r => r.cliente_beneficiario).filter((b): b is string => !!b)} />
       <ComentariosModal open={showComents} onClose={() => setShowComents(false)}
         pedidoId={pedidoId} username={user?.username ?? ''} />
       <DocumentosModal open={showDocs} onClose={() => setShowDocs(false)}

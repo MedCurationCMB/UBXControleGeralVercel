@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
 
     // Valida contra os cadastros do projeto (o banco tem FK em empresa+categoria e fornecedor)
     const empresasSet = [...new Set(rows.map(r => String(r.empresa ?? '')))]
-    const fornecedoresSet = [...new Set(rows.map(r => String(r.fornecedor ?? '')))]
+    const beneficiario = (r: Record<string, unknown>) => String(r.fornecedor_beneficiario ?? '').trim() || String(r.fornecedor ?? '')
+    const fornecedoresSet = [...new Set(rows.flatMap(r => [String(r.fornecedor ?? ''), beneficiario(r)]))]
     const [{ data: empData }, { data: catData }, { data: fornData }] = await Promise.all([
       supabaseServer.from('empresas').select('empresa').eq('projeto_id', session.projetoId).in('empresa', empresasSet),
       supabaseServer.from('categorias').select('empresa, categoria').eq('projeto_id', session.projetoId),
@@ -118,6 +119,7 @@ export async function POST(req: NextRequest) {
         empresa: String(first.empresa ?? ''),
         categoria: String(first.categoria ?? ''),
         fornecedor: String(first.fornecedor ?? ''),
+        fornecedor_beneficiario: beneficiario(r),
         mes: Number(r.mes ?? 0),
         ano: Number(r.ano ?? 0),
         valor_referente: Number(r.valor_referente ?? 0),
