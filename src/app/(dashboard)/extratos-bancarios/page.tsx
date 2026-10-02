@@ -201,12 +201,13 @@ export default function ExtratosBancariosPage() {
             </div>
           </div>
 
-          <div className="card p-5 overflow-x-auto">
+          <div className="card p-5">
             <p className="text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
               <Landmark size={16} /> Lançamentos ({lancamentos.length}) · {semVinculo} sem vínculo
             </p>
+            <div className="max-h-[70vh] overflow-auto">
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 bg-white">
                 <tr className="text-left text-slate-500 border-b border-slate-100">
                   <th className="table-cell font-medium">Data</th>
                   <th className="table-cell font-medium">Descrição</th>
@@ -219,20 +220,20 @@ export default function ExtratosBancariosPage() {
                 {lancamentos.map((l, i) => (
                   <tr key={l.id ?? i} className="table-row">
                     <td className="table-cell whitespace-nowrap">{dataBr(l.data)}</td>
-                    <td className="table-cell max-w-md truncate" title={l.descricao}>{l.descricao}</td>
+                    <td className="table-cell max-w-xs truncate" title={l.descricao}>{l.descricao}</td>
                     <td className={`table-cell text-right whitespace-nowrap ${l.valor < 0 ? 'text-red-600' : 'text-green-700'}`}>{brl(l.valor)}</td>
                     <td className="table-cell text-right whitespace-nowrap">{l.saldo_apos != null ? brl(l.saldo_apos) : '—'}</td>
-                    <td className="table-cell whitespace-nowrap">
+                    <td className="table-cell min-w-56">
                       {l.vinculo ? (
-                        <span className="text-green-700">
+                        <span className="text-green-700 block">
                           {rotuloConta(l.vinculo.tipo)} #{l.vinculo.conta_id} · {l.vinculo.parte}{' '}
                           <button onClick={() => desvincular(l)} className="text-slate-400 hover:text-red-500 underline">desvincular</button>
                         </span>
                       ) : (
-                        <span className="text-amber-600">
+                        <span className="text-amber-600 block">
                           {l.candidatos?.[0]?.sugerido && (
                             <>
-                              Sugestão: #{l.candidatos[0].id} · {l.candidatos[0].parte}{' '}
+                              Sugestão: #{l.candidatos[0].id} · {l.candidatos[0].parte}<br />
                               <button onClick={() => vincular(l, l.candidatos![0].id)} className="text-blue-600 underline mr-2">confirmar</button>
                             </>
                           )}
@@ -244,6 +245,7 @@ export default function ExtratosBancariosPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}
