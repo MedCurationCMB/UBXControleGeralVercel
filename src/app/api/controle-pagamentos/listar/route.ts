@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
     categoria: searchParams.get('categoria') || '',
     status_pagamento: searchParams.get('status_pagamento') || '',
     vinculo: searchParams.get('vinculo') || '',
+    pedido_id: parseInt(searchParams.get('pedido_id') || '') || undefined,
   }
   const situacao = searchParams.get('situacao') || ''
   const isExport = searchParams.get('export') === 'true'

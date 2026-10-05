@@ -585,7 +585,7 @@ function AdicionarModal({
   )
 }
 
-// ---- Alterar Status em Lote Modal ----
+// ---- Alterar Status / Vencimento em Lote Modal ----
 function AlterarStatusLoteModal({
   rows, statuses, onClose, onSaved
 }: {
@@ -593,8 +593,10 @@ function AlterarStatusLoteModal({
 }) {
   const [filtroEmpresa, setFiltroEmpresa] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
+  const [filtroPedido, setFiltroPedido] = useState('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
-  const [novoStatus, setNovoStatus] = useState(statuses[0] ? String(statuses[0].id) : '')
+  const [novoStatus, setNovoStatus] = useState('') // '' = não alterar
+  const [novoVenc, setNovoVenc] = useState('') // '' = não alterar
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState('')
 
@@ -605,12 +607,13 @@ function AlterarStatusLoteModal({
   const filtered = useMemo(() => {
     let list = rows
     if (filtroEmpresa) list = list.filter(r => r.empresa === filtroEmpresa)
+    if (filtroPedido) list = list.filter(r => String(r.pedido_id) === filtroPedido.trim())
     if (filtroStatus) {
       const sid = parseInt(filtroStatus)
       list = list.filter(r => r.status_pagamento === sid)
     }
     return list.sort((a, b) => (a.pedido_id ?? 0) - (b.pedido_id ?? 0) || a.id - b.id)
-  }, [rows, filtroEmpresa, filtroStatus])
+  }, [rows, filtroEmpresa, filtroPedido, filtroStatus])
 
   const allSelected = filtered.length > 0 && filtered.every(r => selected.has(r.id))
 
@@ -631,11 +634,14 @@ function AlterarStatusLoteModal({
   }
 
   const handleAplicar = async () => {
-    if (selected.size === 0 || !novoStatus) return
+    if (selected.size === 0 || (!novoStatus && !novoVenc)) return
     setSaving(true)
     const ids = [...selected]
-    await supabase.from('controle_pagamentos').update({ status_pagamento: parseInt(novoStatus) }).in('id', ids)
+    const { error } = await supabase.from('controle_pagamentos')
+      .update({ ...(novoStatus && { status_pagamento: parseInt(novoStatus) }), ...(novoVenc && { data_vencimento: novoVenc }) })
+      .in('id', ids)
     setSaving(false)
+    if (error) { setSuccess(`Erro ao atualizar: ${error.message}`); return }
     setSuccess(`${ids.length} pagamento(s) atualizados com sucesso!`)
     setSelected(new Set())
     onSaved()
@@ -645,7 +651,7 @@ function AlterarStatusLoteModal({
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between shrink-0">
-          <h2 className="text-lg font-semibold text-slate-900">Alterar Status em Lote</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Alterar Status / Vencimento em Lote</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
         </div>
 
@@ -654,7 +660,12 @@ function AlterarStatusLoteModal({
           <span>Operando sobre os pagamentos da página atual. Para abranger mais resultados, feche e aplique filtros de empresa ou status antes de abrir.</span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 shrink-0">
+        <div className="grid grid-cols-3 gap-3 shrink-0">
+          <div>
+            <label className="label">Filtrar por pedido</label>
+            <input className="input" inputMode="numeric" placeholder="nº do pedido" value={filtroPedido}
+              onChange={e => { setFiltroPedido(e.target.value); setSelected(new Set()) }} />
+          </div>
           <div>
             <label className="label">Filtrar por empresa</label>
             <select className="input" value={filtroEmpresa} onChange={e => { setFiltroEmpresa(e.target.value); setSelected(new Set()) }}>
@@ -715,10 +726,14 @@ function AlterarStatusLoteModal({
           <span className="text-sm text-slate-500 mr-auto">{selected.size} selecionado(s)</span>
           <div className="flex-1 max-w-[200px]">
             <select className="input" value={novoStatus} onChange={e => setNovoStatus(e.target.value)}>
+              <option value="">Status: não alterar</option>
               {statuses.map(s => <option key={s.id} value={s.id}>{s.nome_status}</option>)}
             </select>
           </div>
-          <button onClick={handleAplicar} disabled={selected.size === 0 || saving}
+          <div>
+            <input className="input" type="date" title="Novo vencimento (vazio = não alterar)" value={novoVenc} onChange={e => setNovoVenc(e.target.value)} />
+          </div>
+          <button onClick={handleAplicar} disabled={selected.size === 0 || (!novoStatus && !novoVenc) || saving}
             className="btn-primary whitespace-nowrap">
             {saving ? 'Aplicando...' : 'Aplicar'}
           </button>
@@ -757,6 +772,7 @@ export default function ControlePage() {
   const [filtroStatusPag, setFiltroStatusPag] = useState('')
   const [filtroSituacao, setFiltroSituacao] = useState('')
   const [filtroVinculo, setFiltroVinculo] = useState('')
+  const [filtroPedido, setFiltroPedido] = useState('')
 
   // Modals
   const [editRow, setEditRow] = useState<Row | null>(null)
@@ -785,7 +801,7 @@ export default function ControlePage() {
   }, [])
 
   // Reset page when server-side filters change
-  useEffect(() => { setPage(0) }, [filtroEmpresa, filtroCategoria, filtroStatusPag, filtroSituacao, filtroVinculo])
+  useEffect(() => { setPage(0) }, [filtroEmpresa, filtroCategoria, filtroStatusPag, filtroSituacao, filtroVinculo, filtroPedido])
 
   // Load resumo from API (full dataset aggregates)
   const loadResumo = useCallback(async () => {
@@ -812,6 +828,7 @@ export default function ControlePage() {
     if (filtroStatusPag) params.set('status_pagamento', filtroStatusPag)
     if (filtroSituacao) params.set('situacao', filtroSituacao)
     if (filtroVinculo) params.set('vinculo', filtroVinculo)
+    if (/^\d+$/.test(filtroPedido.trim())) params.set('pedido_id', filtroPedido.trim())
     params.set('page', String(page))
     params.set('page_size', String(PAGE_SIZE))
 
@@ -825,7 +842,7 @@ export default function ControlePage() {
       setTotal(0)
     }
     setTableLoading(false)
-  }, [page, filtroEmpresa, filtroCategoria, filtroStatusPag, filtroSituacao, filtroVinculo])
+  }, [page, filtroEmpresa, filtroCategoria, filtroStatusPag, filtroSituacao, filtroVinculo, filtroPedido])
 
   useEffect(() => { loadResumo() }, [loadResumo])
   useEffect(() => { loadTable() }, [loadTable])
@@ -923,7 +940,7 @@ export default function ControlePage() {
             <Plus size={15} /> Adicionar Pagamento
           </button>
           <button onClick={() => setShowLote(true)} className="btn-secondary text-sm">
-            Alterar Status em Lote
+            Alterar Status / Vencimento em Lote
           </button>
           <button onClick={() => setShowRemessa(true)} className="btn-secondary gap-1.5 text-sm">
             <FileOutput size={15} /> Remessa / Retorno
@@ -954,7 +971,7 @@ export default function ControlePage() {
 
       {/* Filters */}
       <div className="card">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <div>
             <label className="label">Empresa</label>
             <select className="input" value={filtroEmpresa}
@@ -996,6 +1013,11 @@ export default function ControlePage() {
               <option value="sem">Sem vínculo</option>
               <option value="com">Com vínculo</option>
             </select>
+          </div>
+          <div>
+            <label className="label">Pedido</label>
+            <input className="input" inputMode="numeric" placeholder="nº do pedido" value={filtroPedido}
+              onChange={e => setFiltroPedido(e.target.value)} />
           </div>
         </div>
         <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">

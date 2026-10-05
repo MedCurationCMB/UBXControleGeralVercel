@@ -472,7 +472,7 @@ function AdicionarModal({
   )
 }
 
-// ---- Alterar Status em Lote Modal ----
+// ---- Alterar Status / Vencimento em Lote Modal ----
 function AlterarStatusLoteModal({
   rows, statuses, onClose, onSaved
 }: {
@@ -480,8 +480,10 @@ function AlterarStatusLoteModal({
 }) {
   const [filtroEmpresa, setFiltroEmpresa] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
+  const [filtroPedido, setFiltroPedido] = useState('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
-  const [novoStatus, setNovoStatus] = useState(statuses[0] ? String(statuses[0].id) : '')
+  const [novoStatus, setNovoStatus] = useState('') // '' = não alterar
+  const [novoVenc, setNovoVenc] = useState('') // '' = não alterar
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState('')
 
@@ -492,12 +494,13 @@ function AlterarStatusLoteModal({
   const filtered = useMemo(() => {
     let list = rows
     if (filtroEmpresa) list = list.filter(r => r.empresa === filtroEmpresa)
+    if (filtroPedido) list = list.filter(r => String(r.pedido_id) === filtroPedido.trim())
     if (filtroStatus) {
       const sid = parseInt(filtroStatus)
       list = list.filter(r => r.status_recebimento === sid)
     }
     return list.sort((a, b) => (a.pedido_id ?? 0) - (b.pedido_id ?? 0) || a.id - b.id)
-  }, [rows, filtroEmpresa, filtroStatus])
+  }, [rows, filtroEmpresa, filtroPedido, filtroStatus])
 
   const allSelected = filtered.length > 0 && filtered.every(r => selected.has(r.id))
 
@@ -518,11 +521,14 @@ function AlterarStatusLoteModal({
   }
 
   const handleAplicar = async () => {
-    if (selected.size === 0 || !novoStatus) return
+    if (selected.size === 0 || (!novoStatus && !novoVenc)) return
     setSaving(true)
     const ids = [...selected]
-    await supabase.from('controle_recebimento').update({ status_recebimento: parseInt(novoStatus) }).in('id', ids)
+    const { error } = await supabase.from('controle_recebimento')
+      .update({ ...(novoStatus && { status_recebimento: parseInt(novoStatus) }), ...(novoVenc && { data_vencimento: novoVenc }) })
+      .in('id', ids)
     setSaving(false)
+    if (error) { setSuccess(`Erro ao atualizar: ${error.message}`); return }
     setSuccess(`${ids.length} recebimento(s) atualizados com sucesso!`)
     setSelected(new Set())
     onSaved()
@@ -532,11 +538,16 @@ function AlterarStatusLoteModal({
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between shrink-0">
-          <h2 className="text-lg font-semibold text-slate-900">Alterar Status em Lote</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Alterar Status / Vencimento em Lote</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 shrink-0">
+        <div className="grid grid-cols-3 gap-3 shrink-0">
+          <div>
+            <label className="label">Filtrar por pedido</label>
+            <input className="input" inputMode="numeric" placeholder="nº do pedido" value={filtroPedido}
+              onChange={e => { setFiltroPedido(e.target.value); setSelected(new Set()) }} />
+          </div>
           <div>
             <label className="label">Filtrar por empresa</label>
             <select className="input" value={filtroEmpresa} onChange={e => { setFiltroEmpresa(e.target.value); setSelected(new Set()) }}>
@@ -599,10 +610,14 @@ function AlterarStatusLoteModal({
           </span>
           <div className="flex-1 max-w-[200px]">
             <select className="input" value={novoStatus} onChange={e => setNovoStatus(e.target.value)}>
+              <option value="">Status: não alterar</option>
               {statuses.map(s => <option key={s.id} value={s.id}>{s.nome_status}</option>)}
             </select>
           </div>
-          <button onClick={handleAplicar} disabled={selected.size === 0 || saving}
+          <div>
+            <input className="input" type="date" title="Novo vencimento (vazio = não alterar)" value={novoVenc} onChange={e => setNovoVenc(e.target.value)} />
+          </div>
+          <button onClick={handleAplicar} disabled={selected.size === 0 || (!novoStatus && !novoVenc) || saving}
             className="btn-primary whitespace-nowrap">
             {saving ? 'Aplicando...' : 'Aplicar'}
           </button>
@@ -810,7 +825,7 @@ export default function ControleRecebimentosPage() {
             <Plus size={15} /> Adicionar Recebimento
           </button>
           <button onClick={() => setShowLote(true)} className="btn-secondary text-sm">
-            Alterar Status em Lote
+            Alterar Status / Vencimento em Lote
           </button>
           <button
             onClick={() => exportar('pagina')}
