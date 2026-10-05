@@ -524,9 +524,13 @@ function AlterarStatusLoteModal({
     if (selected.size === 0 || (!novoStatus && !novoVenc)) return
     setSaving(true)
     const ids = [...selected]
-    const { error } = await supabase.from('controle_recebimento')
+    let error: { message: string } | null = null
+    // em lotes de 200: a lista de ids vai na URL e estoura com milhares
+    for (let i = 0; i < ids.length && !error; i += 200) {
+      ;({ error } = await supabase.from('controle_recebimento')
       .update({ ...(novoStatus && { status_recebimento: parseInt(novoStatus) }), ...(novoVenc && { data_vencimento: novoVenc }) })
-      .in('id', ids)
+      .in('id', ids.slice(i, i + 200)))
+    }
     setSaving(false)
     if (error) { setSuccess(`Erro ao atualizar: ${error.message}`); return }
     setSuccess(`${ids.length} recebimento(s) atualizados com sucesso!`)

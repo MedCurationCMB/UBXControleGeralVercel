@@ -587,10 +587,18 @@ function AdicionarModal({
 
 // ---- Alterar Status / Vencimento em Lote Modal ----
 function AlterarStatusLoteModal({
-  rows, statuses, onClose, onSaved
+  query, statuses, onClose, onSaved
 }: {
-  rows: Row[]; statuses: PagamentoStatus[]; onClose: () => void; onSaved: () => void
+  query: string; statuses: PagamentoStatus[]; onClose: () => void; onSaved: () => void
 }) {
+  // Todas as contas dos filtros da tela (não só a página aberta)
+  const [carregadas, setCarregadas] = useState<Row[] | null>(null)
+  const rows = carregadas ?? []
+  const carregar = useCallback(() => {
+    fetch(`/api/controle-pagamentos/listar?${query}&export=true`)
+      .then(r => r.json()).then(d => setCarregadas(d.rows ?? [])).catch(() => setCarregadas([]))
+  }, [query])
+  useEffect(() => { carregar() }, [carregar])
   const [filtroEmpresa, setFiltroEmpresa] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
   const [filtroPedido, setFiltroPedido] = useState('')
@@ -637,14 +645,19 @@ function AlterarStatusLoteModal({
     if (selected.size === 0 || (!novoStatus && !novoVenc)) return
     setSaving(true)
     const ids = [...selected]
-    const { error } = await supabase.from('controle_pagamentos')
+    let error: { message: string } | null = null
+    // em lotes de 200: a lista de ids vai na URL e estoura com milhares
+    for (let i = 0; i < ids.length && !error; i += 200) {
+      ;({ error } = await supabase.from('controle_pagamentos')
       .update({ ...(novoStatus && { status_pagamento: parseInt(novoStatus) }), ...(novoVenc && { data_vencimento: novoVenc }) })
-      .in('id', ids)
+      .in('id', ids.slice(i, i + 200)))
+    }
     setSaving(false)
     if (error) { setSuccess(`Erro ao atualizar: ${error.message}`); return }
     setSuccess(`${ids.length} pagamento(s) atualizados com sucesso!`)
     setSelected(new Set())
     onSaved()
+    carregar()
   }
 
   return (
@@ -657,7 +670,7 @@ function AlterarStatusLoteModal({
 
         <div className="flex items-start gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-2.5 shrink-0">
           <Info size={13} className="shrink-0 mt-0.5 text-slate-400" />
-          <span>Operando sobre os pagamentos da página atual. Para abranger mais resultados, feche e aplique filtros de empresa ou status antes de abrir.</span>
+          <span>Operando sobre todos os pagamentos dos filtros da tela (não só a página aberta). Para restringir, feche e aplique filtros (empresa, status, pedido...) antes de abrir.</span>
         </div>
 
         <div className="grid grid-cols-3 gap-3 shrink-0">
@@ -699,7 +712,7 @@ function AlterarStatusLoteModal({
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={5} className="table-cell text-center text-slate-400 py-8">Nenhum pagamento encontrado.</td></tr>
+                <tr><td colSpan={5} className="table-cell text-center text-slate-400 py-8">{carregadas === null ? 'Carregando...' : 'Nenhum pagamento encontrado.'}</td></tr>
               ) : filtered.map(r => (
                 <tr key={r.id} className={`table-row cursor-pointer ${selected.has(r.id) ? 'bg-blue-50' : ''}`}
                   onClick={() => toggle(r.id)}>
@@ -1213,7 +1226,11 @@ export default function ControlePage() {
       {/* Alterar Status em Lote Modal */}
       {showLote && (
         <AlterarStatusLoteModal
-          rows={rows}
+          query={new URLSearchParams({
+            ...(filtroEmpresa && { empresa: filtroEmpresa }), ...(filtroCategoria && { categoria: filtroCategoria }),
+            ...(filtroStatusPag && { status_pagamento: filtroStatusPag }), ...(filtroSituacao && { situacao: filtroSituacao }),
+            ...(filtroVinculo && { vinculo: filtroVinculo }), ...(/^\d+$/.test(filtroPedido.trim()) && { pedido_id: filtroPedido.trim() }),
+          }).toString()}
           statuses={statuses}
           onClose={() => setShowLote(false)}
           onSaved={() => reload()}
