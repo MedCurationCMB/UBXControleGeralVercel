@@ -602,6 +602,7 @@ function AlterarStatusLoteModal({
   const [filtroEmpresa, setFiltroEmpresa] = useState('')
   const [filtroStatus, setFiltroStatus] = useState('')
   const [filtroPedido, setFiltroPedido] = useState('')
+  const [filtroVenc, setFiltroVenc] = useState('') // '' | 'sem' | 'com'
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [novoStatus, setNovoStatus] = useState('') // '' = não alterar
   const [novoVenc, setNovoVenc] = useState('') // '' = não alterar
@@ -616,12 +617,13 @@ function AlterarStatusLoteModal({
     let list = rows
     if (filtroEmpresa) list = list.filter(r => r.empresa === filtroEmpresa)
     if (filtroPedido) list = list.filter(r => String(r.pedido_id) === filtroPedido.trim())
+    if (filtroVenc) list = list.filter(r => !r.data_vencimento === (filtroVenc === 'sem'))
     if (filtroStatus) {
       const sid = parseInt(filtroStatus)
       list = list.filter(r => r.status_pagamento === sid)
     }
     return list.sort((a, b) => (a.pedido_id ?? 0) - (b.pedido_id ?? 0) || a.id - b.id)
-  }, [rows, filtroEmpresa, filtroPedido, filtroStatus])
+  }, [rows, filtroEmpresa, filtroPedido, filtroStatus, filtroVenc])
 
   const allSelected = filtered.length > 0 && filtered.every(r => selected.has(r.id))
 
@@ -673,7 +675,7 @@ function AlterarStatusLoteModal({
           <span>Operando sobre todos os pagamentos dos filtros da tela (não só a página aberta). Para restringir, feche e aplique filtros (empresa, status, pedido...) antes de abrir.</span>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 shrink-0">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 shrink-0">
           <div>
             <label className="label">Filtrar por pedido</label>
             <input className="input" inputMode="numeric" placeholder="nº do pedido" value={filtroPedido}
@@ -684,6 +686,14 @@ function AlterarStatusLoteModal({
             <select className="input" value={filtroEmpresa} onChange={e => { setFiltroEmpresa(e.target.value); setSelected(new Set()) }}>
               <option value="">Todas</option>
               {empresas.map(e => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Vencimento</label>
+            <select className="input" value={filtroVenc} onChange={e => { setFiltroVenc(e.target.value); setSelected(new Set()) }}>
+              <option value="">Todos</option>
+              <option value="sem">Sem vencimento</option>
+              <option value="com">Com vencimento</option>
             </select>
           </div>
           <div>
