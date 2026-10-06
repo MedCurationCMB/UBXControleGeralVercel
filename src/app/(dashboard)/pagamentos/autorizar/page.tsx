@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { CheckCircle, XCircle, AlertTriangle, RefreshCw, Search, ChevronRight } from 'lucide-react'
 import Confirm from '@/components/ui/Confirm'
 import AjusteModal from '@/components/pedidos/AjusteModal'
+import RealocacoesPendentes from '@/components/pedidos/RealocacoesPendentes'
 
 interface Pedido {
   id: number; empresa: string; categoria: string; fornecedor: string
@@ -21,8 +22,8 @@ export default function AutorizarPage() {
   const router = useRouter()
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [loading, setLoading] = useState(true)
-  const [aba, setAba] = useState<'autorizacao' | 'ajuste'>('autorizacao')
-  const [contagem, setContagem] = useState({ autorizacao: 0, ajuste: 0 })
+  const [aba, setAba] = useState<'autorizacao' | 'ajuste' | 'realocacao'>('autorizacao')
+  const [contagem, setContagem] = useState({ autorizacao: 0, ajuste: 0, realocacao: 0 })
   const emAjuste = aba === 'ajuste'
   const [user, setUser] = useState<{ username: string } | null>(null)
 
@@ -44,7 +45,7 @@ export default function AutorizarPage() {
     setLoading(true)
     const contar = (status: string) => supabase.from('pedidos_solicitados')
       .select('id', { count: 'exact', head: true }).eq('status', status).eq('cancelado', false)
-    const [{ data: peds }, cAut, cAju, u] = await Promise.all([
+    const [{ data: peds }, cAut, cAju, cReal, u] = await Promise.all([
       supabase
         .from('pedidos_solicitados')
         .select('*')
@@ -54,10 +55,11 @@ export default function AutorizarPage() {
         .order('id', { ascending: true }),
       contar('Aguardando Autorização'),
       contar('Aguardando Ajuste'),
+      supabase.from('realocacoes').select('id', { count: 'exact', head: true }).eq('modulo', 'pagamentos').eq('status', 'Aguardando Autorização'),
       fetch('/api/auth/me').then(r => r.json()),
     ])
     setPedidos(peds ?? [])
-    setContagem({ autorizacao: cAut.count ?? 0, ajuste: cAju.count ?? 0 })
+    setContagem({ autorizacao: cAut.count ?? 0, ajuste: cAju.count ?? 0, realocacao: cReal.count ?? 0 })
     setUser(u)
     setLoading(false)
     setSelected(new Set())
@@ -140,8 +142,16 @@ export default function AutorizarPage() {
           className={`px-4 py-1.5 text-sm ${aba === 'ajuste' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
           Aguardando ajuste ({contagem.ajuste})
         </button>
+        <button onClick={() => setAba('realocacao')}
+          className={`px-4 py-1.5 text-sm ${aba === 'realocacao' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+          Realocações ({contagem.realocacao})
+        </button>
       </div>
 
+      {aba === 'realocacao' ? (
+        <RealocacoesPendentes mod="pagamentos" usuario={user?.username ?? ''} onChanged={load} />
+      ) : (
+      <>
       {/* Filtros */}
       <div className="card">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -281,6 +291,9 @@ export default function AutorizarPage() {
             </div>
           ))}
         </div>
+      )}
+
+      </>
       )}
 
       {ajusteId !== null && (

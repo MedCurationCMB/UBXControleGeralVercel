@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import AjusteModal from '@/components/pedidos/AjusteModal'
 import {
   Search, Download, RefreshCw, ChevronRight, ChevronLeft, AlertTriangle,
-  List, LayoutGrid, Info,
+  List, LayoutGrid, Info, Shuffle,
 } from 'lucide-react'
 
 interface Pedido {
@@ -473,7 +473,15 @@ export default function AcompanharRecebimentosPage() {
                         </td>
                         <td className="table-cell text-slate-500">{fmtData(p.data_solicitacao)}</td>
                         <td className="table-cell">
-                          <ChevronRight size={14} className="text-slate-400" />
+                          <div className="flex items-center gap-2">
+                            {p.status === 'Autorizado' && !p.cancelado && (
+                              <button onClick={e => { e.stopPropagation(); router.push(`/recebimentos/acompanhar/${p.id}?realocar=1`) }}
+                                className="p-1.5 rounded hover:bg-slate-100 text-slate-500" title="Realocar centro de custo">
+                                <Shuffle size={14} />
+                              </button>
+                            )}
+                            <ChevronRight size={14} className="text-slate-400" />
+                          </div>
                         </td>
                       </tr>
                     ))}

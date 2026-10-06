@@ -12,6 +12,7 @@ import { gerarPdfPedido } from '@/lib/pedido-pdf'
 import Modal from '@/components/ui/Modal'
 import Confirm from '@/components/ui/Confirm'
 import AjustePedido from '@/components/pedidos/AjustePedido'
+import RealocacaoPedido from '@/components/pedidos/RealocacaoPedido'
 
 // --- Types ---
 interface Pedido {
@@ -23,7 +24,7 @@ interface Pedido {
   arquivos_pdf_ids: string[] | null
   usuario_solicitante?: string | null
 }
-interface FluxoRow { id: number; mes: number; ano: number; valor_referente: number; status: string; cliente_beneficiario?: string | null }
+interface FluxoRow { id: number; empresa: string; mes: number; ano: number; valor_referente: number; status: string; cliente_beneficiario?: string | null }
 interface Comentario {
   id: number; comentario: string; usuario: string; data_comentario: string
   tipo_documento: number | null; anexo_id: string | null
@@ -792,7 +793,7 @@ function DocumentosModal({
 }
 
 // --- Cancel section ---
-function CancelarSection({ pedido, onCancel }: { pedido: Pedido; onCancel: () => void }) {
+function CancelarSection({ pedido, onCancel, bloqueado }: { pedido: Pedido; onCancel: () => void; bloqueado?: boolean }) {
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [cancelling, setCancelling] = useState(false)
 
@@ -811,6 +812,11 @@ function CancelarSection({ pedido, onCancel }: { pedido: Pedido; onCancel: () =>
 
   const isCancelado = pedido.cancelado || pedido.status === 'Cancelado'
   if (isCancelado) return null
+  if (bloqueado) return (
+    <div className="card border border-orange-200 text-sm text-orange-800">
+      Há uma realocação de centro de custo aguardando autorização. Decida-a antes de cancelar o pedido.
+    </div>
+  )
 
   return (
     <div className="card border border-red-100">
@@ -847,6 +853,7 @@ export default function AcompanharRecebimentoDetalhePage() {
   const [recebimentos, setRecebimentos] = useState<Recebimento[]>([])
   const [statusNome, setStatusNome] = useState<string | null>(null)
   const [user, setUser] = useState<{ username: string; hierarquia?: string } | null>(null)
+  const [realocPendente, setRealocPendente] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -983,6 +990,9 @@ export default function AcompanharRecebimentoDetalhePage() {
         </div>
       </div>
 
+      <RealocacaoPedido mod="recebimentos" pedido={{ id: pedido.id, empresa: pedido.empresa, categoria: pedido.categoria, valor_pedido: Number(pedido.valor_pedido), status: pedido.status, cancelado: isCancelado }}
+        usuario={user?.username ?? ''} onPendente={setRealocPendente} onChanged={load} />
+
       {/* Fluxo table */}
       {fluxo.length > 0 && (
         <div className="card">
@@ -992,6 +1002,7 @@ export default function AcompanharRecebimentoDetalhePage() {
               <thead>
                 <tr className="table-header">
                   <th className="table-cell font-medium">Mês/Ano</th>
+                  <th className="table-cell font-medium">Centro de custo</th>
                   <th className="table-cell font-medium">Beneficiário</th>
                   <th className="table-cell font-medium text-right">Valor</th>
                   <th className="table-cell font-medium">Status</th>
@@ -1001,6 +1012,7 @@ export default function AcompanharRecebimentoDetalhePage() {
                 {fluxo.map(r => (
                   <tr key={r.id} className="table-row">
                     <td className="table-cell">{r.mes}/{r.ano}</td>
+                    <td className="table-cell text-slate-600">{r.empresa}</td>
                     <td className="table-cell text-slate-600">{r.cliente_beneficiario ?? pedido.cliente}</td>
                     <td className="table-cell text-right font-medium">{fmtMoeda(Number(r.valor_referente))}</td>
                     <td className="table-cell">
@@ -1015,6 +1027,7 @@ export default function AcompanharRecebimentoDetalhePage() {
                 <tr className="table-row bg-slate-50">
                   <td className="table-cell font-semibold">Total</td>
                   <td className="table-cell" />
+                  <td className="table-cell" />
                   <td className="table-cell text-right font-bold">{fmtMoeda(fluxo.reduce((s, r) => s + Number(r.valor_referente), 0))}</td>
                   <td className="table-cell" />
                 </tr>
@@ -1025,7 +1038,7 @@ export default function AcompanharRecebimentoDetalhePage() {
       )}
 
       {/* Cancel section (view-only page still allows cancellation) */}
-      <CancelarSection pedido={pedido} onCancel={load} />
+      <CancelarSection pedido={pedido} onCancel={load} bloqueado={realocPendente} />
 
       {/* Modals */}
       <ControleRecebimentosModal open={showRecebimentos} onClose={() => setShowRecebimentos(false)}

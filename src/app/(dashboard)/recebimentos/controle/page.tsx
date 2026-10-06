@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
-import { RefreshCw, Plus, Pencil, X, Trash2, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react'
+import { RefreshCw, Plus, Pencil, Shuffle, X, Trash2, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react'
 import { baixarXlsx, dataParaXlsx } from '@/lib/exportar-xlsx'
 import VincularExtratoModal from '@/components/extratos/VincularExtratoModal'
 
@@ -1011,11 +1011,17 @@ export default function ControleRecebimentosPage() {
                         <button onClick={() => setVincularRow(r)} className="text-xs text-blue-600 underline">vincular...</button>
                       )}
                     </td>
-                    <td className="table-cell">
+                    <td className="table-cell whitespace-nowrap">
                       <button onClick={() => setEditRow(r)}
                         className="p-1.5 rounded hover:bg-slate-100 text-slate-500" title="Editar">
                         <Pencil size={14} />
                       </button>
+                      {r.pedido_id && (
+                        <Link href={`/recebimentos/acompanhar/${r.pedido_id}?realocar=1`} title="Realocar centro de custo do pedido"
+                          className="p-1.5 rounded hover:bg-slate-100 text-slate-500 inline-block align-middle">
+                          <Shuffle size={14} />
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -113,16 +113,20 @@ export default function Sidebar({ hierarquia }: SidebarProps) {
       const u = await fetch('/api/auth/me').then(r => r.json()).catch(() => null)
       const contar = (tabela: string, status: string) =>
         supabase.from(tabela).select('id', { count: 'exact', head: true }).eq('status', status).eq('cancelado', false)
-      const [aut, autRec, ajuste, ajusteRec] = await Promise.all([
+      const contarReal = (modulo: string) =>
+        supabase.from('realocacoes').select('id', { count: 'exact', head: true }).eq('modulo', modulo).eq('status', 'Aguardando Autorização')
+      const [aut, autRec, ajuste, ajusteRec, real, realRec] = await Promise.all([
         isAdminOrOwner ? contar('pedidos_solicitados', 'Aguardando Autorização') : null,
         isAdminOrOwner ? contar('pedidos_solicitados_receita', 'Aguardando Autorização') : null,
         u?.username ? contar('pedidos_solicitados', 'Aguardando Ajuste').eq('usuario_solicitante', u.username) : null,
         u?.username ? contar('pedidos_solicitados_receita', 'Aguardando Ajuste').eq('usuario_solicitante', u.username) : null,
+        isAdminOrOwner ? contarReal('pagamentos') : null,
+        isAdminOrOwner ? contarReal('recebimentos') : null,
       ])
       if (!ativo) return
       setBadges({
-        '/pagamentos/autorizar': aut?.count ?? 0,
-        '/recebimentos/autorizar': autRec?.count ?? 0,
+        '/pagamentos/autorizar': (aut?.count ?? 0) + (real?.count ?? 0),
+        '/recebimentos/autorizar': (autRec?.count ?? 0) + (realRec?.count ?? 0),
         '/pagamentos/acompanhar': ajuste?.count ?? 0,
         '/recebimentos/acompanhar': ajusteRec?.count ?? 0,
       })
