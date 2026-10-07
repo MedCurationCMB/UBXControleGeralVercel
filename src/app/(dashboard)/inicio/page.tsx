@@ -16,6 +16,8 @@ interface Pend {
   valor: number; data: string; emergencia: boolean; solicitante: string | null
 }
 interface Contagem { aut: number; real: number; req: number }
+interface Atraso { qtd: number; valor: number }
+interface OrcMes { empresa: string; categoria: string; orcamento: number; consumido: number }
 interface Meus { aguardando: number; autorizado: number; ajuste: number; recusado: number }
 const zero = <T,>(v: T): Record<ModuloPedido, T> => ({ pagamentos: v, recebimentos: v })
 
@@ -34,6 +36,8 @@ export default function InicioPage() {
   const [cont, setCont] = useState(zero<Contagem>({ aut: 0, real: 0, req: 0 }))
   const [pends, setPends] = useState<Pend[]>([])
   const [meus, setMeus] = useState(zero<Meus>({ aguardando: 0, autorizado: 0, ajuste: 0, recusado: 0 }))
+  const [atrasados, setAtrasados] = useState(zero<Atraso>({ qtd: 0, valor: 0 }))
+  const [orcMes, setOrcMes] = useState<OrcMes[]>([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -78,8 +82,24 @@ export default function InicioPage() {
       }
     }))
 
+    const novoAtraso = zero<Atraso>({ qtd: 0, valor: 0 })
+    let novoOrc: OrcMes[] = []
+    if (ehAdmin) {
+      const hoje = new Date()
+      const [{ data: at }, { data: orc }] = await Promise.all([
+        supabase.from('atrasados_resumo').select('modulo, qtd, valor'),
+        supabase.from('controle_orcamento').select('empresa, categoria, valor_orcamento, valor_pedidos_solicitados')
+          .eq('mes', hoje.getMonth() + 1).eq('ano', hoje.getFullYear()),
+      ])
+      for (const a of at ?? []) novoAtraso[a.modulo as ModuloPedido] = { qtd: Number(a.qtd), valor: Number(a.valor) }
+      // centros que já gastaram 80% ou mais do orçamento do mês (ou estouraram), os mais apertados primeiro
+      const pct = (o: OrcMes) => (o.orcamento > 0 ? o.consumido / o.orcamento : o.consumido > 0 ? Infinity : 0)
+      novoOrc = (orc ?? []).map(o => ({ empresa: o.empresa, categoria: o.categoria, orcamento: Number(o.valor_orcamento), consumido: Number(o.valor_pedidos_solicitados) }))
+        .filter(o => pct(o) >= 0.8).sort((a, b) => pct(b) - pct(a)).slice(0, 6)
+    }
+
     lista.sort((a, b) => Number(b.emergencia) - Number(a.emergencia) || a.data.localeCompare(b.data) || a.id - b.id)
-    setFluxo(fl); setCont(novoCont); setMeus(novoMeus); setPends(lista.slice(0, 6))
+    setFluxo(fl); setCont(novoCont); setMeus(novoMeus); setPends(lista.slice(0, 6)); setAtrasados(novoAtraso); setOrcMes(novoOrc)
     setLoading(false)
   }, [])
 
@@ -102,6 +122,8 @@ export default function InicioPage() {
     { n: cont[mod].req, label: `Requisições de ${mod === 'pagamentos' ? 'pagamento' : 'recebimento'}`, href: `/${mod}/autorizar-requisicoes` },
     { n: cont[mod].real, label: `Realocações de ${mod === 'pagamentos' ? 'pagamento' : 'recebimento'}`, href: `/${mod}/autorizar` },
   ]).filter(p => p.n > 0)
+
+  const atrasos = MODS.filter(m => atrasados[m].qtd > 0)
 
   const devolvidos = MODS.filter(m => meus[m].ajuste > 0)
   const temPedidos = MODS.filter(m => Object.values(meus[m]).some(v => v > 0))
@@ -167,6 +189,42 @@ export default function InicioPage() {
                 </div>
               )}
             </>
+          )}
+        </div>
+      )}
+
+      {!loading && admin && (atrasos.length > 0 || orcMes.length > 0) && (
+        <div className="card space-y-4">
+          <h2 className="text-base font-semibold text-slate-800">Atenção</h2>
+          {atrasos.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {atrasos.map(m => (
+                <Link key={m} href={`/${m}/controle`} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 hover:bg-red-100 text-sm text-red-800">
+                  <span>{atrasados[m].qtd} conta{atrasados[m].qtd > 1 ? 's' : ''} {m === 'pagamentos' ? 'a pagar' : 'a receber'} em atraso</span>
+                  <span className="font-semibold">{fmtMoeda(atrasados[m].valor)}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+          {orcMes.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-slate-500">Orçamento de pagamentos deste mês: centros com 80% ou mais consumido</p>
+              {orcMes.map(o => {
+                const saldo = o.orcamento - o.consumido
+                const pct = o.orcamento > 0 ? Math.min(o.consumido / o.orcamento, 1) * 100 : 100
+                return (
+                  <div key={`${o.empresa}|${o.categoria}`}>
+                    <div className="flex justify-between gap-3 text-xs mb-1">
+                      <span className="text-slate-700">{o.empresa} · {o.categoria}</span>
+                      <span className={saldo < 0 ? 'text-red-600 font-medium' : 'text-orange-600'}>
+                        {saldo < 0 ? `estourado em ${fmtMoeda(-saldo)}` : `saldo ${fmtMoeda(saldo)} de ${fmtMoeda(o.orcamento)}`}
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded bg-slate-100"><div className={`h-1.5 rounded ${saldo <= 0 ? 'bg-red-500' : 'bg-orange-400'}`} style={{ width: `${pct}%` }} /></div>
+                  </div>
+                )
+              })}
+            </div>
           )}
         </div>
       )}
