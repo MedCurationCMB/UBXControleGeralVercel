@@ -315,6 +315,28 @@ export default function SolicitarPage() {
     setAddValor('')
   }
 
+  // Volta ao começo do formulário (após o envio ou ao cancelar)
+  const limparFormulario = () => {
+    setSaving(false)
+    setStep('form')
+    setEmpresa('')
+    setCategoria('')
+    setFornecedor('')
+    setObservacao('')
+    setEmergencial(false)
+    setFiles([])
+    setMesesSelecionados([])
+    setMesmoFornecedor(true)
+    setAddBeneficiario('')
+    setSaldos([])
+    setAddMes('')
+    setAddAno('')
+    setAddValor('')
+    setRequisicaoId('')
+    setError('')
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
   // Step 2: grava o pedido (já com o valor total), o cronograma e os anexos
   const handleEnviarSolicitacao = async () => {
     if (!mesesSelecionados.length) { setError('Adicione pelo menos um período antes de enviar.'); return }
@@ -393,25 +415,7 @@ export default function SolicitarPage() {
 
     const summary = { empresa, categoria, fornecedor, total: valorTotal, id: pedido.id, falhas }
 
-    // Reset state
-    setSaving(false)
-    setStep('form')
-    setEmpresa('')
-    setCategoria('')
-    setFornecedor('')
-    setObservacao('')
-    setEmergencial(false)
-    setFiles([])
-    setMesesSelecionados([])
-    setMesmoFornecedor(true)
-    setAddBeneficiario('')
-    setSaldos([])
-    setAddMes('')
-    setAddAno('')
-    setAddValor('')
-    setRequisicaoId('')
-    setError('')
-    if (fileRef.current) fileRef.current.value = ''
+    limparFormulario()
 
     setSuccessInfo(summary)
     if (falhas.length === 0) setTimeout(() => setSuccessInfo(null), 8000)
@@ -722,6 +726,13 @@ export default function SolicitarPage() {
             className="btn-primary w-full justify-center py-3"
           >
             {saving ? 'Enviando...' : 'Enviar Solicitação'}
+          </button>
+          <button
+            onClick={() => { if (mesesSelecionados.length === 0 || window.confirm('Descartar este pedido e começar de novo?')) limparFormulario() }}
+            disabled={saving}
+            className="btn-secondary w-full justify-center py-3"
+          >
+            Cancelar e começar de novo
           </button>
         </div>
       )}
