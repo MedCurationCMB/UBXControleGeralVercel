@@ -27,7 +27,7 @@ export async function solicitarAjuste(mod: ModuloPedido, pedidoId: number, comen
   await supabase.from(t.fluxo).update({ status: 'Aguardando Ajuste' }).eq('pedido_id', pedidoId)
   await supabase.from(t.comentarios).insert({
     pedido_id: pedidoId, comentario: comentario.trim(), usuario,
-    data_comentario: new Date().toISOString(), tipo_documento: null,
+    data_comentario: new Date().toISOString(),
   })
   return null
 }

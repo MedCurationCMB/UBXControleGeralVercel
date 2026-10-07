@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { criarContasDoPedido } from '@/lib/contasDoPedido'
 import { useRouter } from 'next/navigation'
-import { CheckCircle, XCircle, AlertTriangle, RefreshCw, Search, ChevronRight } from 'lucide-react'
+import { CheckCircle, XCircle, AlertTriangle, RefreshCw, Search, ChevronRight, MessageSquare } from 'lucide-react'
 import Confirm from '@/components/ui/Confirm'
 import AjusteModal from '@/components/pedidos/AjusteModal'
+import { ComentariosModal } from '@/components/pedidos/ComentariosPedido'
 import RealocacoesPendentes from '@/components/pedidos/RealocacoesPendentes'
 
 interface Pedido {
@@ -40,6 +41,7 @@ export default function AutorizarPage() {
   const [processing, setProcessing] = useState(false)
 
   const [ajusteId, setAjusteId] = useState<number | null>(null)
+  const [comentarioId, setComentarioId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -282,6 +284,10 @@ export default function AutorizarPage() {
                     Solicitar Ajuste
                   </button>
                   </>}
+                  <button onClick={() => setComentarioId(p.id)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 border border-slate-200 bg-white text-slate-700 rounded text-xs font-medium hover:bg-slate-50">
+                    <MessageSquare size={12} /> Comentários
+                  </button>
                   <button onClick={() => router.push(`/pagamentos/autorizar/${p.id}`)}
                     className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 text-slate-700 rounded text-xs font-medium hover:bg-slate-200">
                     Detalhes <ChevronRight size={12} />
@@ -295,6 +301,8 @@ export default function AutorizarPage() {
 
       </>
       )}
+
+      {comentarioId !== null && <ComentariosModal mod="pagamentos" pedidoId={comentarioId} usuario={user?.username ?? ''} onClose={() => setComentarioId(null)} />}
 
       {ajusteId !== null && (
         <AjusteModal mod="pagamentos" pedidoId={ajusteId} usuario={user?.username ?? ''}

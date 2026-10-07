@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { X, CheckCircle, XCircle, AlertTriangle, ExternalLink, FileText } from 'lucide-react'
 import Confirm from '@/components/ui/Confirm'
 import AjusteModal from '@/components/pedidos/AjusteModal'
+import ComentariosPedido from '@/components/pedidos/ComentariosPedido'
 import AtendidaModal from '@/components/requisicoes/AtendidaModal'
 import { ListaAnexos, type Anexo } from '@/components/requisicoes/Anexos'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
@@ -23,7 +24,6 @@ interface Dados {
 }
 interface Linha { mes: number; ano: number; valor: number; benef: string | null }
 interface Doc { id: number; nome: string; anexoId: string | null }
-interface Coment { id: number; texto: string; usuario: string; data: string }
 
 // Painel lateral para analisar um pedido ou requisição pendente sem sair da página inicial:
 // resumo, documentos, histórico e as ações (autorizar, rejeitar, solicitar ajuste), com atalho para o detalhe completo.
@@ -35,7 +35,6 @@ export default function PainelAnalise({ alvo, usuario, onClose, onDone }: {
   const [d, setD] = useState<Dados | null>(null)
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [docs, setDocs] = useState<Doc[]>([])
-  const [coms, setComs] = useState<Coment[]>([])
   const [erroCarga, setErroCarga] = useState('')
   const [acao, setAcao] = useState<'Autorizado' | 'Não Autorizado' | null>(null)
   const [ajuste, setAjuste] = useState(false)
@@ -62,11 +61,10 @@ export default function PainelAnalise({ alvo, usuario, onClose, onDone }: {
         })
         return
       }
-      const [{ data: p }, { data: fl }, { data: dc }, { data: cm }] = await Promise.all([
+      const [{ data: p }, { data: fl }, { data: dc }] = await Promise.all([
         supabase.from(t.pedido).select('*').eq('id', id).maybeSingle(),
         supabase.from(t.fluxo).select('*').eq('pedido_id', id).order('ano').order('mes'),
         supabase.from(mod === 'pagamentos' ? 'documentos' : 'documentos_receita').select('id, nome_documento, anexo_id').eq('pedido_id', id).order('data_upload', { ascending: false }),
-        supabase.from(t.comentarios).select('id, comentario, usuario, data_comentario').eq('pedido_id', id).order('data_comentario', { ascending: false }).limit(5),
       ])
       if (!ativo) return
       if (!p) { setErroCarga('Pedido não encontrado.'); return }
@@ -76,10 +74,9 @@ export default function PainelAnalise({ alvo, usuario, onClose, onDone }: {
       })
       setLinhas((fl ?? []).map(l => ({ mes: l.mes, ano: l.ano, valor: Number(l.valor_referente), benef: l.fornecedor_beneficiario ?? l.cliente_beneficiario ?? null })))
       setDocs((dc ?? []).map(x => ({ id: x.id, nome: x.nome_documento ?? 'Documento', anexoId: x.anexo_id })))
-      setComs((cm ?? []).map(x => ({ id: x.id, texto: x.comentario ?? '', usuario: x.usuario, data: x.data_comentario })))
     })()
     return () => { ativo = false }
-  }, [tipo, mod, id, t.pedido, t.fluxo, t.comentarios, t.parte])
+  }, [tipo, mod, id, t.pedido, t.fluxo, t.parte])
 
   const decidir = async () => {
     if (!d || !acao) return
@@ -169,17 +166,10 @@ export default function PainelAnalise({ alvo, usuario, onClose, onDone }: {
                 )}
               </div>
 
-              {tipo === 'pedido' && coms.length > 0 && (
+              {tipo === 'pedido' && (
                 <div>
-                  <p className="text-sm font-semibold text-slate-800 mb-2">Histórico</p>
-                  <div className="space-y-2">
-                    {coms.map(c => (
-                      <div key={c.id} className="text-sm border-l-2 border-slate-200 pl-3">
-                        <p className="text-slate-800">{c.texto}</p>
-                        <p className="text-xs text-slate-500">{c.usuario} · {fmtDataHora(c.data)}</p>
-                      </div>
-                    ))}
-                  </div>
+                  <p className="text-sm font-semibold text-slate-800 mb-2">Comentários</p>
+                  <ComentariosPedido mod={mod} pedidoId={id} usuario={usuario} />
                 </div>
               )}
 
