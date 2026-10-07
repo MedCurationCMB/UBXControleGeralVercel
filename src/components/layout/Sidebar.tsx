@@ -36,6 +36,7 @@ const navGroups: NavGroup[] = [
     title: 'Geral',
     items: [
       { label: 'Início', href: '/inicio', icon: LayoutDashboard },
+      { label: 'Todos os módulos', href: '/atalhos', icon: Layers },
     ],
   },
   {

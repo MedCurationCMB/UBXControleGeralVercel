@@ -1,4 +1,5 @@
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
+import { criarContasDoPedido } from '@/lib/contasDoPedido'
 
 export type ModuloPedido = 'pagamentos' | 'recebimentos'
 
@@ -28,5 +29,17 @@ export async function solicitarAjuste(mod: ModuloPedido, pedidoId: number, comen
     pedido_id: pedidoId, comentario: comentario.trim(), usuario,
     data_comentario: new Date().toISOString(), tipo_documento: null,
   })
+  return null
+}
+
+// Autoriza o pedido (mesmos passos da tela Autorizar Pedidos): status do pedido e do cronograma, e as contas a pagar/receber.
+export async function autorizarPedido(mod: ModuloPedido, id: number, parte: string, valor: number, username: string) {
+  const t = TAB_PEDIDO[mod]
+  const { error } = await supabase.from(t.pedido).update({
+    status: 'Autorizado', data_autorizacao: new Date().toISOString().split('T')[0], usuario_autorizador: username,
+  }).eq('id', id)
+  if (error) return error.message
+  await supabase.from(t.fluxo).update({ status: 'Autorizado' }).eq('pedido_id', id)
+  await criarContasDoPedido(mod === 'pagamentos' ? 'pagar' : 'receber', id, parte, valor)
   return null
 }
