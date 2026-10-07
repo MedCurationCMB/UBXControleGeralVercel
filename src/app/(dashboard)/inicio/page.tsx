@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { PlusSquare, ClipboardList, Receipt, CheckCircle, ArrowRight, Undo2, BarChart3, Layers } from 'lucide-react'
-import Confirm from '@/components/ui/Confirm'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
-import { TAB_PEDIDO, autorizarPedido, type ModuloPedido } from '@/lib/ajuste'
+import { TAB_PEDIDO, type ModuloPedido } from '@/lib/ajuste'
 
 const MODS: ModuloPedido[] = ['pagamentos', 'recebimentos']
 const ROTULO: Record<ModuloPedido, string> = { pagamentos: 'Pagamentos', recebimentos: 'Recebimentos' }
@@ -36,9 +35,6 @@ export default function InicioPage() {
   const [pends, setPends] = useState<Pend[]>([])
   const [meus, setMeus] = useState(zero<Meus>({ aguardando: 0, autorizado: 0, ajuste: 0, recusado: 0 }))
   const [loading, setLoading] = useState(true)
-  const [confirmar, setConfirmar] = useState<Pend | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [erro, setErro] = useState('')
 
   const load = useCallback(async () => {
     const u = await fetch('/api/auth/me').then(r => r.json()).catch(() => null)
@@ -88,16 +84,6 @@ export default function InicioPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
-
-  const autorizar = async () => {
-    if (!confirmar) return
-    setBusy(true)
-    const e = await autorizarPedido(confirmar.mod, confirmar.id, confirmar.parte, confirmar.valor, username)
-    setBusy(false)
-    if (e) { setErro(e); return }
-    setConfirmar(null); setErro('')
-    load()
-  }
 
   // atalhos de criação, conforme o fluxo de cada módulo
   const acoes = MODS.flatMap(mod => {
@@ -173,13 +159,9 @@ export default function InicioPage() {
                         </p>
                         <p className="text-xs text-slate-500">{p.parte} · {fmtMoeda(p.valor)} · {quando(p.data)}{p.solicitante && ` · ${p.solicitante}`}</p>
                       </div>
-                      <div className="flex gap-1.5">
-                        <Link href={`/${p.mod}/autorizar/${p.id}`} className="btn-secondary text-xs px-3 py-1.5">Ver</Link>
-                        <button onClick={() => { setErro(''); setConfirmar(p) }}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700">
-                          <CheckCircle size={12} /> Autorizar
-                        </button>
-                      </div>
+                      <Link href={`/${p.mod}/autorizar/${p.id}`} className="btn-secondary text-xs px-3 py-1.5 inline-flex items-center gap-1">
+                        Analisar <ArrowRight size={12} />
+                      </Link>
                     </div>
                   ))}
                 </div>
@@ -220,9 +202,6 @@ export default function InicioPage() {
         </div>
       )}
 
-      <Confirm open={!!confirmar} onClose={() => { setConfirmar(null); setErro('') }} onConfirm={autorizar} confirmLabel="Autorizar" loading={busy}
-        title="Autorizar pedido"
-        message={confirmar ? `Autorizar o pedido #${confirmar.id} (${confirmar.empresa} · ${confirmar.categoria} · ${fmtMoeda(confirmar.valor)})?${erro ? ` Não foi possível: ${erro}` : ''}` : ''} />
     </div>
   )
 }
