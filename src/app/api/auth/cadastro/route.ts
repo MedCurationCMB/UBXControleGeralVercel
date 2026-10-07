@@ -7,18 +7,17 @@ export async function POST(req: NextRequest) {
   try {
     const { username, email, password } = await req.json()
 
-    if (!username || !email || !password) {
+    if (![username, email, password].every(v => typeof v === 'string' && v.trim())) {
       return NextResponse.json({ error: 'Todos os campos são obrigatórios' }, { status: 400 })
     }
 
-    // Verifica duplicidade
-    const { data: existing } = await supabaseServer
-      .from('usuarios')
-      .select('id')
-      .or(`username.eq.${username},email.eq.${email}`)
-      .single()
+    // Verifica duplicidade (rota pública: .eq em vez de .or com texto digitado, para não montar filtro a partir da entrada)
+    const [{ data: porUsuario }, { data: porEmail }] = await Promise.all([
+      supabaseServer.from('usuarios').select('id').eq('username', username).limit(1),
+      supabaseServer.from('usuarios').select('id').eq('email', email).limit(1),
+    ])
 
-    if (existing) {
+    if (porUsuario?.length || porEmail?.length) {
       return NextResponse.json({ error: 'Usuário ou email já cadastrado' }, { status: 409 })
     }
 

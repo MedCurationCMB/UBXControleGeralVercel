@@ -3,7 +3,7 @@ import { jwtVerify } from 'jose'
 import { SESSION_COOKIE } from '@/lib/auth'
 import { garantirTokenDb } from '@/lib/db-token'
 
-const PUBLIC_ROUTES = ['/login', '/recuperar-senha', '/api/auth/login', '/api/auth/recuperar-senha']
+const PUBLIC_ROUTES = ['/login', '/recuperar-senha', '/api/auth/login', '/api/auth/cadastro', '/api/auth/recuperar-senha']
 const ADMIN_ROUTES = ['/admin', '/api/admin', '/projetos']
 const OWNER_ROUTES: string[] = ['/relatorios', '/api/relatorios'] // rotas exclusivas do owner
 
