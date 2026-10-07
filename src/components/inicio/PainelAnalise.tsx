@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { X, CheckCircle, XCircle, AlertTriangle, ExternalLink, FileText } from 'lucide-react'
 import Confirm from '@/components/ui/Confirm'
 import AjusteModal from '@/components/pedidos/AjusteModal'
+import AtendidaModal from '@/components/requisicoes/AtendidaModal'
 import { ListaAnexos, type Anexo } from '@/components/requisicoes/Anexos'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { TAB_PEDIDO, decidirPedido, type ModuloPedido } from '@/lib/ajuste'
@@ -38,14 +39,15 @@ export default function PainelAnalise({ alvo, usuario, onClose, onDone }: {
   const [erroCarga, setErroCarga] = useState('')
   const [acao, setAcao] = useState<'Autorizado' | 'Não Autorizado' | null>(null)
   const [ajuste, setAjuste] = useState(false)
+  const [atendida, setAtendida] = useState(false)
   const [busy, setBusy] = useState(false)
   const [erro, setErro] = useState('')
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !acao && !ajuste) onClose() }
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !acao && !ajuste && !atendida) onClose() }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [onClose, acao, ajuste])
+  }, [onClose, acao, ajuste, atendida])
 
   useEffect(() => {
     let ativo = true
@@ -199,6 +201,12 @@ export default function PainelAnalise({ alvo, usuario, onClose, onDone }: {
                   className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm font-medium hover:bg-red-100">
                   <XCircle size={15} /> Rejeitar
                 </button>
+                {tipo === 'requisicao' && (
+                  <button onClick={() => setAtendida(true)}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-100">
+                    Atendida sem pedido
+                  </button>
+                )}
                 {tipo === 'pedido' && (
                   <button onClick={() => setAjuste(true)}
                     className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-orange-50 border border-orange-200 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-100">
@@ -218,6 +226,7 @@ export default function PainelAnalise({ alvo, usuario, onClose, onDone }: {
         message={`Confirma ${acao === 'Autorizado' ? 'a autorização' : 'a rejeição'} d${tipo === 'pedido' ? 'o pedido' : 'a requisição'} #${id}?${erro ? ` Não foi possível: ${erro}` : ''}`}
         confirmLabel={acao === 'Autorizado' ? 'Autorizar' : 'Rejeitar'} />
 
+      {atendida && <AtendidaModal mod={mod} id={id} usuario={usuario} autorizar onClose={() => setAtendida(false)} onDone={() => { setAtendida(false); onDone() }} />}
       {ajuste && <AjusteModal mod={mod} pedidoId={id} usuario={usuario} onClose={() => setAjuste(false)} onDone={() => { setAjuste(false); onDone() }} />}
     </>
   )

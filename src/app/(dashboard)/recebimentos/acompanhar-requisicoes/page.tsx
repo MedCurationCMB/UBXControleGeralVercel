@@ -7,7 +7,7 @@ import { Search, RefreshCw, ChevronRight, List, LayoutGrid, Info } from 'lucide-
 
 interface Requisicao {
   id: number; empresa: string; categoria: string; descricao: string
-  status: string; data_solicitacao: string
+  status: string; data_solicitacao: string; atendida_sem_pedido: boolean
 }
 
 interface PedidoInfo {
@@ -18,7 +18,8 @@ interface ControleInfo {
   valor_pagar: number | null; valor_pagamento: number | null
 }
 
-const STATUS_OPTIONS = ['Aguardando Autorização', 'Autorizado', 'Não Autorizado']
+const ATENDIDA = 'Atendida sem pedido'
+const STATUS_OPTIONS = ['Aguardando Autorização', 'Autorizado', 'Não Autorizado', ATENDIDA]
 
 const STATUS_BADGE: Record<string, string> = {
   'Autorizado': 'bg-green-100 text-green-700',
@@ -29,7 +30,7 @@ const STATUS_BADGE: Record<string, string> = {
 const fmtData = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR')
 
 type Estagio = 'aguardando_autorizacao' | 'nao_autorizada' | 'aguardando_pedido'
-  | 'pedido_aguardando_autorizacao' | 'aguardando_pagamento' | 'paga'
+  | 'pedido_aguardando_autorizacao' | 'aguardando_pagamento' | 'paga' | 'atendida_sem_pedido'
 
 const COLUNAS: { key: Estagio; titulo: string }[] = [
   { key: 'aguardando_autorizacao', titulo: 'Aguardando Autorização' },
@@ -38,6 +39,7 @@ const COLUNAS: { key: Estagio; titulo: string }[] = [
   { key: 'pedido_aguardando_autorizacao', titulo: 'Pedido Criado — Aguardando Autorização' },
   { key: 'aguardando_pagamento', titulo: 'Aguardando Recebimento' },
   { key: 'paga', titulo: 'Recebida' },
+  { key: 'atendida_sem_pedido', titulo: ATENDIDA },
 ]
 
 // Enquanto nenhum pedido foi vinculado, a requisição pode transitar livremente entre essas 3 colunas.
@@ -50,6 +52,7 @@ const STATUS_POR_COLUNA: Partial<Record<Estagio, 'Aguardando Autorização' | 'A
 }
 
 function getEstagio(req: Requisicao, pedido: PedidoInfo | undefined, controles: ControleInfo[]): Estagio {
+  if (req.atendida_sem_pedido) return 'atendida_sem_pedido'
   if (req.status === 'Aguardando Autorização') return 'aguardando_autorizacao'
   if (req.status === 'Não Autorizado') return 'nao_autorizada'
   if (!pedido || pedido.cancelado) return 'aguardando_pedido'
@@ -80,7 +83,7 @@ export default function AcompanharRequisicoesReceitaPage() {
   const load = useCallback(async () => {
     setLoading(true)
     const [{ data: reqs }, u] = await Promise.all([
-      supabase.from('requisicoes_receita').select('id, empresa, categoria, descricao, status, data_solicitacao').order('id', { ascending: false }),
+      supabase.from('requisicoes_receita').select('id, empresa, categoria, descricao, status, data_solicitacao, atendida_sem_pedido').order('id', { ascending: false }),
       fetch('/api/auth/me').then(r => r.json()),
     ])
     setRequisicoes(reqs ?? [])
@@ -126,7 +129,7 @@ export default function AcompanharRequisicoesReceitaPage() {
     if (id) return requisicoes.filter(r => String(r.id) === id)
     return requisicoes.filter(r =>
       (!filtroEmpresa || r.empresa === filtroEmpresa) &&
-      (!filtroStatus || r.status === filtroStatus)
+      (!filtroStatus || (filtroStatus === ATENDIDA ? r.atendida_sem_pedido : r.status === filtroStatus))
     )
   }, [requisicoes, searchId, filtroEmpresa, filtroStatus])
 
@@ -229,6 +232,7 @@ export default function AcompanharRequisicoesReceitaPage() {
                     <td className="table-cell text-slate-500">{fmtData(r.data_solicitacao)}</td>
                     <td className="table-cell">
                       <span className={`badge ${STATUS_BADGE[r.status] ?? 'bg-slate-100 text-slate-600'}`}>{r.status}</span>
+                      {r.atendida_sem_pedido && <span className="badge bg-teal-100 text-teal-700 ml-1">{ATENDIDA}</span>}
                     </td>
                     <td className="table-cell">
                       <ChevronRight size={14} className="text-slate-400" />

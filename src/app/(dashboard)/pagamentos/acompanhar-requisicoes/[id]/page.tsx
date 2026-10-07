@@ -4,12 +4,15 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { ArrowLeft, Pencil, Check, X } from 'lucide-react'
+import AtendidaModal from '@/components/requisicoes/AtendidaModal'
+import { desfazerAtendidaSemPedido } from '@/lib/requisicao'
 import { enviarAnexos, ListaAnexos, BotaoAnexar, type Anexo } from '@/components/requisicoes/Anexos'
 
 interface Requisicao {
   id: number; empresa: string; categoria: string; descricao: string
   status: string; data_solicitacao: string; data_autorizacao: string | null
   usuario_autorizador: string | null; anexos?: Anexo[] | null
+  atendida_sem_pedido: boolean; atendida_data: string | null; atendida_usuario: string | null; atendida_obs: string | null
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -37,9 +40,12 @@ export default function RequisicaoDetalhePage() {
   const [saving, setSaving] = useState(false)
   const [anexando, setAnexando] = useState(false)
   const [error, setError] = useState('')
+  const [admin, setAdmin] = useState<{ username: string } | null>(null)
+  const [marcando, setMarcando] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
+    fetch('/api/auth/me').then(r => r.json()).then(u => setAdmin(u?.hierarquia === 'admin' || u?.hierarquia === 'owner' ? u : null)).catch(() => {})
     const [{ data: req }, { data: cats }] = await Promise.all([
       supabase.from('requisicoes').select('*').eq('id', id).single(),
       supabase.from('categorias').select('empresa, categoria').order('empresa').order('categoria'),
@@ -93,6 +99,13 @@ export default function RequisicaoDetalhePage() {
 
   const anexos: Anexo[] = requisicao?.anexos ?? []
 
+  const desfazer = async () => {
+    if (!requisicao) return
+    const e = await desfazerAtendidaSemPedido('pagamentos', requisicao.id)
+    if (e) { setError(e); return }
+    load()
+  }
+
   const salvarAnexos = async (novos: Anexo[]) => {
     if (!requisicao) return
     const { error: err } = await supabase.from('requisicoes').update({ anexos: novos }).eq('id', requisicao.id)
@@ -125,6 +138,7 @@ export default function RequisicaoDetalhePage() {
         <span className={`badge ml-auto ${STATUS_BADGE[requisicao.status] ?? 'bg-slate-100 text-slate-600'}`}>
           {requisicao.status}
         </span>
+        {requisicao.atendida_sem_pedido && <span className="badge bg-teal-100 text-teal-700">Atendida sem pedido</span>}
       </div>
 
       <div className="card space-y-5">
@@ -196,6 +210,23 @@ export default function RequisicaoDetalhePage() {
           </div>
         )}
 
+        {requisicao.atendida_sem_pedido && (
+          <div className="pt-3 border-t border-slate-100 space-y-1">
+            <p className="text-sm text-slate-700">
+              Atendida sem pedido por {requisicao.atendida_usuario || '—'}
+              {requisicao.atendida_data && ` em ${fmtData(requisicao.atendida_data)}`}. Não gera pedido nem pagamento.
+            </p>
+            {requisicao.atendida_obs && <p className="text-sm text-slate-500 whitespace-pre-wrap">{requisicao.atendida_obs}</p>}
+            {admin && <button onClick={desfazer} className="btn-secondary text-sm mt-1">Desfazer</button>}
+          </div>
+        )}
+
+        {admin && requisicao.status === 'Autorizado' && !pedidoVinculado && !requisicao.atendida_sem_pedido && (
+          <div className="pt-3 border-t border-slate-100">
+            <button onClick={() => setMarcando(true)} className="btn-secondary gap-1.5 text-sm">Atendida sem pedido</button>
+          </div>
+        )}
+
         {podeEditar && (
           <div className="flex gap-3 pt-3 border-t border-slate-100">
             {editing ? (
@@ -224,6 +255,9 @@ export default function RequisicaoDetalhePage() {
           </div>
         )}
       </div>
+
+      {marcando && <AtendidaModal mod="pagamentos" id={requisicao.id} usuario={admin?.username ?? ''} autorizar={false}
+        onClose={() => setMarcando(false)} onDone={() => { setMarcando(false); load() }} />}
     </div>
   )
 }

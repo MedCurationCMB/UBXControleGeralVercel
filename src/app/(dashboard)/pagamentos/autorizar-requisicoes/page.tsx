@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
-import { CheckCircle, XCircle, RefreshCw, Search } from 'lucide-react'
+import { CheckCircle, XCircle, Archive, RefreshCw, Search } from 'lucide-react'
 import Confirm from '@/components/ui/Confirm'
+import AtendidaModal from '@/components/requisicoes/AtendidaModal'
 import { ListaAnexos, type Anexo } from '@/components/requisicoes/Anexos'
 
 interface Requisicao {
@@ -25,6 +26,7 @@ export default function AutorizarRequisicoesPage() {
     open: boolean; id: number | null; acao: 'Autorizado' | 'Não Autorizado'
   }>({ open: false, id: null, acao: 'Autorizado' })
   const [processing, setProcessing] = useState(false)
+  const [atendida, setAtendida] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -137,6 +139,12 @@ export default function AutorizarRequisicoesPage() {
                         >
                           <XCircle size={17} />
                         </button>
+                        <button
+                          onClick={() => setAtendida(r.id)}
+                          className="p-1.5 rounded hover:bg-slate-100 text-slate-500" title="Atendida sem pedido"
+                        >
+                          <Archive size={17} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -156,6 +164,9 @@ export default function AutorizarRequisicoesPage() {
         confirmLabel={confirm.acao === 'Autorizado' ? 'Autorizar' : 'Rejeitar'}
         loading={processing}
       />
+
+      {atendida !== null && <AtendidaModal mod="pagamentos" id={atendida} usuario={user?.username ?? ''} autorizar
+        onClose={() => setAtendida(null)} onDone={() => { setAtendida(null); load() }} />}
     </div>
   )
 }

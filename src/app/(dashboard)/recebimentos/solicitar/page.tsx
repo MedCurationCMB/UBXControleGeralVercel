@@ -200,7 +200,7 @@ export default function SolicitarRecebimentoPage() {
       supabase.from('clientes').select('nome').order('nome'),
       supabase.from('tipos_documento').select('id').eq('tipo', 'Documentos da Solicitação').maybeSingle(),
       supabase.from('config').select('valor').eq('chave', 'fluxo_sistema_receita').maybeSingle(),
-      supabase.from('requisicoes_receita').select('id, empresa, categoria, descricao').eq('status', 'Autorizado'),
+      supabase.from('requisicoes_receita').select('id, empresa, categoria, descricao').eq('status', 'Autorizado').eq('atendida_sem_pedido', false),
       supabase.from('pedidos_solicitados_receita').select('requisicao_id').not('requisicao_id', 'is', null),
     ]).then(([{ data: oc }, { data: clis }, { data: tipoDoc }, { data: cfgFluxo }, { data: reqs }, { data: usadas }]) => {
       const emps = [...new Set((oc ?? []).map(r => r.empresa).filter(Boolean))].sort() as string[]
