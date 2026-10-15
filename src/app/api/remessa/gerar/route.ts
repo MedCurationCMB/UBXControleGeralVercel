@@ -2,224 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/server'
 import { uploadFile } from '@/lib/b2'
-import { linhaDigitavelParaCodigoBarras } from '@/lib/boleto'
-
-// ─── CNAB 240 helpers ───────────────────────────────────────────────────────
-
-function padN(value: string | number, length: number): string {
-  const s = String(value).replace(/\D/g, '') || '0'
-  return s.padStart(length, '0').slice(-length)
-}
-function padA(value: string | null | undefined, length: number): string {
-  const s = String(value ?? '').slice(0, length)
-  return s.padEnd(length, ' ')
-}
-
-interface Company {
-  cnpj: string; agencia: string; agencia_dv: string
-  conta: string; conta_dv: string; nome_empresa: string
-  rua: string; numero: string; complemento: string
-  cidade: string; cep: string; estado: string; sequencial: string
-}
-
-interface PixTx {
-  tipo_pagamento: '1'
-  data_pagamento: Date; valor_pagamento: number; doc_empresa: string
-  forma_iniciacao: string; tipo_doc_fav: string; doc_fav: string
-  chave_pix: string; txid?: string; fav_ispb?: string
-  fav_banco?: string; fav_agencia?: string; fav_agencia_dv?: string
-  fav_conta?: string; fav_conta_dv?: string; fav_nome?: string
-}
-
-interface BoletoTx {
-  tipo_pagamento: '3'
-  data_pagamento: Date; data_vencimento: Date; valor_pagamento: number; doc_empresa: string
-  codigo_barras: string; nome_beneficiario: string; valor_nominal: number
-  valor_desconto: number; valor_mora: number; nosso_numero: string
-  beneficiario_tipo: number; beneficiario_documento: string; beneficiario_nome: string
-  pagador_documento: string; pagador_nome: string; doc_empresa_adicional: string
-}
-
-type Tx = PixTx | BoletoTx
-
-function fmtDate(d: Date): string {
-  const dd = String(d.getDate()).padStart(2, '0')
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const yyyy = String(d.getFullYear())
-  return `${dd}${mm}${yyyy}`
-}
-
-function buildHeaderArquivo(c: Company): string {
-  const now = new Date()
-  const hoje = fmtDate(now)
-  const hora = `${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`
-  return (
-    padN('077', 3) + padN('0000', 4) + '0' + ' '.repeat(9) +
-    '2' + padN(c.cnpj, 14) + ' '.repeat(20) +
-    padN(c.agencia, 5) + padA(c.agencia_dv, 1) +
-    padN(c.conta, 12) + padN(c.conta_dv, 1) + ' ' +
-    padA(c.nome_empresa, 30) + padA('BANCO INTER', 30) +
-    ' '.repeat(10) + '1' + hoje + hora +
-    padN(c.sequencial, 6) + padN('107', 3) + padN('01600', 5) +
-    ' '.repeat(20) + ' '.repeat(20) + ' '.repeat(29)
-  ).padEnd(240, ' ')
-}
-
-function buildHeaderLotePix(c: Company): string {
-  return (
-    padN('077', 3) + padN('1', 4) + '1' + 'C' +
-    padN('20', 2) + padN('45', 2) + padN('046', 3) + ' ' +
-    '2' + padN(c.cnpj, 14) + ' '.repeat(20) +
-    padN(c.agencia, 5) + padA(c.agencia_dv, 1) +
-    padN(c.conta, 12) + padN(c.conta_dv, 1) + ' ' +
-    padA(c.nome_empresa, 30) + padA('', 40) +
-    padA(c.rua, 30) + padN(c.numero, 5) +
-    padA(c.complemento, 15) + padA(c.cidade, 20) +
-    padN(c.cep, 5) + ' '.repeat(3) + padA(c.estado, 2) +
-    ' '.repeat(8) + ' '.repeat(10)
-  ).padEnd(240, ' ')
-}
-
-function buildSegmentoAPix(t: PixTx, seq: number): string {
-  let fav = ''
-  let idPagamento = ''
-  if (t.forma_iniciacao === '05') {
-    fav = padN(t.fav_banco ?? '', 3) + padN(t.fav_agencia ?? '', 5) +
-          padA(t.fav_agencia_dv ?? '', 1) + padN(t.fav_conta ?? '', 12) +
-          padA(t.fav_conta_dv ?? '', 1) + ' ' + padA(t.fav_nome ?? '', 30)
-    idPagamento = padN(t.doc_fav, 14) + padN(t.fav_ispb ?? '0', 8) + padN('01', 2)
-  } else {
-    fav = '000' + '00000' + '0' + '0'.repeat(12) + '0' + ' ' + ' '.repeat(30)
-    idPagamento = padN('0', 14) + padN('0', 8) + padN('0', 2)
-  }
-  const valorInt = Math.round(t.valor_pagamento * 100)
-  return (
-    padN('077', 3) + padN('1', 4) + '3' + padN(seq, 5) + 'A' + '0' + padN('00', 2) +
-    padN('000', 3) + fav +
-    padA(t.doc_empresa, 20) + fmtDate(t.data_pagamento) +
-    padA('BRL', 3) + padN('0', 15) + padN(valorInt, 15) +
-    ' '.repeat(20) + ' '.repeat(8) + ' '.repeat(15) +
-    idPagamento +
-    ' '.repeat(29) + ' '.repeat(10)
-  ).padEnd(240, ' ')
-}
-
-function buildSegmentoBPix(t: PixTx, seq: number): string {
-  let chave = ''
-  if (['01', '02', '04'].includes(t.forma_iniciacao)) {
-    chave = padA(t.chave_pix, 99)
-  } else {
-    chave = ' '.repeat(99)
-  }
-  return (
-    padN('077', 3) + padN('1', 4) + '3' + padN(seq, 5) + 'B' +
-    padA(t.forma_iniciacao, 3) + padN(t.tipo_doc_fav, 1) +
-    padN(t.doc_fav, 14) + padA(t.txid ?? '', 35) +
-    ' '.repeat(60) + chave + ' '.repeat(6) +
-    padN(t.fav_ispb ?? '0', 8)
-  ).padEnd(240, ' ')
-}
-
-function buildHeaderLoteBoleto(c: Company): string {
-  return (
-    padN('077', 3) + padN('1', 4) + '1' + 'C' +
-    padN('20', 2) + padN('31', 2) + padN('046', 3) + ' ' +
-    '2' + padN(c.cnpj, 14) + ' '.repeat(20) +
-    padN(c.agencia, 5) + padA(c.agencia_dv, 1) +
-    padN(c.conta, 12) + padN(c.conta_dv, 1) + ' ' +
-    padA(c.nome_empresa, 30) + padA('', 40) +
-    padA(c.rua, 30) + padN(c.numero, 5) +
-    padA(c.complemento, 15) + padA(c.cidade, 20) +
-    padN(c.cep, 5) + padA('', 3) + padA(c.estado, 2) +
-    ' '.repeat(8) + ' '.repeat(10)
-  ).padEnd(240, ' ')
-}
-
-function buildSegmentoJBoleto(t: BoletoTx, seq: number): string {
-  const valorNomInt = Math.round(t.valor_nominal * 100)
-  const valorDescInt = Math.round(t.valor_desconto * 100)
-  const valorMoraInt = Math.round(t.valor_mora * 100)
-  const valorPagInt = Math.round(t.valor_pagamento * 100)
-  return (
-    padN('077', 3) + padN('1', 4) + '3' + padN(seq, 5) + 'J' + '0' + padN('00', 2) +
-    padN(t.codigo_barras, 44) + padA(t.nome_beneficiario, 30) +
-    fmtDate(t.data_vencimento) + padN(valorNomInt, 15) +
-    padN(valorDescInt, 15) + padN(valorMoraInt, 15) +
-    fmtDate(t.data_pagamento) + padN(valorPagInt, 15) +
-    padN('0', 15) + padN(t.doc_empresa, 20) + padN(t.nosso_numero, 20) +
-    ' '.repeat(8) + ' '.repeat(10)
-  ).padEnd(240, ' ')
-}
-
-function buildSegmentoJ52Boleto(t: BoletoTx, seq: number): string {
-  return (
-    padN('077', 3) + padN('1', 4) + '3' + padN(seq, 5) + 'J' + ' ' + padN('00', 2) +
-    padN('52', 2) +
-    padN('2', 1) + padN(t.pagador_documento, 15) + padA(t.pagador_nome, 40) +
-    padN(t.beneficiario_tipo, 1) + padN(t.beneficiario_documento, 15) + padA(t.beneficiario_nome, 40) +
-    ' '.repeat(56) + padN(t.doc_empresa_adicional, 53)
-  ).padEnd(240, ' ')
-}
-
-function buildTrailerLote(nTx: number, totalValor: number): string {
-  const registros = 2 * nTx + 2
-  const totalCents = Math.round(totalValor * 100)
-  return (
-    padN('077', 3) + padN('1', 4) + '5' + ' '.repeat(9) +
-    padN(registros, 6) + padN(totalCents, 18) + padN('0', 18) +
-    ' '.repeat(6) + ' '.repeat(165) + ' '.repeat(10)
-  ).padEnd(240, ' ')
-}
-
-function buildTrailerArquivo(totalLotes: number, totalRegistros: number): string {
-  return (
-    padN('077', 3) + padN('9999', 4) + '9' + ' '.repeat(9) +
-    padN(totalLotes, 6) + padN(totalRegistros, 6) +
-    ' '.repeat(211)
-  ).padEnd(240, ' ')
-}
-
-function generateCnabFile(company: Company, transactions: Tx[]): string {
-  const lines: string[] = []
-  lines.push(buildHeaderArquivo(company))
-
-  const pixTxs = transactions.filter(t => t.tipo_pagamento === '1') as PixTx[]
-  const boletoTxs = transactions.filter(t => t.tipo_pagamento === '3') as BoletoTx[]
-
-  let totalLotes = 0
-  let totalRegistros = 1 // header arquivo
-
-  if (pixTxs.length > 0) {
-    totalLotes++
-    lines.push(buildHeaderLotePix(company))
-    let seq = 1
-    let totalValorPix = 0
-    for (const t of pixTxs) {
-      lines.push(buildSegmentoAPix(t, seq++))
-      lines.push(buildSegmentoBPix(t, seq++))
-      totalValorPix += t.valor_pagamento
-    }
-    lines.push(buildTrailerLote(pixTxs.length, totalValorPix))
-    totalRegistros += 1 + 2 * pixTxs.length + 1
-  }
-
-  if (boletoTxs.length > 0) {
-    totalLotes++
-    lines.push(buildHeaderLoteBoleto(company))
-    let seq = 1
-    let totalValorBoleto = 0
-    for (const t of boletoTxs) {
-      lines.push(buildSegmentoJBoleto(t, seq++))
-      lines.push(buildSegmentoJ52Boleto(t, seq++))
-      totalValorBoleto += t.valor_pagamento
-    }
-    lines.push(buildTrailerLote(boletoTxs.length, totalValorBoleto))
-    totalRegistros += 1 + 2 * boletoTxs.length + 1
-  }
-
-  lines.push(buildTrailerArquivo(totalLotes, totalRegistros + 1))
-  return lines.join('\n')
-}
+import { linhaDigitavelParaCodigoBarras, ehTributo, dvTributoValido } from '@/lib/boleto'
+import { Company, Tx, generateCnabFile, padN } from '@/lib/cnab240'
 
 // O OCR devolve "CPF"/"CNPJ" (texto), não o código 1/2 exigido pelo CNAB.
 function beneficiarioTipo(tipo: unknown, documento: unknown): number {
@@ -346,9 +130,24 @@ export async function POST(req: NextRequest) {
     } else if (t.tipo_pagamento === 3) {
       const info = boletoInfoMap[t.pagamento_id] ?? {}
       const dataVenc = info.data_vencimento ? new Date(`${info.data_vencimento}T12:00:00`) : dataPag
-      const codigoBarras = linhaDigitavelParaCodigoBarras(String(info.codigo_barras ?? ''))
-      if (codigoBarras.length !== 44) {
+      const linha = String(info.codigo_barras ?? '')
+      const codigoBarras = linhaDigitavelParaCodigoBarras(linha)
+      if (codigoBarras.length !== 44 || (linha.replace(/\D/g, '').length === 48 && !dvTributoValido(linha))) {
         boletosSemCodigo.push(t.pagamento_id)
+        continue
+      }
+      if (ehTributo(codigoBarras)) {
+        // DAM/convênio (código começando em 8): vai em lote próprio, Segmento O
+        transactions.push({
+          tipo_pagamento: 'T',
+          data_pagamento: dataPag,
+          data_vencimento: dataVenc,
+          valor_pagamento: t.valor_pagamento,
+          doc_empresa: t.doc_empresa ?? String(t.pagamento_id),
+          codigo_barras: codigoBarras,
+          nome_concessionaria: String(info.nome_beneficiario ?? ''),
+          nosso_numero: String(info.nosso_numero ?? ''),
+        })
         continue
       }
       transactions.push({
@@ -380,7 +179,7 @@ export async function POST(req: NextRequest) {
   }
 
   const cnabContent = generateCnabFile(company, transactions)
-  const fileName = `CI240_001_${padN(String(sequencial), 7)}.rem`
+  const fileName = `CI240_001_${padN(String(sequencial), 7)}.REM` // extensão em maiúsculas, como no manual do Inter
 
   // Upload to B2
   let b2FileId: string | null = null
