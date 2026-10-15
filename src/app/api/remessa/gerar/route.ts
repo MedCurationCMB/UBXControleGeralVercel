@@ -403,11 +403,12 @@ export async function POST(req: NextRequest) {
     console.warn('B2 upload da remessa falhou:', e)
   }
 
-  // Update payment statuses to "Enviado para o banco" (2)
+  // Update payment statuses to "Enviado para o banco" (2). O trigger marcar_envio_banco grava a data;
+  // remessa_arquivo no mesmo UPDATE distingue o envio por remessa do manual.
   const pagamentoIds = txInputs.map(t => t.pagamento_id)
   await supabase
     .from('controle_pagamentos')
-    .update({ status_pagamento: 2 })
+    .update({ status_pagamento: 2, remessa_arquivo: fileName })
     .eq('projeto_id', session.projetoId)
     .in('id', pagamentoIds)
 

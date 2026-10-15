@@ -6,6 +6,7 @@ import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { RefreshCw, Plus, Pencil, Shuffle, X, Trash2, Check, Download, Upload, FileSpreadsheet, ChevronLeft, ChevronRight, Info, FileOutput } from 'lucide-react'
 import { baixarXlsx, dataParaXlsx } from '@/lib/exportar-xlsx'
 import RemessaRetornoModal from '@/components/controle-pagamentos/RemessaRetornoModal'
+import RelatorioEnviadosModal from '@/components/controle-pagamentos/RelatorioEnviadosModal'
 import VincularExtratoModal from '@/components/extratos/VincularExtratoModal'
 
 // ---- Types ----
@@ -17,6 +18,7 @@ interface Controle {
   data_pagamento: string | null; valor_pagamento: number | null
   status_pagamento: number | null; tipo_pagamento: number | null
   extrato_lancamento_id?: number | null
+  enviado_banco_em?: string | null; remessa_arquivo?: string | null
 }
 interface Pedido {
   id: number; empresa: string; categoria: string; fornecedor: string
@@ -803,6 +805,7 @@ export default function ControlePage() {
   const [showAdd, setShowAdd] = useState(false)
   const [showLote, setShowLote] = useState(false)
   const [showRemessa, setShowRemessa] = useState(false)
+  const [showEnviados, setShowEnviados] = useState(false)
 
   // Load reference data once
   useEffect(() => {
@@ -967,6 +970,10 @@ export default function ControlePage() {
           </button>
           <button onClick={() => setShowRemessa(true)} className="btn-secondary gap-1.5 text-sm">
             <FileOutput size={15} /> Remessa / Retorno
+          </button>
+          <button onClick={() => setShowEnviados(true)} className="btn-secondary gap-1.5 text-sm"
+            title="PDF único com tudo que foi enviado ao banco num dia, por remessa ou manualmente">
+            <FileOutput size={15} /> Relatório de Enviados
           </button>
           <button
             onClick={exportarPagina}
@@ -1142,6 +1149,12 @@ export default function ControlePage() {
                       <span className="badge bg-slate-100 text-slate-600 text-xs">
                         {statusNome(r.status_pagamento)}
                       </span>
+                      {r.enviado_banco_em && (
+                        <p className="text-[11px] text-slate-400 mt-0.5 whitespace-nowrap"
+                          title={r.remessa_arquivo ?? 'Marcado como enviado manualmente'}>
+                          {r.remessa_arquivo ? 'remessa' : 'manual'} · {new Date(r.enviado_banco_em).toLocaleDateString('pt-BR')}
+                        </p>
+                      )}
                     </td>
                     <td className="table-cell text-slate-500 text-xs">{tipoNome(r.tipo_pagamento)}</td>
                     <td className="table-cell">
@@ -1259,6 +1272,8 @@ export default function ControlePage() {
           onUpdated={() => reload()}
         />
       )}
+
+      {showEnviados && <RelatorioEnviadosModal onClose={() => setShowEnviados(false)} />}
     </div>
   )
 }

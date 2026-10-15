@@ -15,7 +15,7 @@ export function getSituacao(c: ControleRow): string {
   return c.data_vencimento.slice(0, 10) < hojeBrasilia() ? 'Atrasado' : 'Em dia'
 }
 
-export interface FiltrosControle { empresa: string; categoria: string; status_pagamento: string; vinculo?: string; pedido_id?: number } // vinculo: 'sem' | 'com' (só a listagem usa)
+export interface FiltrosControle { empresa: string; categoria: string; status_pagamento: string; vinculo?: string; pedido_id?: number; enviado_em?: string } // vinculo: 'sem' | 'com'; enviado_em: 'AAAA-MM-DD' (só a listagem usa)
 
 const PEDIDO_COLS = 'empresa, categoria, fornecedor, status, observacao'
 
@@ -42,5 +42,10 @@ export function consultaControles(
   if (f.pedido_id) q = q.eq('pedido_id', f.pedido_id)
   if (f.vinculo === 'sem') q = q.is('extrato_lancamento_id', null)
   if (f.vinculo === 'com') q = q.not('extrato_lancamento_id', 'is', null)
+  if (f.enviado_em && /^\d{4}-\d{2}-\d{2}$/.test(f.enviado_em)) {
+    // dia inteiro no fuso de Brasília (UTC-3, sem horário de verão)
+    const ini = new Date(`${f.enviado_em}T00:00:00-03:00`)
+    q = q.gte('enviado_banco_em', ini.toISOString()).lt('enviado_banco_em', new Date(ini.getTime() + 864e5).toISOString())
+  }
   return q
 }

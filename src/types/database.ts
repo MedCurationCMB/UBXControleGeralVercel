@@ -288,6 +288,8 @@ export interface ControlePagamento {
   tem_comprovante: boolean
   status_pagamento: number
   tipo_pagamento: number | null
+  enviado_banco_em: string | null // preenchido pelo trigger ao entrar no status 2
+  remessa_arquivo: string | null // nome do .rem; null com enviado_banco_em preenchido = envio manual
 }
 
 export interface PagamentoStatus {

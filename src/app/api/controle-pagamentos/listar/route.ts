@@ -12,6 +12,7 @@ interface Controle {
   data_pagamento: string | null; valor_pagamento: number | null
   status_pagamento: number | null; tipo_pagamento: number | null
   extrato_lancamento_id: number | null; fornecedor_beneficiario: string | null
+  enviado_banco_em: string | null; remessa_arquivo: string | null
   pedidos_solicitados: Pedido | null
 }
 
@@ -65,6 +66,7 @@ export async function GET(req: NextRequest) {
     status_pagamento: searchParams.get('status_pagamento') || '',
     vinculo: searchParams.get('vinculo') || '',
     pedido_id: parseInt(searchParams.get('pedido_id') || '') || undefined,
+    enviado_em: searchParams.get('enviado_em') || undefined,
   }
   const situacao = searchParams.get('situacao') || ''
   const isExport = searchParams.get('export') === 'true'
