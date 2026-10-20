@@ -22,7 +22,7 @@ export default function AjusteModal({ mod, pedidoId, usuario, onClose, onDone }:
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+      <div className="bg-white rounded-lg max-w-md w-full p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-slate-900">Solicitar Ajuste — Pedido #{pedidoId}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>

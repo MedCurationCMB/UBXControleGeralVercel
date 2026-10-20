@@ -304,7 +304,7 @@ function AssistenteTab() {
               <tbody>
                 {configs.map(c => (
                   <tr key={c.id} className="table-row">
-                    <td className="table-cell font-mono text-slate-500 tracking-wider">
+                    <td className="table-cell font-mono text-slate-500">
                       {'•'.repeat(Math.min(c.chave.length, 24))}
                     </td>
                     <td className="table-cell text-slate-500">{fmtData(c.created_at)}</td>
@@ -584,7 +584,7 @@ function FluxoSelector({
   if (fluxo === null) return <p className="text-slate-400 text-sm">Carregando...</p>
 
   return (
-    <div className="p-4 border border-slate-200 rounded-xl bg-slate-50 space-y-3">
+    <div className="p-4 border border-slate-200 rounded-lg bg-slate-50 space-y-3">
       <label className="label">{titulo}</label>
       <select
         className="input"
@@ -627,7 +627,7 @@ function ContratosToggle() {
   if (liberado === null) return <p className="text-slate-400 text-sm">Carregando...</p>
 
   return (
-    <div className="p-4 border border-slate-200 rounded-xl bg-slate-50 space-y-3">
+    <div className="p-4 border border-slate-200 rounded-lg bg-slate-50 space-y-3">
       <label className="label">Contratos (menu, pedidos e modelos)</label>
       <select className="input" value={liberado ? 'true' : 'false'} disabled={saving}
         onChange={e => handleChange(e.target.value === 'true')}>

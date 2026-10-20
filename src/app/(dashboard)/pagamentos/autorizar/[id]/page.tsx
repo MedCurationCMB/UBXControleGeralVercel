@@ -703,7 +703,7 @@ export default function DetalhePedidoPage() {
       </div>
 
       {pedido.ajuste_reenviado && pedido.status === 'Aguardando Autorização' && (
-        <div className="border border-blue-200 bg-blue-50 rounded-xl p-4 space-y-2">
+        <div className="border border-blue-200 bg-blue-50 rounded-lg p-4 space-y-2">
           <p className="text-sm font-semibold text-blue-800">
             Pedido reenviado após ajuste{pedido.usuario_solicitante ? ` por ${pedido.usuario_solicitante}` : ''}
           </p>

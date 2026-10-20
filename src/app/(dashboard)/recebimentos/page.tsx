@@ -34,7 +34,7 @@ function TooltipMoeda({ active, payload, label }: {
 }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-sm">
+    <div className="bg-white border border-slate-200 rounded-lg p-3 text-sm">
       <p className="font-medium text-slate-700 mb-2">{label}</p>
       {payload.map((p) => (
         <div key={p.name} className="flex items-center gap-2">

@@ -179,7 +179,7 @@ export default function ExtratosBancariosPage() {
                   >
                     <td className="table-cell">{e.conta}</td>
                     <td className="table-cell">{dataBr(e.periodo_inicio)} a {dataBr(e.periodo_fim)}</td>
-                    <td className="table-cell uppercase">{e.formato_origem}</td>
+                    <td className="table-cell">{e.formato_origem}</td>
                     <td className="table-cell text-right">{e.saldo_final != null ? brl(e.saldo_final) : '—'}</td>
                   </tr>
                 ))}
@@ -273,7 +273,7 @@ export default function ExtratosBancariosPage() {
 
       {modal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setModal(null)}>
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6 space-y-3" onClick={e => e.stopPropagation()}>
             <p className="font-semibold text-slate-900">
               Vincular a conta a {rotuloConta(modal.tipo).toLowerCase()} — {dataBr(modal.data)} · {brl(modal.valor)}
             </p>

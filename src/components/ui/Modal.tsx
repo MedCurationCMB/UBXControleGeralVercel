@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { X } from 'lucide-react'
 
 interface ModalProps {
@@ -12,12 +12,24 @@ interface ModalProps {
 }
 
 export default function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
+  const tituloId = useId()
+  const caixa = useRef<HTMLDivElement>(null)
+
+  // onClose costuma vir como arrow inline: guarda em ref para o efeito rodar só ao abrir/fechar
+  const aoFechar = useRef(onClose)
+  aoFechar.current = onClose
+
   useEffect(() => {
     if (!open) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const anterior = document.activeElement as HTMLElement | null
+    if (!caixa.current?.contains(anterior)) caixa.current?.focus({ preventScroll: true })
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') aoFechar.current() }
     window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, onClose])
+    return () => {
+      window.removeEventListener('keydown', handler)
+      anterior?.focus({ preventScroll: true })
+    }
+  }, [open])
 
   if (!open) return null
 
@@ -26,11 +38,12 @@ export default function Modal({ open, onClose, title, children, size = 'md' }: M
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
       onClick={onClose}>
-      <div className={`bg-white rounded-xl shadow-lg w-full ${maxW} max-h-[90vh] overflow-y-auto`}
+      <div ref={caixa} role="dialog" aria-modal="true" aria-labelledby={tituloId} tabIndex={-1}
+        className={`bg-background border rounded-lg w-full ${maxW} max-h-[90vh] overflow-y-auto outline-none`}
         onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between p-5 border-b border-slate-200 sticky top-0 bg-white">
-          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-          <button onClick={onClose} className="p-1 rounded hover:bg-slate-100 text-slate-500">
+        <div className="flex items-center justify-between p-5 border-b sticky top-0 bg-background">
+          <h2 id={tituloId} className="text-base font-semibold text-foreground">{title}</h2>
+          <button onClick={onClose} aria-label="Fechar" className="p-1 rounded-md text-muted-foreground hover:bg-accent">
             <X size={18} />
           </button>
         </div>

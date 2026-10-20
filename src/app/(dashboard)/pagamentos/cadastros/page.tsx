@@ -64,7 +64,7 @@ export default function CadastrosPage() {
           const Icon = c.icon
           return (
             <Link key={c.href} href={c.href}
-              className="card hover:shadow-md transition-shadow group flex flex-col gap-3">
+              className="card group flex flex-col gap-3">
               <div className={`w-10 h-10 rounded-lg ${c.color} flex items-center justify-center`}>
                 <Icon size={20} />
               </div>

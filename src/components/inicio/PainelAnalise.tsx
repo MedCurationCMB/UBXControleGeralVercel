@@ -104,7 +104,7 @@ export default function PainelAnalise({ alvo, usuario, onClose, onDone }: {
   return (
     <>
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
-      <aside className="bg-white w-full max-w-md h-full flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>
+      <aside className="bg-white w-full max-w-md h-full flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 p-5 border-b border-slate-200">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">{nome}</h2>

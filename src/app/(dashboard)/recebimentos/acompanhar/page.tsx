@@ -572,7 +572,7 @@ export default function AcompanharRecebimentosPage() {
                             onDragStart={arrastavel ? () => setDraggingId(p.id) : undefined}
                             onDragEnd={() => setDraggingId(null)}
                             onClick={() => router.push(`/recebimentos/acompanhar/${p.id}`)}
-                            className={`bg-white rounded-md border border-slate-200 p-2.5 text-sm shadow-sm hover:shadow cursor-pointer ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''} ${draggingId === p.id ? 'opacity-40' : ''}`}
+                            className={`bg-white rounded-md border border-slate-200 p-2.5 text-sm cursor-pointer ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''} ${draggingId === p.id ? 'opacity-40' : ''}`}
                           >
                             <div className="flex items-center gap-1">
                               <p className="font-mono text-xs text-slate-400">#{p.id}</p>

@@ -252,7 +252,7 @@ function ModelosContratoPageConteudo() {
       {/* Delete confirm */}
       {deleteTarget && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4">
+          <div className="bg-white rounded-lg max-w-sm w-full p-6 space-y-4">
             <h3 className="font-semibold text-slate-900">Excluir Modelo</h3>
             <p className="text-sm text-slate-600">
               Tem certeza que deseja excluir o modelo <strong>"{deleteTarget.nome}"</strong>?

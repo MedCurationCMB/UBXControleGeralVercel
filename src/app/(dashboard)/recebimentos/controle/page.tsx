@@ -110,7 +110,7 @@ function EditModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4">
+      <div className="bg-white rounded-lg max-w-lg w-full p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">
             Editar Recebimento #{row.id} — Pedido #{row.pedido_id}
@@ -308,7 +308,7 @@ function AdicionarModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-lg max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Adicionar Recebimento</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
@@ -542,7 +542,7 @@ function AlterarStatusLoteModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-lg max-w-3xl w-full p-6 space-y-4 max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between shrink-0">
           <h2 className="text-lg font-semibold text-slate-900">Alterar Status / Vencimento em Lote</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
@@ -919,21 +919,21 @@ export default function ControleRecebimentosPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total a Receber</p>
+          <p className="text-xs font-medium text-slate-500">Total a Receber</p>
           <p className="text-xl font-bold text-slate-900 mt-1">{fmtMoeda(totalAReceber)}</p>
         </div>
         <div className="card">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total Recebido</p>
+          <p className="text-xs font-medium text-slate-500">Total Recebido</p>
           <p className="text-xl font-bold text-green-700 mt-1">{fmtMoeda(totalRecebido)}</p>
         </div>
         <div className="card">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Saldo Restante</p>
+          <p className="text-xs font-medium text-slate-500">Saldo Restante</p>
           <p className={`text-xl font-bold mt-1 ${saldoRestante < 0 ? 'text-red-600' : 'text-slate-900'}`}>
             {fmtMoeda(saldoRestante)}
           </p>
         </div>
         <div className="card">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total Vencido</p>
+          <p className="text-xs font-medium text-slate-500">Total Vencido</p>
           <p className="text-xl font-bold text-red-600 mt-1">{fmtMoeda(totalVencido)}</p>
           <p className="text-xs text-red-500 mt-0.5">{vencidosCount} parcela(s) vencida(s)</p>
         </div>

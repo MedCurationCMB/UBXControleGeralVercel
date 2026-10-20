@@ -3,41 +3,69 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --canvas: 216 40% 96%;
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 220 70% 13%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 37% 92%;
+    --secondary-foreground: 220 70% 13%;
+    --muted: 220 33% 96%;
+    --muted-foreground: 218 19% 35%;
+    --accent: 220 37% 92%;
+    --accent-foreground: 220 70% 13%;
+    --destructive: 0 57% 40%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 27% 87%;
+    --input: 220 22% 82%;
+    --ring: 220 70% 13%;
+    --radius: 0.5rem;
+  }
+
   * {
     box-sizing: border-box;
-    border-color: theme('colors.slate.200');
+    @apply border-border;
+  }
+
+  html,
+  body {
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
-    @apply bg-slate-50 text-slate-900;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    @apply bg-canvas text-foreground;
+    overflow-x: hidden;
   }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: #F1F4F9; }
+  ::-webkit-scrollbar-thumb { background: #AEB9D3; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #6C7FAF; }
+
+  /* Recharts: o SVG recebe tabindex=0 e no iOS isso dá zoom e contorno azul ao tocar. */
+  .recharts-wrapper, .recharts-surface { touch-action: manipulation; }
+  .recharts-surface:focus { outline: none; }
 }
 
 @layer components {
-  .sidebar-link {
-    @apply flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-400
-           hover:bg-slate-800 hover:text-white transition-colors duration-150;
-  }
-
-  .sidebar-link.active {
-    @apply bg-slate-800 text-white;
-  }
-
-  .sidebar-link-group {
-    @apply text-xs font-semibold uppercase tracking-wider text-slate-600 px-3 pt-4 pb-1;
-  }
-
   .page-title {
-    @apply text-2xl font-bold text-slate-900;
+    @apply text-xl font-semibold text-foreground;
   }
 
   .page-subtitle {
-    @apply text-sm text-slate-500 mt-1;
+    @apply text-sm text-muted-foreground mt-1;
   }
 
+  /* Sem sombra: a separação é a borda de 1px. */
   .card {
-    @apply bg-white border border-slate-200 rounded-lg p-5 shadow-sm;
+    @apply bg-card border rounded-lg p-5;
   }
 
   .stat-card {
@@ -45,53 +73,69 @@
   }
 
   .stat-value {
-    @apply text-3xl font-bold text-slate-900;
+    @apply text-3xl font-semibold text-foreground;
   }
 
   .stat-label {
-    @apply text-sm text-slate-500;
+    @apply text-sm text-muted-foreground;
   }
 
   .btn-primary {
-    @apply inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white
-           rounded-md text-sm font-medium hover:bg-primary-600 transition-colors
+    @apply inline-flex items-center justify-center gap-2 h-9 px-4 bg-primary text-primary-foreground
+           rounded-md text-sm font-medium whitespace-nowrap hover:bg-primary/90 transition-colors
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200
-           text-slate-700 rounded-md text-sm font-medium hover:bg-slate-50 transition-colors;
+    @apply inline-flex items-center justify-center gap-2 h-9 px-4 bg-background border border-input
+           text-primary rounded-md text-sm font-medium whitespace-nowrap hover:bg-accent transition-colors
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
+  /* Vermelho sólido só na confirmação de exclusão (é onde o .btn-danger é usado). */
   .btn-danger {
-    @apply inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white
-           rounded-md text-sm font-medium hover:bg-red-700 transition-colors;
+    @apply inline-flex items-center justify-center gap-2 h-9 px-4 bg-destructive text-destructive-foreground
+           rounded-md text-sm font-medium whitespace-nowrap hover:bg-destructive/90 transition-colors
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive focus-visible:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap;
   }
 
   .input {
-    @apply block w-full rounded-md border border-slate-300 px-3 py-2 text-sm
-           placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500
-           focus:border-primary-500 disabled:bg-slate-50 disabled:cursor-not-allowed;
+    @apply block w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm
+           placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
+           disabled:bg-muted disabled:cursor-not-allowed;
+  }
+
+  /* textarea e select múltiplo não têm altura fixa */
+  textarea.input, select[multiple].input {
+    @apply h-auto py-2;
+  }
+
+  /* iOS dá zoom em campo com fonte < 16px */
+  @media (max-width: 640px) {
+    .input { font-size: 16px; }
   }
 
   .label {
-    @apply block text-sm font-medium text-slate-700 mb-1;
+    @apply block text-sm font-medium text-foreground mb-1.5;
   }
 
   .table-header {
-    @apply bg-slate-50 text-xs font-medium text-slate-500 uppercase tracking-wider;
+    @apply bg-muted text-xs font-medium text-muted-foreground;
   }
 
   .table-row {
-    @apply border-b border-slate-100 hover:bg-slate-50 transition-colors;
+    @apply border-b hover:bg-muted/50 transition-colors;
   }
 
   .table-cell {
-    @apply px-4 py-3 text-sm text-slate-700;
+    @apply px-3 py-2.5 text-sm text-foreground;
   }
 
   .scrollbar-none {

@@ -90,7 +90,7 @@ export default function SearchableSelect({ value, onChange, options, placeholder
         </button>
       )}
       {open && !disabled && (
-        <ul className="absolute z-10 mt-1 w-full max-h-60 overflow-auto rounded-md border border-slate-200 bg-white shadow-lg text-sm">
+        <ul className="absolute z-10 mt-1 w-full max-h-60 overflow-auto rounded-md border border-slate-200 bg-white text-sm">
           <li
             className={`px-3 py-2 cursor-pointer hover:bg-slate-50 ${value === '' ? 'text-primary-600 font-medium' : 'text-slate-500'}`}
             onMouseDown={e => { e.preventDefault(); selectOption('') }}

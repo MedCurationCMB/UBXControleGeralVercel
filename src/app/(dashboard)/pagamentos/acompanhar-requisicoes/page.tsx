@@ -285,7 +285,7 @@ export default function AcompanharRequisicoesPage() {
                         onDragStart={arrastavel ? () => setDraggingId(req.id) : undefined}
                         onDragEnd={() => setDraggingId(null)}
                         onClick={() => router.push(`/pagamentos/acompanhar-requisicoes/${req.id}`)}
-                        className={`bg-white rounded-md border border-slate-200 p-2.5 text-sm shadow-sm hover:shadow cursor-pointer ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''} ${draggingId === req.id ? 'opacity-40' : ''}`}
+                        className={`bg-white rounded-md border border-slate-200 p-2.5 text-sm cursor-pointer ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''} ${draggingId === req.id ? 'opacity-40' : ''}`}
                       >
                         <p className="font-mono text-xs text-slate-400">#{req.id}</p>
                         <p className="font-medium text-slate-800 truncate">{req.empresa}</p>

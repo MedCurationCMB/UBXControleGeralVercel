@@ -87,7 +87,7 @@ const sections: Section[] = [
 
 function Card({ card }: { card: NavCard }) {
   const Icon = card.icon
-  const base = 'flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 bg-white hover:border-primary-400 hover:bg-primary-50 hover:text-primary-700 transition-all text-sm font-medium text-slate-700 shadow-sm'
+  const base = 'flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 bg-white hover:border-primary-400 hover:bg-primary-50 hover:text-primary-700 transition-all text-sm font-medium text-slate-700'
 
   if (card.external) {
     return (
@@ -139,7 +139,7 @@ export default function AtalhosPage() {
           href="http://ajudasistemacontrole.cmbcapital.com.br/"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 bg-white hover:border-primary-400 hover:bg-primary-50 hover:text-primary-700 transition-all text-sm font-medium text-slate-700 shadow-sm"
+          className="inline-flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 bg-white hover:border-primary-400 hover:bg-primary-50 hover:text-primary-700 transition-all text-sm font-medium text-slate-700"
         >
           <BookOpen size={16} className="shrink-0 text-slate-400" />
           Acessar Manual de Instruções Completo

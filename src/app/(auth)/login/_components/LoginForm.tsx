@@ -102,7 +102,7 @@ export default function LoginForm() {
           <Image src="/assets/logo.png" alt="CMB Capital" width={160} height={60} className="object-contain" />
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
           <div className="flex border-b border-slate-200">
             {(['login', 'cadastro', 'recuperar'] as const).map((t) => (
               <button

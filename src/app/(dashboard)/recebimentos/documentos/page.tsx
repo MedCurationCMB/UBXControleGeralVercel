@@ -217,15 +217,15 @@ export default function DocumentosRecebimentosPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <div className="card">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total de Documentos</p>
+          <p className="text-xs font-medium text-slate-500">Total de Documentos</p>
           <p className="text-xl font-bold text-slate-900 mt-1">{totalDocs}</p>
         </div>
         <div className="card">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Tipo Mais Comum</p>
+          <p className="text-xs font-medium text-slate-500">Tipo Mais Comum</p>
           <p className="text-base font-bold text-slate-900 mt-1 truncate">{tipoMaisComum}</p>
         </div>
         <div className="card">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Pedidos Únicos</p>
+          <p className="text-xs font-medium text-slate-500">Pedidos Únicos</p>
           <p className="text-xl font-bold text-slate-900 mt-1">
             {new Set(filtered.map(d => d.pedido_id).filter(Boolean)).size}
           </p>

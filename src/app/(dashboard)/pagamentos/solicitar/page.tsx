@@ -69,7 +69,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-5">
+      <div className="bg-white rounded-lg max-w-lg w-full p-6 space-y-5">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Importação em Lote de Pedidos</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">

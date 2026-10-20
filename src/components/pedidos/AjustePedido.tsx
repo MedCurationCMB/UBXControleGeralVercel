@@ -197,7 +197,7 @@ export default function AjustePedido({ mod, pedido, parte, fluxo, user, onChange
   const editTotal = editPeriodos.reduce((s, p) => s + (parseFloat(p.valor.replace(',', '.')) || 0), 0)
 
   return (
-    <div className="border border-orange-200 bg-orange-50 rounded-xl p-5 space-y-4">
+    <div className="border border-orange-200 bg-orange-50 rounded-lg p-5 space-y-4">
       <div className="flex items-start gap-3">
         <AlertTriangle size={20} className="text-orange-500 shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
@@ -208,7 +208,7 @@ export default function AjustePedido({ mod, pedido, parte, fluxo, user, onChange
 
       {historico.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-orange-800 uppercase tracking-wide">Histórico: comentários e alterações</p>
+          <p className="text-xs font-semibold text-orange-800">Histórico: comentários e alterações</p>
           {historico.map(c => (
             <div key={c.id} className="bg-white border border-orange-200 rounded-lg px-4 py-3">
               <div className="flex items-center justify-between mb-1">
@@ -233,7 +233,7 @@ export default function AjustePedido({ mod, pedido, parte, fluxo, user, onChange
         </button>
       ) : (
         <div className="bg-white border border-orange-200 rounded-lg p-4 space-y-3">
-          <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Editar Dados do Pedido</p>
+          <p className="text-xs font-semibold text-slate-700">Editar Dados do Pedido</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="label">Empresa</label>

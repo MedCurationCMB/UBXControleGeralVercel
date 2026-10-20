@@ -161,7 +161,7 @@ export default function InicioPage() {
           const Icon = a.icon
           return (
             <Link key={a.href} href={a.href}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 bg-white hover:border-primary-400 hover:bg-primary-50 text-sm font-medium text-slate-700 shadow-sm transition-all">
+              className="flex items-center gap-3 px-4 py-3 rounded-lg border border-slate-200 bg-white hover:border-primary-400 hover:bg-primary-50 text-sm font-medium text-slate-700 transition-all">
               <Icon size={18} className="text-primary-600 shrink-0" /> {a.label}
             </Link>
           )
