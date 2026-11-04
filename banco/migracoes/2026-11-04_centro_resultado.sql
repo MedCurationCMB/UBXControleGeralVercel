@@ -7,7 +7,11 @@
 -- empresa_copiar_categorias(origem_id, destino_id): copia categorias de pagamentos E de recebimentos. So acrescenta; as que o destino
 --   ja tem sao ignoradas. Nada e removido.
 
-CREATE OR REPLACE FUNCTION public.empresa_renomear(p_id integer, p_novo text) RETURNS text LANGUAGE plpgsql AS $$
+-- versao anterior (id integer) nunca funcionou: empresas.id e uuid
+DROP FUNCTION IF EXISTS public.empresa_renomear(integer, text);
+DROP FUNCTION IF EXISTS public.empresa_copiar_categorias(integer, integer);
+
+CREATE OR REPLACE FUNCTION public.empresa_renomear(p_id uuid, p_novo text) RETURNS text LANGUAGE plpgsql AS $$
 DECLARE v_proj integer; v_antigo text; v_novo text := btrim(coalesce(p_novo, ''));
 BEGIN
   IF NOT public.app_admin_projeto() THEN RAISE EXCEPTION 'Somente administrador pode editar o nome do centro de resultado.'; END IF;
@@ -24,7 +28,7 @@ BEGIN
   RETURN v_novo;
 END $$;
 
-CREATE OR REPLACE FUNCTION public.empresa_copiar_categorias(p_origem integer, p_destino integer) RETURNS jsonb LANGUAGE plpgsql AS $$
+CREATE OR REPLACE FUNCTION public.empresa_copiar_categorias(p_origem uuid, p_destino uuid) RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE o record; d record; v_pag int; v_rec int;
 BEGIN
   SELECT projeto_id, empresa INTO o FROM public.empresas WHERE id = p_origem;
@@ -43,4 +47,4 @@ BEGIN
   RETURN jsonb_build_object('pagamentos', v_pag, 'recebimentos', v_rec);
 END $$;
 
-GRANT EXECUTE ON FUNCTION public.empresa_renomear(integer, text), public.empresa_copiar_categorias(integer, integer) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.empresa_renomear(uuid, text), public.empresa_copiar_categorias(uuid, uuid) TO anon, authenticated;

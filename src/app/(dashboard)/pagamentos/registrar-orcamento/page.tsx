@@ -77,7 +77,7 @@ export default function RegistrarOrcamentoPage() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Registrar Orçamento</h1>
-        <p className="page-subtitle">Registre orçamentos mensais por empresa e categoria</p>
+        <p className="page-subtitle">Registre orçamentos mensais por centro de resultado e categoria</p>
       </div>
 
       {success && (
@@ -148,7 +148,7 @@ export default function RegistrarOrcamentoPage() {
         <h3 className="text-sm font-semibold text-blue-800 mb-2">Como funciona</h3>
         <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
           <li>O orçamento registrado atualiza automaticamente o controle de orçamento do mês/ano.</li>
-          <li>Se já existir um orçamento para a mesma empresa/categoria/mês/ano, o valor será atualizado.</li>
+          <li>Se já existir um orçamento para a mesmo centro de resultado/categoria/mês/ano, o valor será atualizado.</li>
           <li>O saldo é calculado como: Orçado − Total de pedidos solicitados.</li>
         </ul>
       </div>

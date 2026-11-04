@@ -8,7 +8,7 @@ CREATE FUNCTION pg_temp.erro(p_sql text) RETURNS text LANGUAGE plpgsql AS $f$
 BEGIN EXECUTE p_sql; RETURN NULL; EXCEPTION WHEN OTHERS THEN RETURN SQLERRM; END $f$;
 
 DO $$
-DECLARE a int; b int; f1 text; ped bigint; r jsonb;
+DECLARE a uuid; b uuid; f1 text; ped bigint; r jsonb;
 BEGIN
   PERFORM set_config('request.jwt.claims', '{"usuario_id":1}', true);   -- usuario 1 = owner
   PERFORM set_config('request.headers', '{"x-projeto-id":"1"}', true);
@@ -31,7 +31,7 @@ BEGIN
   ASSERT (r->>'pagamentos')::int = 1 AND (r->>'recebimentos')::int = 1, 'copia: ' || r::text;
   ASSERT (SELECT count(*) FROM categorias WHERE empresa = 'ZZ_CR_B') = 2 AND (SELECT count(*) FROM categorias WHERE empresa = 'ZZ_CR_A') = 2, 'copia nao pode remover nem duplicar';
   ASSERT (empresa_copiar_categorias(a, b)->>'pagamentos')::int = 0, 'segunda copia nao deveria inserir nada';
-  ASSERT pg_temp.erro(format('SELECT empresa_copiar_categorias(%s, %s)', a, a)) IS NOT NULL, 'copiar para o proprio centro deveria falhar';
+  ASSERT pg_temp.erro(format('SELECT empresa_copiar_categorias(%L, %L)', a, a)) IS NOT NULL, 'copiar para o proprio centro deveria falhar';
 
   -- renomear: a cascata leva categoria, orcamento, pedido e fluxo; o consumo continua o mesmo
   ASSERT empresa_renomear(a, '  ZZ_CR_NOVO ') = 'ZZ_CR_NOVO', 'renomear deveria devolver o nome sem espacos';
@@ -42,8 +42,8 @@ BEGIN
   ASSERT (SELECT count(*) FROM controle_orcamento WHERE empresa IN ('ZZ_CR_A', 'ZZ_CR_NOVO') AND categoria = 'ZZ_CAT_1') = 1, 'orcamento duplicado pela cascata';
 
   -- duplicado e vazio
-  ASSERT pg_temp.erro(format('SELECT empresa_renomear(%s, ''ZZ_CR_B'')', a)) LIKE 'Já existe%', 'nome duplicado deveria falhar';
-  ASSERT pg_temp.erro(format('SELECT empresa_renomear(%s, ''  '')', a)) LIKE 'Informe%', 'nome vazio deveria falhar';
+  ASSERT pg_temp.erro(format('SELECT empresa_renomear(%L, ''ZZ_CR_B'')', a)) LIKE 'Já existe%', 'nome duplicado deveria falhar';
+  ASSERT pg_temp.erro(format('SELECT empresa_renomear(%L, ''  '')', a)) LIKE 'Informe%', 'nome vazio deveria falhar';
 END $$;
 
 ROLLBACK;

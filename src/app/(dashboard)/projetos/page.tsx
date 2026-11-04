@@ -59,7 +59,7 @@ export default function ProjetosPage() {
     const { ok, erro } = await chamar('/api/admin/projetos', 'POST', { nome: novoNome })
     if (!ok) return aviso('erro', erro)
     setNovoNome('')
-    aviso('ok', 'Projeto criado. Adicione os usuários e cadastre empresas, categorias e orçamento nas telas do projeto.')
+    aviso('ok', 'Projeto criado. Adicione os usuários e cadastre centros de resultado, categorias e orçamento nas telas do projeto.')
     carregarProjetos()
   }
 

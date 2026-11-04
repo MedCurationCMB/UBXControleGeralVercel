@@ -6,13 +6,13 @@ import { useSession } from '@/hooks/useSession'
 import Modal from '@/components/ui/Modal'
 import { RefreshCw, Building2, Pencil } from 'lucide-react'
 
-interface Centro { id: number; empresa: string }
+interface Centro { id: string; empresa: string }
 type Msg = { type: 'success' | 'error'; text: string }
 
 const resumoCopia = (r: { pagamentos: number; recebimentos: number }) =>
   `${r.pagamentos} categoria(s) de pagamentos e ${r.recebimentos} de recebimentos copiadas.`
 
-function CopiarDe({ centros, excluir, value, onChange }: { centros: Centro[]; excluir?: number; value: string; onChange: (v: string) => void }) {
+function CopiarDe({ centros, excluir, value, onChange }: { centros: Centro[]; excluir?: string; value: string; onChange: (v: string) => void }) {
   return (
     <div>
       <label className="label">Copiar categorias de (opcional)</label>
@@ -48,8 +48,8 @@ export default function CentrosResultadoPage() {
 
   useEffect(() => { load() }, [load])
 
-  const copiar = async (origem: string, destino: number) => {
-    const { data, error } = await supabase.rpc('empresa_copiar_categorias', { p_origem: Number(origem), p_destino: destino })
+  const copiar = async (origem: string, destino: string) => {
+    const { data, error } = await supabase.rpc('empresa_copiar_categorias', { p_origem: origem, p_destino: destino })
     return { erro: error?.message, texto: error ? '' : resumoCopia(data) }
   }
 

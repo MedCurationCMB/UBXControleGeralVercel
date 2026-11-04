@@ -91,7 +91,7 @@ export default function CategoriasPage() {
       </div>
 
       <div className="flex items-center gap-3">
-        <label className="label mb-0 whitespace-nowrap">Filtrar empresa:</label>
+        <label className="label mb-0 whitespace-nowrap">Filtrar centro de resultado:</label>
         <select className="input max-w-xs" value={filtroEmpresa} onChange={e => setFiltroEmpresa(e.target.value)}>
           <option value="">Todas</option>
           {empresas.map(e => <option key={e.id} value={e.empresa}>{e.empresa}</option>)}

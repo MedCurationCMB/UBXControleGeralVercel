@@ -184,7 +184,7 @@ export default function RegistrarOrcamentoReceitaPage() {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">Registrar Orçamento de Venda</h1>
-          <p className="page-subtitle">Registre metas mensais de receita por empresa e categoria</p>
+          <p className="page-subtitle">Registre metas mensais de receita por centro de resultado e categoria</p>
         </div>
         <button onClick={() => setShowImport(true)} className="btn-secondary gap-1.5 text-sm">
           <Upload size={15} /> Importar em Lote
@@ -269,7 +269,7 @@ export default function RegistrarOrcamentoReceitaPage() {
         <h3 className="text-sm font-semibold text-blue-800 mb-2">Como funciona</h3>
         <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
           <li>O orçamento registrado define a meta de recebimento para o período.</li>
-          <li>Se já existir um orçamento para a mesma empresa/categoria/mês/ano, o novo valor passa a ser considerado.</li>
+          <li>Se já existir um orçamento para a mesmo centro de resultado/categoria/mês/ano, o novo valor passa a ser considerado.</li>
           <li>O saldo é calculado como: Orçado − Total de pedidos de venda solicitados.</li>
         </ul>
       </div>

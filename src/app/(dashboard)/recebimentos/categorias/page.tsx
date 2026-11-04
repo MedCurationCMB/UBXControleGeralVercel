@@ -46,7 +46,7 @@ function ImportModal({ open, onClose, empresas, onDone }: {
     const empresasValidas = new Set(empresas.map(e => e.empresa))
     const invalidas = [...new Set(preview.map(r => r.empresa))].filter(e => !empresasValidas.has(e))
     if (invalidas.length > 0) {
-      setError(`Empresas não encontradas: ${invalidas.join(', ')}`)
+      setError(`Centros de resultado não encontrados: ${invalidas.join(', ')}`)
       setImporting(false); return
     }
 
@@ -89,7 +89,7 @@ function ImportModal({ open, onClose, empresas, onDone }: {
           <p className="font-semibold">Instruções:</p>
           <ol className="list-decimal list-inside space-y-0.5 text-xs">
             <li>Baixe o template Excel abaixo</li>
-            <li>Preencha empresa e categoria (empresa deve existir no sistema)</li>
+            <li>Preencha centro de resultado e categoria (o centro deve existir no sistema)</li>
             <li>Não é possível importar categorias duplicadas</li>
             <li>Faça upload e confirme a importação</li>
           </ol>
@@ -238,7 +238,7 @@ export default function CategoriasRecebimentosPage() {
       </div>
 
       <div className="flex items-center gap-3">
-        <label className="label mb-0 whitespace-nowrap">Filtrar empresa:</label>
+        <label className="label mb-0 whitespace-nowrap">Filtrar centro de resultado:</label>
         <select className="input max-w-xs" value={filtroEmpresa} onChange={e => setFiltroEmpresa(e.target.value)}>
           <option value="">Todas</option>
           {empresas.map(e => <option key={e.id} value={e.empresa}>{e.empresa}</option>)}

@@ -305,7 +305,7 @@ function EmpresasTab() {
 
       {/* Add row */}
       <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
-        <p className="text-xs font-semibold text-slate-600">Nova empresa</p>
+        <p className="text-xs font-semibold text-slate-600">Novo centro de resultado</p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
           {cols.map(c => (
             <div key={c.key}>
@@ -357,7 +357,7 @@ function EmpresasTab() {
 
       <Confirm open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete}
         title="Excluir Empresa"
-        message={`Excluir a empresa "${deleteTarget?.empresa}"? Isso pode impactar categorias e pedidos vinculados.`}
+        message={`Excluir o centro de resultado "${deleteTarget?.empresa}"? Isso pode impactar categorias e pedidos vinculados.`}
         confirmLabel="Excluir" loading={deleting} />
     </div>
   )
@@ -532,7 +532,7 @@ export default function ControleCadastrosRecebimentosPage() {
     <div className="space-y-5">
       <div>
         <h1 className="page-title">Controle de Cadastros</h1>
-        <p className="page-subtitle">Recebimentos — gerenciamento de clientes, empresas e categorias</p>
+        <p className="page-subtitle">Recebimentos — gerenciamento de clientes, centros de resultado e categorias</p>
       </div>
 
       {/* Tabs */}

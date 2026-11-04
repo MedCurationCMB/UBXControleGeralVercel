@@ -674,7 +674,7 @@ function AlterarStatusLoteModal({
 
         <div className="flex items-start gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-2.5 shrink-0">
           <Info size={13} className="shrink-0 mt-0.5 text-slate-400" />
-          <span>Operando sobre todos os pagamentos dos filtros da tela (não só a página aberta). Para restringir, feche e aplique filtros (empresa, status, pedido...) antes de abrir.</span>
+          <span>Operando sobre todos os pagamentos dos filtros da tela (não só a página aberta). Para restringir, feche e aplique filtros (centro de resultado, status, pedido...) antes de abrir.</span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 shrink-0">
