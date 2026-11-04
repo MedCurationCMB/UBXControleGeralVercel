@@ -25,13 +25,13 @@ const STORAGE_KEY = 'acompanhar-recebimentos-v1'
 
 type Ordem = 'recentes' | 'antigos' | 'valor_desc' | 'valor_asc' | 'empresa' | 'parte'
 
-// "Empresa" é o centro de custo do pedido.
+// "Empresa" é o centro de resultado do pedido.
 const ORDEM_SQL: Record<Ordem, { col: string; asc: boolean; label: string }> = {
   recentes:   { col: 'data_solicitacao', asc: false, label: 'Data: mais recente → mais antigo' },
   antigos:    { col: 'data_solicitacao', asc: true,  label: 'Data: mais antigo → mais recente' },
   valor_desc: { col: 'valor_pedido',     asc: false, label: 'Valor: maior → menor' },
   valor_asc:  { col: 'valor_pedido',     asc: true,  label: 'Valor: menor → maior' },
-  empresa:    { col: 'empresa',          asc: true,  label: 'Centro de custo (A–Z)' },
+  empresa:    { col: 'empresa',          asc: true,  label: 'Centro de resultado (A–Z)' },
   parte:      { col: 'cliente',        asc: true,  label: 'Cliente (A–Z)' },
 }
 
@@ -283,7 +283,7 @@ export default function AcompanharRecebimentosPage() {
   }
 
   const exportCSV = () => {
-    const header = 'ID,Empresa,Categoria,Cliente,Valor,Status,Data Solicitação,Cancelado'
+    const header = 'ID,Centro de Resultado,Categoria,Cliente,Valor,Status,Data Solicitação,Cancelado'
     const rows = pedidos.map(p =>
       `${p.id},"${p.empresa}","${p.categoria}","${p.cliente}",${p.valor_pedido},"${p.status}","${fmtData(p.data_solicitacao)}","${p.cancelado ? 'Sim' : 'Não'}"`
     )
@@ -326,7 +326,7 @@ export default function AcompanharRecebimentosPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">Acompanhar Pedidos</h1>
-          <p className="page-subtitle">Todos os pedidos de recebimento solicitados</p>
+          <p className="page-subtitle">Todos os pedidos de venda solicitados</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-slate-200 overflow-hidden">
@@ -372,7 +372,7 @@ export default function AcompanharRecebimentosPage() {
           </div>
           <select className="input" value={filtroEmpresa}
             onChange={e => setFiltroEmpresa(e.target.value)} disabled={!!activeSearchId}>
-            <option value="">Todas as empresas</option>
+            <option value="">Todos os centros de resultado</option>
             {empresas.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
           <select className="input" value={filtroCategoria}
@@ -440,7 +440,7 @@ export default function AcompanharRecebimentosPage() {
                   <thead>
                     <tr className="table-header">
                       <th className="table-cell font-medium">ID</th>
-                      <th className="table-cell font-medium">Empresa</th>
+                      <th className="table-cell font-medium">Centro de Resultado</th>
                       <th className="table-cell font-medium">Categoria</th>
                       <th className="table-cell font-medium">Cliente</th>
                       <th className="table-cell font-medium text-right">Valor</th>
@@ -476,7 +476,7 @@ export default function AcompanharRecebimentosPage() {
                           <div className="flex items-center gap-2">
                             {p.status === 'Autorizado' && !p.cancelado && (
                               <button onClick={e => { e.stopPropagation(); router.push(`/recebimentos/acompanhar/${p.id}?realocar=1`) }}
-                                className="p-1.5 rounded hover:bg-slate-100 text-slate-500" title="Realocar centro de custo">
+                                className="p-1.5 rounded hover:bg-slate-100 text-slate-500" title="Realocar centro de resultado">
                                 <Shuffle size={14} />
                               </button>
                             )}

@@ -86,7 +86,7 @@ const navGroups: NavGroup[] = [
   {
     title: 'Configurações',
     items: [
-      { label: 'Empresas / CC', href: '/empresas', icon: Building2 },
+      { label: 'Centros de Resultado', href: '/empresas', icon: Building2 },
       { label: 'Extratos Bancários', href: '/extratos-bancarios', icon: Landmark },
       { label: 'Relatórios', href: '/relatorios', icon: BarChart3, ownerOnly: true },
       { label: 'Projetos e Acessos', href: '/projetos', icon: Layers, adminOnly: true },

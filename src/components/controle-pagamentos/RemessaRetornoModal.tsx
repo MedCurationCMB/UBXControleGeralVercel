@@ -544,7 +544,7 @@ export default function RemessaRetornoModal({ onClose, onUpdated }: {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
                       <select className="input text-xs" value={filtroEmpresa}
                         onChange={e => { setFiltroEmpresa(e.target.value); setFiltroFornecedor('') }}>
-                        <option value="">Todas as empresas</option>
+                        <option value="">Todos os centros de resultado</option>
                         {empresasOpts.map(e => <option key={e} value={e}>{e}</option>)}
                       </select>
                       <select className="input text-xs" value={filtroFornecedor}

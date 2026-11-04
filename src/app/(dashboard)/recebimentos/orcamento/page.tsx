@@ -176,10 +176,10 @@ function RegistrarModal({
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="label">Empresa *</label>
+                <label className="label">Centro de Resultado *</label>
                 <select className="input" value={empresa}
                   onChange={e => { setEmpresa(e.target.value); setCategoria('') }}>
-                  <option value="">Selecione uma empresa...</option>
+                  <option value="">Selecione um centro de resultado...</option>
                   {empresas.map(e => <option key={e} value={e}>{e}</option>)}
                 </select>
               </div>
@@ -234,7 +234,7 @@ function RegistrarModal({
           <div className="space-y-4">
             <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded p-3 space-y-1">
               <p className="font-medium text-slate-800">Colunas obrigatórias:</p>
-              <p>• <strong>Empresa</strong>, <strong>Categoria</strong>: devem existir no cadastro de receitas</p>
+              <p>• <strong>Centro de Resultado</strong>, <strong>Categoria</strong>: devem existir no cadastro de receitas</p>
               <p>• <strong>Mês</strong>: número de 1 a 12</p>
               <p>• <strong>Ano</strong>: entre 2025 e 2050</p>
               <p>• <strong>Valor do Orçamento</strong>: separador decimal é ponto (10000.00)</p>
@@ -332,7 +332,7 @@ export default function OrcamentoVendasPage() {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">Orçamento de Vendas</h1>
-          <p className="page-subtitle">Consulte e registre orçamentos por empresa e categoria</p>
+          <p className="page-subtitle">Consulte e registre orçamentos por centro de resultado e categoria</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowRegister(true)} className="btn-primary gap-1.5 text-sm">
@@ -348,7 +348,7 @@ export default function OrcamentoVendasPage() {
       <div className="card">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Filtrar por Empresa</label>
+            <label className="label">Filtrar por Centro de Resultado</label>
             <select className="input" value={filtroEmpresa}
               onChange={e => { setFiltroEmpresa(e.target.value); setFiltroCategoria('') }}>
               <option value="">Todas</option>
@@ -380,7 +380,7 @@ export default function OrcamentoVendasPage() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10">
                   <tr className="table-header">
-                    <th className="table-cell font-medium text-left">Empresa</th>
+                    <th className="table-cell font-medium text-left">Centro de Resultado</th>
                     <th className="table-cell font-medium text-left">Categoria</th>
                     <th className="table-cell font-medium text-center">Mês</th>
                     <th className="table-cell font-medium text-center">Ano</th>
@@ -421,7 +421,7 @@ export default function OrcamentoVendasPage() {
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10">
                   <tr className="table-header">
-                    <th className="table-cell font-medium text-left">Empresa</th>
+                    <th className="table-cell font-medium text-left">Centro de Resultado</th>
                     <th className="table-cell font-medium text-left">Categoria</th>
                     <th className="table-cell font-medium text-center">Mês</th>
                     <th className="table-cell font-medium text-center">Ano</th>

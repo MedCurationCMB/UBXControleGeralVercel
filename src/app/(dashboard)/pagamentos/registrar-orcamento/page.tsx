@@ -47,7 +47,7 @@ export default function RegistrarOrcamentoPage() {
     e.preventDefault()
     setError('')
 
-    if (!form.empresa) { setError('Selecione a empresa'); return }
+    if (!form.empresa) { setError('Selecione o centro de resultado'); return }
     if (!form.categoria) { setError('Selecione a categoria'); return }
     const valor = parseFloat(form.valor.replace(',', '.'))
     if (!valor || valor <= 0) { setError('Informe um valor válido'); return }
@@ -92,7 +92,7 @@ export default function RegistrarOrcamentoPage() {
 
         <div className="grid grid-cols-2 gap-5">
           <div>
-            <label className="label">Empresa *</label>
+            <label className="label">Centro de Resultado *</label>
             <select className="input" value={form.empresa} onChange={e => onEmpresaChange(e.target.value)}>
               <option value="">Selecionar...</option>
               {empresas.map(e => <option key={e.id} value={e.empresa}>{e.empresa}</option>)}

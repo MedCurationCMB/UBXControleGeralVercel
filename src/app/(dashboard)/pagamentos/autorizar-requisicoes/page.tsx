@@ -89,7 +89,7 @@ export default function AutorizarRequisicoesPage() {
               value={searchId} onChange={e => setSearchId(e.target.value)} />
           </div>
           <select className="input" value={filtroEmpresa} onChange={e => setFiltroEmpresa(e.target.value)}>
-            <option value="">Todas as empresas</option>
+            <option value="">Todos os centros de resultado</option>
             {empresas.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
         </div>
@@ -106,7 +106,7 @@ export default function AutorizarRequisicoesPage() {
               <thead className="table-header">
                 <tr>
                   <th className="table-cell text-left">#</th>
-                  <th className="table-cell text-left">Empresa</th>
+                  <th className="table-cell text-left">Centro de Resultado</th>
                   <th className="table-cell text-left">Categoria</th>
                   <th className="table-cell text-left">Descrição</th>
                   <th className="table-cell text-left">Anexos</th>

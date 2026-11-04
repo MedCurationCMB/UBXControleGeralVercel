@@ -184,7 +184,7 @@ export default function AcompanharRequisicoesPage() {
               value={searchId} onChange={e => setSearchId(e.target.value)} />
           </div>
           <select className="input" value={filtroEmpresa} onChange={e => setFiltroEmpresa(e.target.value)}>
-            <option value="">Todas as empresas</option>
+            <option value="">Todos os centros de resultado</option>
             {empresas.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
           {view === 'lista' && (
@@ -210,7 +210,7 @@ export default function AcompanharRequisicoesPage() {
               <thead>
                 <tr className="table-header">
                   <th className="table-cell font-medium">ID</th>
-                  <th className="table-cell font-medium">Empresa</th>
+                  <th className="table-cell font-medium">Centro de Resultado</th>
                   <th className="table-cell font-medium">Categoria</th>
                   <th className="table-cell font-medium">Descrição</th>
                   <th className="table-cell font-medium">Data</th>

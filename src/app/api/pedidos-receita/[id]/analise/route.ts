@@ -35,7 +35,7 @@ export async function GET(
   }
 
   const prompt = `Você é um assistente de análise de documentos financeiros e de recebimentos.
-Analise o seguinte texto extraído de um documento de pedido de recebimento e forneça um resumo estruturado contendo:
+Analise o seguinte texto extraído de um documento de pedido de venda e forneça um resumo estruturado contendo:
 1. Tipo de documento identificado
 2. Partes envolvidas (emitente, destinatário, cliente)
 3. Valores encontrados
@@ -44,7 +44,7 @@ Analise o seguinte texto extraído de um documento de pedido de recebimento e fo
 6. Observações relevantes ou alertas
 
 Contexto do pedido:
-- Empresa: ${pedido.empresa}
+- Centro de Resultado: ${pedido.empresa}
 - Categoria: ${pedido.categoria}
 - Cliente: ${pedido.cliente}
 - Valor do pedido: R$ ${Number(pedido.valor_pedido).toFixed(2)}

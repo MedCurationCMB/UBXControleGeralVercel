@@ -129,11 +129,11 @@ export default function InicioPage() {
 
   // atalhos de criação, conforme o fluxo de cada módulo
   const acoes = MODS.flatMap(mod => {
-    const base = `/${mod}`, nome = mod === 'pagamentos' ? 'pagamento' : 'recebimento'
+    const base = `/${mod}`, nome = mod === 'pagamentos' ? 'compra' : 'venda'
     const f = fluxo[mod]
     return [
       { href: `${base}/solicitar`, label: `Fazer pedido de ${nome}`, icon: PlusSquare },
-      ...(f === '4' || f === '5' ? [{ href: `${base}/requisicoes`, label: `Fazer requisição de ${nome}`, icon: ClipboardList }] : []),
+      ...(f === '4' || f === '5' ? [{ href: `${base}/requisicoes`, label: 'Fazer requisição', icon: ClipboardList }] : []),
       ...(f === '3' ? [{ href: `${base}/lancar-conta`, label: mod === 'pagamentos' ? 'Lançar conta a pagar' : 'Lançar conta a receber', icon: Receipt }] : []),
     ]
   })
@@ -178,7 +178,7 @@ export default function InicioPage() {
           )}
 
           {reqs.length > 0 && (
-            <Secao titulo="Requisições" n={reqs.length} cols={['#', 'Empresa', 'Descrição', 'Data']}>
+            <Secao titulo="Requisições" n={reqs.length} cols={['#', 'Centro de Resultado', 'Descrição', 'Data']}>
               {reqs.map(r => (
                 <tr key={`${r.mod}-${r.id}`} className="table-row">
                   <td className="table-cell whitespace-nowrap">#{r.id} <span className="badge bg-slate-100 text-slate-600 ml-1">{r.mod === 'pagamentos' ? 'compra' : 'venda'}</span></td>
@@ -193,7 +193,7 @@ export default function InicioPage() {
 
           {MODS.map(m => pedidos[m].length > 0 && (
             <Secao key={m} titulo={m === 'pagamentos' ? 'Pedidos de compra' : 'Pedidos de venda'} n={pedidos[m].length}
-              cols={['#', 'Empresa', m === 'pagamentos' ? 'Fornecedor' : 'Cliente', 'Valor', 'Data']}>
+              cols={['#', 'Centro de Resultado', m === 'pagamentos' ? 'Fornecedor' : 'Cliente', 'Valor', 'Data']}>
               {pedidos[m].map(p => (
                 <tr key={p.id} className="table-row">
                   <td className="table-cell whitespace-nowrap">#{p.id}{p.emergencia && <span className="badge bg-red-100 text-red-700 ml-2">urgente</span>}</td>
@@ -209,7 +209,7 @@ export default function InicioPage() {
 
           {MODS.filter(m => real[m] > 0).map(m => (
             <Link key={m} href={`/${m}/autorizar`} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-yellow-50 border border-yellow-200 hover:bg-yellow-100 text-sm text-yellow-800">
-              <span>{real[m]} realocação{real[m] > 1 ? 'ões' : ''} de centro de custo ({m === 'pagamentos' ? 'compra' : 'venda'}) aguardando autorização</span>
+              <span>{real[m]} realocação{real[m] > 1 ? 'ões' : ''} de centro de resultado ({m === 'pagamentos' ? 'compra' : 'venda'}) aguardando autorização</span>
               <span className="font-medium inline-flex items-center gap-1">Abrir <ArrowRight size={13} /></span>
             </Link>
           ))}

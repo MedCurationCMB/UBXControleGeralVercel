@@ -14,7 +14,7 @@ const STATUS_BADGE: Record<string, string> = {
 }
 const resumo = (itens: RealocacaoItem[]) => totaisPorCentro(itens).map(([e, v]) => `${e} ${fmtMoeda(v)}`).join(' · ')
 
-// Cartão do pedido: distribuição atual por centro de custo, botão de realocar, realocação pendente e histórico.
+// Cartão do pedido: distribuição atual por centro de resultado, botão de realocar, realocação pendente e histórico.
 // Aberto também por ?realocar=1 (botão de editar do Controle).
 export default function RealocacaoPedido({ mod, pedido, usuario, onPendente, onChanged }: {
   mod: ModuloPedido
@@ -74,11 +74,11 @@ export default function RealocacaoPedido({ mod, pedido, usuario, onPendente, onC
   return (
     <div className="card">
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-        <h2 className="text-sm font-semibold text-slate-700">Centro de custo</h2>
+        <h2 className="text-sm font-semibold text-slate-700">Centro de resultado</h2>
         {podeRealocar && (
           <button onClick={() => { setMsg(''); setAberto(true) }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-medium hover:bg-slate-900">
-            <Shuffle size={13} /> Realocar centro de custo
+            <Shuffle size={13} /> Realocar centro de resultado
           </button>
         )}
       </div>

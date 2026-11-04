@@ -1,7 +1,7 @@
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import type { ModuloPedido } from '@/lib/ajuste'
 
-// Realocação de centro de custo: as regras (saldo, reserva, autorização, histórico) moram nas funções do banco
+// Realocação de centro de resultado: as regras (saldo, reserva, autorização, histórico) moram nas funções do banco
 // (banco/migracoes/2026-10-06_realocacao_funcoes.sql); aqui só chamamos e tipamos o retorno.
 
 export interface ItemRealocacao {

@@ -54,7 +54,7 @@ function ImportarModal({ onClose, onSaved }: { onClose: () => void; onSaved: () 
 
         <div className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded p-3 space-y-1">
           <p className="font-medium text-slate-800">Colunas obrigatórias:</p>
-          <p>• <strong>Empresa</strong>, <strong>Categoria</strong>, <strong>Mês</strong> (1–12), <strong>Ano</strong>, <strong>Valor do Orçamento</strong></p>
+          <p>• <strong>Centro de Resultado</strong>, <strong>Categoria</strong>, <strong>Mês</strong> (1–12), <strong>Ano</strong>, <strong>Valor do Orçamento</strong></p>
           <p>• <strong>Observação</strong>: opcional</p>
         </div>
 
@@ -134,7 +134,7 @@ export default function RegistrarOrcamentoReceitaPage() {
     e.preventDefault()
     setError(''); setWarning('')
 
-    if (!form.empresa) { setError('Selecione a empresa'); return }
+    if (!form.empresa) { setError('Selecione o centro de resultado'); return }
     if (!form.categoria) { setError('Selecione a categoria'); return }
     const valor = parseFloat(form.valor.replace(',', '.'))
     if (!valor || valor <= 0) { setError('Informe um valor válido'); return }
@@ -213,7 +213,7 @@ export default function RegistrarOrcamentoReceitaPage() {
 
         <div className="grid grid-cols-2 gap-5">
           <div>
-            <label className="label">Empresa *</label>
+            <label className="label">Centro de Resultado *</label>
             <select className="input" value={form.empresa} onChange={e => onEmpresaChange(e.target.value)}>
               <option value="">Selecionar...</option>
               {empresas.map(e => <option key={e.id} value={e.empresa}>{e.empresa}</option>)}
@@ -270,7 +270,7 @@ export default function RegistrarOrcamentoReceitaPage() {
         <ul className="text-sm text-blue-700 space-y-1 list-disc list-inside">
           <li>O orçamento registrado define a meta de recebimento para o período.</li>
           <li>Se já existir um orçamento para a mesma empresa/categoria/mês/ano, o novo valor passa a ser considerado.</li>
-          <li>O saldo é calculado como: Orçado − Total de pedidos de recebimento solicitados.</li>
+          <li>O saldo é calculado como: Orçado − Total de pedidos de venda solicitados.</li>
         </ul>
       </div>
 

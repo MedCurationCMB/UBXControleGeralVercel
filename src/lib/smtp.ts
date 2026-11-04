@@ -108,7 +108,7 @@ export function templateAlertaVencimento(
       <table style="border-collapse:collapse;width:100%;">
         <thead>
           <tr style="background:#f1f5f9;">
-            <th style="padding:8px;border:1px solid #eee;text-align:left;">Empresa</th>
+            <th style="padding:8px;border:1px solid #eee;text-align:left;">Centro de Resultado</th>
             <th style="padding:8px;border:1px solid #eee;text-align:left;">Fornecedor/Cliente</th>
             <th style="padding:8px;border:1px solid #eee;text-align:left;">Valor</th>
             <th style="padding:8px;border:1px solid #eee;text-align:left;">Vencimento</th>

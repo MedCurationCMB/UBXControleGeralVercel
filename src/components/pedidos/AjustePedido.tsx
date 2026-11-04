@@ -163,7 +163,7 @@ export default function AjustePedido({ mod, pedido, parte, fluxo, user, onChange
     const dif = (rotulo: string, antes: string, depois: string) => {
       if (antes.trim() !== depois.trim()) mudancas.push(`${rotulo}: ${curto(antes)} → ${curto(depois)}`)
     }
-    dif('Empresa', pedido.empresa, editForm.empresa)
+    dif('Centro de Resultado', pedido.empresa, editForm.empresa)
     dif('Categoria', pedido.categoria, editForm.categoria)
     dif(t.parteRotulo, parte, editForm.parte)
     dif('Observação', pedido.observacao ?? '', editForm.observacao)
@@ -236,7 +236,7 @@ export default function AjustePedido({ mod, pedido, parte, fluxo, user, onChange
           <p className="text-xs font-semibold text-slate-700">Editar Dados do Pedido</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="label">Empresa</label>
+              <label className="label">Centro de Resultado</label>
               <select className="input" value={editForm.empresa}
                 onChange={e => setEditForm(f => ({ ...f, empresa: e.target.value, categoria: '' }))}>
                 <option value="">Selecionar...</option>

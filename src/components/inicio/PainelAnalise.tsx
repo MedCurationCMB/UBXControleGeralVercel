@@ -124,7 +124,7 @@ export default function PainelAnalise({ alvo, usuario, onClose, onDone }: {
           {!d && !erroCarga && <p className="text-sm text-slate-400">Carregando...</p>}
           {d && (
             <>
-              {campo('Empresa', d.empresa)}
+              {campo('Centro de Resultado', d.empresa)}
               {tipo === 'pedido' && campo(t.parteRotulo, d.parte)}
               {campo('Categoria', d.categoria)}
               {tipo === 'pedido' && <div><p className="text-xs text-slate-500">Valor</p><p className="text-xl font-semibold text-slate-900">{fmtMoeda(d.valor)}</p></div>}

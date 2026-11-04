@@ -428,7 +428,7 @@ function ContratoModal({
       doc.setFont('helvetica', 'normal')
       doc.text(`Pedido: #${pedido.id}`, 20, 35)
       doc.text(`Data: ${fmtData(pedido.data_solicitacao)}`, 20, 42)
-      doc.text(`Empresa: ${pedido.empresa}`, 20, 49)
+      doc.text(`Centro de Resultado: ${pedido.empresa}`, 20, 49)
       doc.text(`Fornecedor: ${pedido.fornecedor}`, 20, 56)
       doc.text(`Categoria: ${pedido.categoria}`, 20, 63)
       doc.text(`Valor Total: ${fmtMoeda(Number(pedido.valor_pedido))}`, 20, 70)
@@ -594,10 +594,10 @@ export default function DetalhePedidoPage() {
   const handlePrint = () => {
     if (!pedido) return
     return gerarPdfPedido({
-      titulo: 'PEDIDO DE PAGAMENTO',
+      titulo: 'PEDIDO DE COMPRA',
       arquivo: `pedido_${pedido.id}.pdf`,
       campos: [
-        ['Pedido ID', `#${pedido.id}`], ['Empresa', pedido.empresa], ['Categoria', pedido.categoria],
+        ['Pedido ID', `#${pedido.id}`], ['Centro de Resultado', pedido.empresa], ['Categoria', pedido.categoria],
         ['Fornecedor', pedido.fornecedor], ['Valor', fmtMoeda(Number(pedido.valor_pedido))],
         ['Status', pedido.status], ['Data Solicitação', fmtData(pedido.data_solicitacao)],
         ['Data Autorização', fmtData(pedido.data_autorizacao)],
@@ -751,7 +751,7 @@ export default function DetalhePedidoPage() {
       <div className="card">
         <h2 className="text-sm font-semibold text-slate-700 mb-4">Informações do Pedido</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-4">
-          <InfoField label="Empresa" value={pedido.empresa} />
+          <InfoField label="Centro de Resultado" value={pedido.empresa} />
           <InfoField label="Categoria" value={pedido.categoria} />
           <InfoField label="Fornecedor" value={pedido.fornecedor} />
           <InfoField label="Valor do Pedido" value={<span className="text-lg font-bold">{fmtMoeda(Number(pedido.valor_pedido))}</span>} />

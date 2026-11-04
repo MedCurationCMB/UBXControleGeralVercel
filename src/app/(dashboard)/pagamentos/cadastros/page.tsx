@@ -16,7 +16,7 @@ const cadastros = [
     href: '/pagamentos/categorias',
     icon: Tag,
     title: 'Categorias',
-    description: 'Defina categorias de despesa por empresa para organizar os pedidos.',
+    description: 'Defina categorias de despesa por centro de resultado para organizar os pedidos.',
     color: 'bg-purple-50 text-purple-600',
   },
   {
@@ -38,14 +38,14 @@ const cadastros = [
     href: '/pagamentos/registrar-orcamento',
     icon: ShoppingCart,
     title: 'Registrar Orçamento',
-    description: 'Registre orçamentos mensais por empresa e categoria de despesa.',
+    description: 'Registre orçamentos mensais por centro de resultado e categoria de despesa.',
     color: 'bg-rose-50 text-rose-600',
   },
   {
     href: '/pagamentos/orcamento',
     icon: Package,
     title: 'Acompanhar Orçamento',
-    description: 'Visualize o orçamento vs. realizado com saldo por empresa, categoria e mês.',
+    description: 'Visualize o orçamento vs. realizado com saldo por centro de resultado, categoria e mês.',
     color: 'bg-teal-50 text-teal-600',
   },
 ]

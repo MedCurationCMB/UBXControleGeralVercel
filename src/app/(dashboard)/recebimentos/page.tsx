@@ -191,7 +191,7 @@ export default function RecebimentosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Recebimentos — Visão Geral</h1>
-          <p className="page-subtitle">Resumo e análise dos pedidos de recebimento</p>
+          <p className="page-subtitle">Resumo e análise dos pedidos de venda</p>
         </div>
         <button onClick={load} className="btn-secondary p-2" disabled={loading} title="Atualizar">
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -202,7 +202,7 @@ export default function RecebimentosPage() {
       <div className="card">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="label">Empresa</label>
+            <label className="label">Centro de Resultado</label>
             <select className="input" value={filtroEmpresa}
               onChange={e => { setFiltroEmpresa(e.target.value); setFiltroCategoria('') }}>
               <option value="">Todas</option>
@@ -334,7 +334,7 @@ export default function RecebimentosPage() {
               <thead className="table-header">
                 <tr>
                   <th className="table-cell text-left">ID</th>
-                  <th className="table-cell text-left">Empresa</th>
+                  <th className="table-cell text-left">Centro de Resultado</th>
                   <th className="table-cell text-left">Categoria</th>
                   <th className="table-cell text-left">Cliente</th>
                   <th className="table-cell text-right">Valor</th>

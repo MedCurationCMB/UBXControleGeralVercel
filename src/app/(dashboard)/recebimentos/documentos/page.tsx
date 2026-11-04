@@ -138,7 +138,7 @@ export default function DocumentosRecebimentosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Gestão de Documentos</h1>
-          <p className="page-subtitle">Documentos vinculados a pedidos de recebimento</p>
+          <p className="page-subtitle">Documentos vinculados a pedidos de venda</p>
         </div>
         <button onClick={load} className="btn-secondary p-2" title="Atualizar">
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -181,7 +181,7 @@ export default function DocumentosRecebimentosPage() {
       <div className="card">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div>
-            <label className="label">Empresa</label>
+            <label className="label">Centro de Resultado</label>
             <select className="input" value={filtroEmpresa}
               onChange={e => { setFiltroEmpresa(e.target.value); setFiltroCategoria('') }}>
               <option value="">Todas</option>
@@ -246,7 +246,7 @@ export default function DocumentosRecebimentosPage() {
                   <th className="table-cell font-medium text-left">Documento</th>
                   <th className="table-cell font-medium text-left">Tipo</th>
                   <th className="table-cell font-medium text-left">Pedido / Cliente</th>
-                  <th className="table-cell font-medium text-left">Empresa</th>
+                  <th className="table-cell font-medium text-left">Centro de Resultado</th>
                   <th className="table-cell font-medium text-left">Enviado por</th>
                   <th className="table-cell font-medium text-left">Data</th>
                   <th className="table-cell font-medium text-center">Ações</th>

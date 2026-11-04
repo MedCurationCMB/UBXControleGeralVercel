@@ -252,7 +252,7 @@ export default function SolicitarRecebimentoPage() {
   const handleInitialSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!empresa) { setError('Selecione a empresa'); return }
+    if (!empresa) { setError('Selecione o centro de resultado'); return }
     if (!categoria) { setError('Selecione a categoria'); return }
     if (!cliente) { setError('Selecione o cliente'); return }
     if (usaRequisicao && requisicaoId === '') { setError('Selecione a requisição'); return }
@@ -435,7 +435,7 @@ export default function SolicitarRecebimentoPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="page-title">Fazer Pedido</h1>
+        <h1 className="page-title">Fazer Pedido de Venda</h1>
         <p className="page-subtitle">Registrar uma nova solicitação de recebimento</p>
       </div>
 
@@ -461,7 +461,7 @@ export default function SolicitarRecebimentoPage() {
           <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
             <Info size={15} className="text-blue-600 mt-0.5 shrink-0" />
             <p className="text-sm text-blue-700">
-              Se a empresa ou categoria não aparecer nas opções abaixo, é porque não existe orçamento cadastrado para ela.
+              Se o centro de resultado ou a categoria não aparecer nas opções abaixo, é porque não existe orçamento cadastrado para ela.
             </p>
           </div>
 
@@ -469,7 +469,7 @@ export default function SolicitarRecebimentoPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <label className="label">Empresa *</label>
+              <label className="label">Centro de Resultado *</label>
               <select
                 className="input" value={empresa}
                 onChange={e => { setEmpresa(e.target.value); setCategoria(''); setRequisicaoId('') }}

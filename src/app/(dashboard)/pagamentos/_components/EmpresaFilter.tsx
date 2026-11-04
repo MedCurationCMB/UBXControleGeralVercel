@@ -21,7 +21,7 @@ export default function EmpresaFilter({ empresas, selected }: EmpresaFilterProps
 
   return (
     <select value={selected} onChange={handleChange} className="input w-64">
-      <option value="">Todas as empresas</option>
+      <option value="">Todos os centros de resultado</option>
       {empresas.map((e) => <option key={e} value={e}>{e}</option>)}
     </select>
   )

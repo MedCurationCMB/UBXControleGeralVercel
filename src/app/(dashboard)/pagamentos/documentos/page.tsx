@@ -95,7 +95,7 @@ export default function DocumentosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Gestão de Documentos</h1>
-          <p className="page-subtitle">Documentos vinculados a pedidos de pagamento</p>
+          <p className="page-subtitle">Documentos vinculados a pedidos de compra</p>
         </div>
         <button onClick={load} className="btn-secondary p-2"><RefreshCw size={16} /></button>
       </div>

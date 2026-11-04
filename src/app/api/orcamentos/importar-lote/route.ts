@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (!empresasValidas.has(empresa)) {
-        invalidos.push(`Linha ${rowNum}: Empresa '${empresa}' não encontrada`)
+        invalidos.push(`Linha ${rowNum}: Centro de Resultado '${empresa}' não encontrado`)
         return
       }
 

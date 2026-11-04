@@ -684,7 +684,7 @@ function AlterarStatusLoteModal({
               onChange={e => { setFiltroPedido(e.target.value); setSelected(new Set()) }} />
           </div>
           <div>
-            <label className="label">Filtrar por empresa</label>
+            <label className="label">Filtrar por centro de resultado</label>
             <select className="input" value={filtroEmpresa} onChange={e => { setFiltroEmpresa(e.target.value); setSelected(new Set()) }}>
               <option value="">Todas</option>
               {empresas.map(e => <option key={e} value={e}>{e}</option>)}
@@ -896,7 +896,7 @@ export default function ControlePage() {
   const gerarPlanilha = (data: Row[], filename: string) => baixarXlsx('Pagamentos', [
     { header: 'ID', key: 'id', width: 10 },
     { header: 'Pedido', key: 'pedido_id', width: 10 },
-    { header: 'Empresa', key: 'empresa', width: 24 },
+    { header: 'Centro de Resultado', key: 'empresa', width: 24 },
     { header: 'Categoria', key: 'categoria', width: 18 },
     { header: 'Fornecedor', key: 'fornecedor', width: 26 },
     { header: 'Status Autorização', key: 'status_pedido', width: 20 },
@@ -1003,7 +1003,7 @@ export default function ControlePage() {
       <div className="card">
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           <div>
-            <label className="label">Empresa</label>
+            <label className="label">Centro de Resultado</label>
             <select className="input" value={filtroEmpresa}
               onChange={e => { setFiltroEmpresa(e.target.value); setFiltroCategoria('') }}>
               <option value="">Todas</option>
@@ -1103,7 +1103,7 @@ export default function ControlePage() {
                 <tr className="table-header">
                   <th className="table-cell font-medium">ID</th>
                   <th className="table-cell font-medium">Pedido</th>
-                  <th className="table-cell font-medium">Empresa / Categoria</th>
+                  <th className="table-cell font-medium">Centro de Resultado / Categoria</th>
                   <th className="table-cell font-medium">Fornecedor</th>
                   <th className="table-cell font-medium">Status Autorização</th>
                   <th className="table-cell font-medium">Descrição</th>
@@ -1180,7 +1180,7 @@ export default function ControlePage() {
                         <Pencil size={14} />
                       </button>
                       {r.pedido_id && (
-                        <Link href={`/pagamentos/acompanhar/${r.pedido_id}?realocar=1`} title="Realocar centro de custo do pedido"
+                        <Link href={`/pagamentos/acompanhar/${r.pedido_id}?realocar=1`} title="Realocar centro de resultado do pedido"
                           className="p-1.5 rounded hover:bg-slate-100 text-slate-500 inline-block align-middle">
                           <Shuffle size={14} />
                         </Link>

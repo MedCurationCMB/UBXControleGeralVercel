@@ -18,7 +18,7 @@ interface PedidoInfo { id: number; empresa: string; categoria: string; valor_ped
 interface Orc { empresa: string; categoria: string; mes: number; ano: number; valor_orcamento: number; valor_pedidos_solicitados: number }
 interface Linha { empresa: string; categoria: string; mes: number; ano: number; antes: number; depois: number }
 
-// Realocações de centro de custo aguardando autorização (aba da tela Autorizar Pedidos).
+// Realocações de centro de resultado aguardando autorização (aba da tela Autorizar Pedidos).
 export default function RealocacoesPendentes({ mod, usuario, onChanged }: { mod: ModuloPedido; usuario: string; onChanged: () => void }) {
   const t = TAB_PEDIDO[mod]
   const [loading, setLoading] = useState(true)
@@ -134,7 +134,7 @@ export default function RealocacoesPendentes({ mod, usuario, onChanged }: { mod:
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-left text-slate-500 border-b border-slate-100">
-                    <th className="py-1 pr-2">Centro de custo</th><th className="pr-2">Período</th>
+                    <th className="py-1 pr-2">Centro de resultado</th><th className="pr-2">Período</th>
                     <th className="pr-2 text-right">Atual</th><th className="pr-2 text-right">Proposto</th><th className="pr-2 text-right">Diferença</th><th>Disponibilidade</th>
                   </tr>
                 </thead>
@@ -161,7 +161,7 @@ export default function RealocacoesPendentes({ mod, usuario, onChanged }: { mod:
 
       <Confirm open={!!confirmar} onClose={() => { setConfirmar(null); setErro('') }} onConfirm={() => decidir(true)}
         title="Autorizar realocação"
-        message={`Confirma a realocação do pedido #${confirmar?.pedido_id}? A distribuição por centro de custo será aplicada agora.${erro ? ` Não foi possível: ${erro}` : ''}`}
+        message={`Confirma a realocação do pedido #${confirmar?.pedido_id}? A distribuição por centro de resultado será aplicada agora.${erro ? ` Não foi possível: ${erro}` : ''}`}
         confirmLabel="Autorizar" loading={busy} />
 
       <Modal open={!!recusar} onClose={() => { setRecusar(null); setErro('') }} title={`Recusar realocação — Pedido #${recusar?.pedido_id}`} size="sm">

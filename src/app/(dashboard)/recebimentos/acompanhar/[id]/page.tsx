@@ -814,7 +814,7 @@ function CancelarSection({ pedido, onCancel, bloqueado }: { pedido: Pedido; onCa
   if (isCancelado) return null
   if (bloqueado) return (
     <div className="card border border-orange-200 text-sm text-orange-800">
-      Há uma realocação de centro de custo aguardando autorização. Decida-a antes de cancelar o pedido.
+      Há uma realocação de centro de resultado aguardando autorização. Decida-a antes de cancelar o pedido.
     </div>
   )
 
@@ -883,10 +883,10 @@ export default function AcompanharRecebimentoDetalhePage() {
   const handlePrint = () => {
     if (!pedido) return
     return gerarPdfPedido({
-      titulo: 'PEDIDO DE RECEBIMENTO',
+      titulo: 'PEDIDO DE VENDA',
       arquivo: `pedido_recebimento_${pedido.id}.pdf`,
       campos: [
-        ['Pedido ID', `#${pedido.id}`], ['Empresa', pedido.empresa], ['Categoria', pedido.categoria],
+        ['Pedido ID', `#${pedido.id}`], ['Centro de Resultado', pedido.empresa], ['Categoria', pedido.categoria],
         ['Cliente', pedido.cliente], ['Valor', fmtMoeda(Number(pedido.valor_pedido))],
         ['Status', pedido.status], ['Data Solicitação', fmtData(pedido.data_solicitacao)],
         ['Data Autorização', fmtData(pedido.data_autorizacao)],
@@ -970,7 +970,7 @@ export default function AcompanharRecebimentoDetalhePage() {
       <div className="card">
         <h2 className="text-sm font-semibold text-slate-700 mb-4">Informações do Pedido</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-4">
-          <InfoField label="Empresa" value={pedido.empresa} />
+          <InfoField label="Centro de Resultado" value={pedido.empresa} />
           <InfoField label="Categoria" value={pedido.categoria} />
           <InfoField label="Cliente" value={pedido.cliente} />
           <InfoField label="Valor do Pedido" value={<span className="text-lg font-bold">{fmtMoeda(pedido.valor_pedido)}</span>} />
@@ -1002,7 +1002,7 @@ export default function AcompanharRecebimentoDetalhePage() {
               <thead>
                 <tr className="table-header">
                   <th className="table-cell font-medium">Mês/Ano</th>
-                  <th className="table-cell font-medium">Centro de custo</th>
+                  <th className="table-cell font-medium">Centro de resultado</th>
                   <th className="table-cell font-medium">Beneficiário</th>
                   <th className="table-cell font-medium text-right">Valor</th>
                   <th className="table-cell font-medium">Status</th>

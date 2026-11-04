@@ -81,7 +81,7 @@ export async function gerarRelatorioPdf({ titulo, cabecalho, rows }: {
       ? new Date(row.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'
     const valorStr = row.valor_pagamento.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-    fieldRow('Empresa:', row.empresa || '—', 'Fornecedor:', row.fornecedor || '—', y + 5)
+    fieldRow('Centro de Resultado:', row.empresa || '—', 'Fornecedor:', row.fornecedor || '—', y + 5)
     doc.setDrawColor(LINHA); doc.setLineWidth(0.2); doc.line(M, y + 7, M + CW, y + 7)
     fieldRow('Categoria:', row.categoria || '—', 'Tipo de Pagamento:', TIPO_NOME[row.tipo_pagamento] ?? '—', y + 12)
     doc.line(M, y + 14, M + CW, y + 14)

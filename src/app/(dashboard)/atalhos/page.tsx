@@ -72,7 +72,7 @@ const sections: Section[] = [
     title: 'Configurações Gerais',
     columns: [
       [
-        { label: 'Empresas / Centros de Custo', href: '/empresas', icon: Building2 },
+        { label: 'Centros de Resultado', href: '/empresas', icon: Building2 },
         { label: 'Contas Pagadoras', href: '/pagamentos/contas', icon: Landmark },
       ],
       [

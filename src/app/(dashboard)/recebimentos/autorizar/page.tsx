@@ -127,7 +127,7 @@ export default function AutorizarRecebimentosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Autorizar Pedidos</h1>
-          <p className="page-subtitle">{emAjuste ? 'Pedidos de recebimento devolvidos ao solicitante para ajuste' : 'Pedidos de recebimento aguardando autorização'}</p>
+          <p className="page-subtitle">{emAjuste ? 'Pedidos de venda devolvidos ao solicitante para ajuste' : 'Pedidos de venda aguardando autorização'}</p>
         </div>
         <button onClick={load} className="btn-secondary p-2" title="Atualizar">
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -165,7 +165,7 @@ export default function AutorizarRecebimentosPage() {
           <select className="input" value={filtroEmpresa}
             onChange={e => { setFiltroEmpresa(e.target.value); setFiltroCategoria(''); setFiltroCliente('') }}
             disabled={!!searchId}>
-            <option value="">Todas as empresas</option>
+            <option value="">Todos os centros de resultado</option>
             {empresas.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
           <select className="input" value={filtroCategoria}
@@ -245,7 +245,7 @@ export default function AutorizarRecebimentosPage() {
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div>
-                      <p className="text-xs text-slate-400">Empresa</p>
+                      <p className="text-xs text-slate-400">Centro de Resultado</p>
                       <p className="text-sm font-medium truncate">{p.empresa}</p>
                     </div>
                     <div>

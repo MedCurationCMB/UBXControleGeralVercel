@@ -59,7 +59,7 @@ export default function LancarContaReceberPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (!empresa) { setError('Selecione a empresa'); return }
+    if (!empresa) { setError('Selecione o centro de resultado'); return }
     if (!categoria) { setError('Selecione a categoria'); return }
     if (!cliente) { setError('Selecione o cliente'); return }
     const valorNum = parseFloat(valor.replace(',', '.'))
@@ -159,7 +159,7 @@ export default function LancarContaReceberPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
-            <label className="label">Empresa *</label>
+            <label className="label">Centro de Resultado *</label>
             <select
               className="input" value={empresa}
               onChange={e => { setEmpresa(e.target.value); setCategoria('') }}

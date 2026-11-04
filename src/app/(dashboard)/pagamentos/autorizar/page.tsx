@@ -165,7 +165,7 @@ export default function AutorizarPage() {
           <select className="input" value={filtroEmpresa}
             onChange={e => { setFiltroEmpresa(e.target.value); setFiltroCategoria(''); setFiltroFornecedor('') }}
             disabled={!!searchId}>
-            <option value="">Todas as empresas</option>
+            <option value="">Todos os centros de resultado</option>
             {empresas.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
           <select className="input" value={filtroCategoria}
@@ -245,7 +245,7 @@ export default function AutorizarPage() {
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div>
-                      <p className="text-xs text-slate-400">Empresa</p>
+                      <p className="text-xs text-slate-400">Centro de Resultado</p>
                       <p className="text-sm font-medium truncate">{p.empresa}</p>
                     </div>
                     <div>

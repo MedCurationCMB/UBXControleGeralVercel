@@ -26,13 +26,13 @@ const STORAGE_KEY = 'acompanhar-pagamentos-v1'
 
 type Ordem = 'recentes' | 'antigos' | 'valor_desc' | 'valor_asc' | 'empresa' | 'parte'
 
-// "Empresa" é o centro de custo do pedido.
+// "Empresa" é o centro de resultado do pedido.
 const ORDEM_SQL: Record<Ordem, { col: string; asc: boolean; label: string }> = {
   recentes:   { col: 'data_solicitacao', asc: false, label: 'Data: mais recente → mais antigo' },
   antigos:    { col: 'data_solicitacao', asc: true,  label: 'Data: mais antigo → mais recente' },
   valor_desc: { col: 'valor_pedido',     asc: false, label: 'Valor: maior → menor' },
   valor_asc:  { col: 'valor_pedido',     asc: true,  label: 'Valor: menor → maior' },
-  empresa:    { col: 'empresa',          asc: true,  label: 'Centro de custo (A–Z)' },
+  empresa:    { col: 'empresa',          asc: true,  label: 'Centro de resultado (A–Z)' },
   parte:      { col: 'fornecedor',        asc: true,  label: 'Fornecedor (A–Z)' },
 }
 
@@ -291,7 +291,7 @@ export default function AcompanharPage() {
   }
 
   const exportCSV = () => {
-    const header = 'ID,Empresa,Categoria,Fornecedor,Valor,Status,Data Solicitação,Cancelado'
+    const header = 'ID,Centro de Resultado,Categoria,Fornecedor,Valor,Status,Data Solicitação,Cancelado'
     const rows = pedidos.map(p =>
       `${p.id},"${p.empresa}","${p.categoria}","${p.fornecedor}",${p.valor_pedido},"${p.status}","${fmtData(p.data_solicitacao)}","${p.cancelado ? 'Sim' : 'Não'}"`
     )
@@ -382,7 +382,7 @@ export default function AcompanharPage() {
             value={filtroEmpresa}
             onChange={setFiltroEmpresa}
             options={empresas}
-            placeholder="Todas as empresas"
+            placeholder="Todos os centros de resultado"
             disabled={!!activeSearchId}
           />
           <select
@@ -463,7 +463,7 @@ export default function AcompanharPage() {
                   <thead>
                     <tr className="table-header">
                       <th className="table-cell font-medium">ID</th>
-                      <th className="table-cell font-medium">Empresa</th>
+                      <th className="table-cell font-medium">Centro de Resultado</th>
                       <th className="table-cell font-medium">Categoria</th>
                       <th className="table-cell font-medium">Fornecedor</th>
                       <th className="table-cell font-medium text-right">Valor</th>
@@ -499,7 +499,7 @@ export default function AcompanharPage() {
                           <div className="flex items-center gap-2">
                             {p.status === 'Autorizado' && !p.cancelado && (
                               <button onClick={e => { e.stopPropagation(); router.push(`/pagamentos/acompanhar/${p.id}?realocar=1`) }}
-                                className="p-1.5 rounded hover:bg-slate-100 text-slate-500" title="Realocar centro de custo">
+                                className="p-1.5 rounded hover:bg-slate-100 text-slate-500" title="Realocar centro de resultado">
                                 <Shuffle size={14} />
                               </button>
                             )}

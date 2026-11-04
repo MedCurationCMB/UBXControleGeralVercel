@@ -324,7 +324,7 @@ function EmpresasTab() {
       {loading ? (
         <p className="text-slate-400 text-sm text-center py-8">Carregando...</p>
       ) : rows.length === 0 ? (
-        <p className="text-slate-400 text-sm text-center py-8">Nenhuma empresa cadastrada.</p>
+        <p className="text-slate-400 text-sm text-center py-8">Nenhum centro de resultado cadastrado.</p>
       ) : (
         <div className="overflow-auto border border-slate-200 rounded-lg">
           <table className="w-full text-xs">
@@ -416,7 +416,7 @@ function CategoriasReceitaTab() {
   }
 
   const handleAdd = async () => {
-    if (!addEmpresa) { setAddError('Selecione uma empresa'); return }
+    if (!addEmpresa) { setAddError('Selecione um centro de resultado'); return }
     if (!addCategoria.trim()) { setAddError('Categoria é obrigatória'); return }
     setAdding(true); setAddError('')
     const { error: err } = await supabase.from('categorias_receita').insert({
@@ -434,7 +434,7 @@ function CategoriasReceitaTab() {
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-2">
-        O campo <strong>Empresa</strong> é somente leitura. Para alterar a empresa de uma categoria, exclua e recrie-a. Para renomear empresas, use a aba Empresas.
+        O campo <strong>Centro de Resultado</strong> é somente leitura. Para alterar a empresa de uma categoria, exclua e recrie-a. Para renomear empresas, use a aba Empresas.
       </div>
 
       {/* Add row */}
@@ -442,7 +442,7 @@ function CategoriasReceitaTab() {
         <p className="text-xs font-semibold text-slate-600">Nova categoria</p>
         <div className="flex gap-2 flex-wrap items-end">
           <div className="flex-1 min-w-[180px]">
-            <label className="label text-xs">Empresa *</label>
+            <label className="label text-xs">Centro de Resultado *</label>
             <select className="input text-xs" value={addEmpresa} onChange={e => setAddEmpresa(e.target.value)}>
               <option value="">Selecionar...</option>
               {empresas.map(e => <option key={e} value={e}>{e}</option>)}
@@ -463,7 +463,7 @@ function CategoriasReceitaTab() {
 
       {/* Filter */}
       <div className="flex items-center gap-3">
-        <label className="label mb-0 text-xs whitespace-nowrap">Filtrar por empresa:</label>
+        <label className="label mb-0 text-xs whitespace-nowrap">Filtrar por centro de resultado:</label>
         <select className="input max-w-xs text-xs" value={filtroEmpresa} onChange={e => setFiltroEmpresa(e.target.value)}>
           <option value="">Todas</option>
           {empresas.map(e => <option key={e} value={e}>{e}</option>)}
@@ -480,7 +480,7 @@ function CategoriasReceitaTab() {
           <table className="w-full text-xs">
             <thead className="table-header">
               <tr>
-                <th className="table-cell font-medium">Empresa</th>
+                <th className="table-cell font-medium">Centro de Resultado</th>
                 <th className="table-cell font-medium">Categoria</th>
                 <th className="table-cell font-medium w-20">Ações</th>
               </tr>
@@ -519,7 +519,7 @@ function CategoriasReceitaTab() {
 
 const TABS = [
   { id: 'clientes', label: 'Clientes' },
-  { id: 'empresas', label: 'Empresas / Centros de Custo' },
+  { id: 'empresas', label: 'Centros de Resultado' },
   { id: 'categorias', label: 'Categorias de Receita' },
 ] as const
 

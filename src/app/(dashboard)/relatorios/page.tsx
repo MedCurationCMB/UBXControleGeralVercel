@@ -188,7 +188,7 @@ export default function RelatoriosPage() {
 
             {dados.topEmpresas[m].length > 0 && (
               <div className="card">
-                <p className="text-sm font-medium text-slate-700 mb-2">Maiores consumos por centro de custo</p>
+                <p className="text-sm font-medium text-slate-700 mb-2">Maiores consumos por centro de resultado</p>
                 <table className="w-full text-sm">
                   <tbody>
                     {dados.topEmpresas[m].map(e => {

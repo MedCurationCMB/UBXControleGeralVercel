@@ -34,7 +34,7 @@ export default function CategoriasPage() {
   useEffect(() => { load() }, [load])
 
   const handleAdd = async () => {
-    if (!novaEmpresa) { setError('Selecione uma empresa'); return }
+    if (!novaEmpresa) { setError('Selecione um centro de resultado'); return }
     if (!novaCategoria.trim()) { setError('Informe o nome da categoria'); return }
     setSaving(true); setError('')
     const { error: err } = await supabase.from('categorias').insert({
@@ -64,7 +64,7 @@ export default function CategoriasPage() {
     <div className="space-y-6">
       <div>
         <h1 className="page-title">Categorias</h1>
-        <p className="page-subtitle">Categorias de despesa por empresa</p>
+        <p className="page-subtitle">Categorias de despesa por centro de resultado</p>
       </div>
 
       <div className="card">
@@ -72,7 +72,7 @@ export default function CategoriasPage() {
         {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
         <div className="flex gap-3 items-end flex-wrap">
           <div className="flex-1 min-w-[180px]">
-            <label className="label">Empresa</label>
+            <label className="label">Centro de Resultado</label>
             <select className="input" value={novaEmpresa} onChange={e => setNovaEmpresa(e.target.value)}>
               <option value="">Selecionar...</option>
               {empresas.map(e => <option key={e.id} value={e.empresa}>{e.empresa}</option>)}

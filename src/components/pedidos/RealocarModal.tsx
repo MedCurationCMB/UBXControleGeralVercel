@@ -122,13 +122,13 @@ export default function RealocarModal({ mod, pedido, usuario, onClose, onDone }:
   // função (e não componente interno): evita remontar o select a cada digitação
   const centro = (value: string, onChange: (v: string) => void) => (
     <select className="input flex-1 min-w-0" value={value} onChange={e => onChange(e.target.value)}>
-      <option value="">Centro de custo...</option>
+      <option value="">Centro de resultado...</option>
       {empresas.map(e => <option key={e.nome} value={e.nome}>{e.nome}{e.temCategoria ? '' : ' — sem a categoria'}</option>)}
     </select>
   )
 
   return (
-    <Modal open onClose={onClose} title={`Realocar centro de custo — Pedido #${pedido.id}`} size="lg">
+    <Modal open onClose={onClose} title={`Realocar centro de resultado — Pedido #${pedido.id}`} size="lg">
       <div className="space-y-4 text-sm">
         <p className="text-slate-600">
           A realocação vale para o <strong>pedido inteiro</strong>{nContas ? ` (${nContas} conta${nContas > 1 ? 's' : ''})` : ''} e mantém a categoria{' '}
@@ -218,7 +218,7 @@ export default function RealocarModal({ mod, pedido, usuario, onClose, onDone }:
               {plano.direta ? 'Será aplicada na hora, sem autorização.' : 'Ficará aguardando autorização, com o saldo do destino reservado.'}
             </p>
             <table className="w-full text-xs">
-              <thead><tr className="text-left text-slate-500"><th className="py-1">Centro de custo</th><th>Período</th><th className="text-right">Valor</th></tr></thead>
+              <thead><tr className="text-left text-slate-500"><th className="py-1">Centro de resultado</th><th>Período</th><th className="text-right">Valor</th></tr></thead>
               <tbody>
                 {previa.map((r, i) => (
                   <tr key={i} className="border-t border-green-100">

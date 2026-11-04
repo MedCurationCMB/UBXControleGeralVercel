@@ -83,7 +83,7 @@ export default function RequisicaoDetalhePage() {
   const handleSave = async () => {
     if (!requisicao) return
     setError('')
-    if (!empresa) { setError('Selecione a empresa'); return }
+    if (!empresa) { setError('Selecione o centro de resultado'); return }
     if (!categoria) { setError('Selecione a categoria'); return }
     if (!descricao.trim()) { setError('Informe a descrição'); return }
 
@@ -155,7 +155,7 @@ export default function RequisicaoDetalhePage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
-            <label className="label">Empresa</label>
+            <label className="label">Centro de Resultado</label>
             {editing ? (
               <select className="input" value={empresa} onChange={e => { setEmpresa(e.target.value); setCategoria('') }}>
                 <option value="">Selecionar...</option>

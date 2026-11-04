@@ -186,7 +186,7 @@ export default function PagamentosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">Pagamentos — Visão Geral</h1>
-          <p className="page-subtitle">Resumo e análise dos pedidos de pagamento</p>
+          <p className="page-subtitle">Resumo e análise dos pedidos de compra</p>
         </div>
         <button onClick={load} className="btn-secondary p-2" disabled={loading} title="Atualizar">
           <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -197,7 +197,7 @@ export default function PagamentosPage() {
       <div className="card">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="label">Empresa</label>
+            <label className="label">Centro de Resultado</label>
             <select className="input" value={filtroEmpresa}
               onChange={e => { setFiltroEmpresa(e.target.value); setFiltroCategoria('') }}>
               <option value="">Todas</option>
@@ -328,7 +328,7 @@ export default function PagamentosPage() {
               <thead className="table-header">
                 <tr>
                   <th className="table-cell text-left">ID</th>
-                  <th className="table-cell text-left">Empresa</th>
+                  <th className="table-cell text-left">Centro de Resultado</th>
                   <th className="table-cell text-left">Categoria</th>
                   <th className="table-cell text-left">Fornecedor</th>
                   <th className="table-cell text-right">Valor</th>
