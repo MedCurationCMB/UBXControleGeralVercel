@@ -524,4 +524,5 @@ export interface SessionPayload {
   status_cadastro: StatusCadastroEnum
   projetoId: number
   projetoNome: string
+  modulo?: 'pagamentos' | 'recebimentos' | null // perfil por módulo no projeto ativo; ausente/null = os dois
 }

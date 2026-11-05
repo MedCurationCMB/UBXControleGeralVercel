@@ -7,7 +7,7 @@ import type { SessionPayload } from '@/types/database'
 export async function sessaoGestor(): Promise<{ session: SessionPayload } | { erro: NextResponse }> {
   const session = await getSession()
   if (!session) return { erro: NextResponse.json({ error: 'Não autorizado' }, { status: 401 }) }
-  if (session.hierarquia !== 'owner' && session.hierarquia !== 'admin') {
+  if (session.hierarquia !== 'owner' && (session.hierarquia !== 'admin' || session.modulo)) {
     return { erro: NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 }) }
   }
   return { session }

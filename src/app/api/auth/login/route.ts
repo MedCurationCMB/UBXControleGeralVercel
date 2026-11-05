@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
       status_cadastro: user.status_cadastro!,
       projetoId: projeto.id,
       projetoNome: projeto.nome,
+      modulo: projeto.modulo,
     })
 
     await setSessionCookie(token)

@@ -1,5 +1,6 @@
 'use client'
 
+import { veModulo } from '@/lib/modulos'
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { PlusSquare, ClipboardList, Receipt, CheckCircle, ArrowRight, Undo2, BarChart3, Layers } from 'lucide-react'
@@ -53,6 +54,7 @@ export default function InicioPage() {
   const [username, setUsername] = useState('')
   const [admin, setAdmin] = useState(false)
   const [owner, setOwner] = useState(false)
+  const [mods, setMods] = useState<ModuloPedido[]>(MODS) // módulos que o perfil enxerga
   const [fluxo, setFluxo] = useState(zero(''))
   const [pedidos, setPedidos] = useState(zero<Pend[]>([]))
   const [reqs, setReqs] = useState<Req[]>([])
@@ -68,6 +70,8 @@ export default function InicioPage() {
     if (!u) return
     const ehAdmin = u.hierarquia === 'admin' || u.hierarquia === 'owner'
     setUsername(u.username); setAdmin(ehAdmin); setOwner(u.hierarquia === 'owner')
+    const meusMods = MODS.filter(m => veModulo(u.modulo, m))
+    setMods(meusMods)
 
     const fl = zero('')
     const novoReal = zero(0)
@@ -75,7 +79,7 @@ export default function InicioPage() {
     const novasReqs: Req[] = []
     const novoMeus = zero<Meus>({ aguardando: 0, autorizado: 0, ajuste: 0, recusado: 0 })
 
-    await Promise.all(MODS.map(async mod => {
+    await Promise.all(meusMods.map(async mod => {
       const t = TAB_PEDIDO[mod]
       const { data: cfg } = await supabase.from('config').select('valor').eq('chave', t.cfgFluxo).maybeSingle()
       fl[mod] = cfg?.valor ?? ''
@@ -128,7 +132,7 @@ export default function InicioPage() {
   useEffect(() => { load() }, [load])
 
   // atalhos de criação, conforme o fluxo de cada módulo
-  const acoes = MODS.flatMap(mod => {
+  const acoes = mods.flatMap(mod => {
     const base = `/${mod}`, nome = mod === 'pagamentos' ? 'compra' : 'venda'
     const f = fluxo[mod]
     return [
@@ -138,10 +142,10 @@ export default function InicioPage() {
     ]
   })
 
-  const atrasos = MODS.filter(m => atrasados[m].qtd > 0)
+  const atrasos = mods.filter(m => atrasados[m].qtd > 0)
 
-  const devolvidos = MODS.filter(m => meus[m].ajuste > 0)
-  const temPedidos = MODS.filter(m => Object.values(meus[m]).some(v => v > 0))
+  const devolvidos = mods.filter(m => meus[m].ajuste > 0)
+  const temPedidos = mods.filter(m => Object.values(meus[m]).some(v => v > 0))
 
   return (
     <div className="space-y-6">
@@ -191,7 +195,7 @@ export default function InicioPage() {
             </Secao>
           )}
 
-          {MODS.map(m => pedidos[m].length > 0 && (
+          {mods.map(m => pedidos[m].length > 0 && (
             <Secao key={m} titulo={m === 'pagamentos' ? 'Pedidos de compra' : 'Pedidos de venda'} n={pedidos[m].length}
               cols={['#', 'Centro de Resultado', m === 'pagamentos' ? 'Fornecedor' : 'Cliente', 'Valor', 'Data']}>
               {pedidos[m].map(p => (
@@ -207,7 +211,7 @@ export default function InicioPage() {
             </Secao>
           ))}
 
-          {MODS.filter(m => real[m] > 0).map(m => (
+          {mods.filter(m => real[m] > 0).map(m => (
             <Link key={m} href={`/${m}/autorizar`} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-yellow-50 border border-yellow-200 hover:bg-yellow-100 text-sm text-yellow-800">
               <span>{real[m]} realocação{real[m] > 1 ? 'ões' : ''} de centro de resultado ({m === 'pagamentos' ? 'compra' : 'venda'}) aguardando autorização</span>
               <span className="font-medium inline-flex items-center gap-1">Abrir <ArrowRight size={13} /></span>

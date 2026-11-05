@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import Modal from '@/components/ui/Modal'
 import type { TipoHierarquia } from '@/types/database'
+import { veModulo, nomePerfil, type Modulo } from '@/lib/modulos'
 import {
   LayoutDashboard, FileText, CheckSquare, Clock, PlusSquare,
   CreditCard, FolderOpen, Users, Building2, Tag, List,
@@ -26,6 +27,7 @@ interface NavItem {
   flowOnly?: ('3' | '4' | '5')[]
   flowOnlyReceita?: ('3' | '4' | '5')[]
   contrato?: boolean
+  semModuloOnly?: boolean // só perfis dos dois módulos (extratos, acessos, painel)
 }
 
 interface NavGroup {
@@ -87,10 +89,10 @@ const navGroups: NavGroup[] = [
     title: 'Configurações',
     items: [
       { label: 'Centros de Resultado', href: '/empresas', icon: Building2 },
-      { label: 'Extratos Bancários', href: '/extratos-bancarios', icon: Landmark },
+      { label: 'Extratos Bancários', href: '/extratos-bancarios', icon: Landmark, semModuloOnly: true },
       { label: 'Relatórios', href: '/relatorios', icon: BarChart3, ownerOnly: true },
-      { label: 'Projetos e Acessos', href: '/projetos', icon: Layers, adminOnly: true },
-      { label: 'Painel Admin', href: '/admin', icon: ShieldCheck, adminOnly: true },
+      { label: 'Projetos e Acessos', href: '/projetos', icon: Layers, adminOnly: true, semModuloOnly: true },
+      { label: 'Painel Admin', href: '/admin', icon: ShieldCheck, adminOnly: true, semModuloOnly: true },
     ],
   },
 ]
@@ -108,6 +110,7 @@ interface AppShellProps {
   hierarquia: TipoHierarquia
   projetoId: number
   projetoNome: string
+  modulo: Modulo | null
   children: React.ReactNode
 }
 
@@ -115,7 +118,7 @@ interface AppShellProps {
  * Estrutura única das telas (design system): menu lateral navy recolhível (gaveta no celular),
  * barra superior com caminho e busca, `<main>` com `p-4 sm:p-6`.
  */
-export default function AppShell({ username, hierarquia, projetoId, projetoNome, children }: AppShellProps) {
+export default function AppShell({ username, hierarquia, projetoId, projetoNome, modulo, children }: AppShellProps) {
   const pathname = usePathname()
   const router = useRouter()
   const isAdminOrOwner = hierarquia === 'admin' || hierarquia === 'owner'
@@ -195,10 +198,12 @@ export default function AppShell({ username, hierarquia, projetoId, projetoNome,
   })
 
   const grupos = useMemo(() => navGroups
+    .filter(g => (g.title !== 'Pagamentos' || veModulo(modulo, 'pagamentos')) && (g.title !== 'Recebimentos' || veModulo(modulo, 'recebimentos')))
     .map(g => ({
       ...g,
       items: g.items.filter(item =>
         (!item.adminOnly || isAdminOrOwner) &&
+        (!item.semModuloOnly || !modulo) &&
         (!item.ownerOnly || hierarquia === 'owner') &&
         (!item.contrato || contratosLiberados) &&
         (!item.flowOnly || item.flowOnly.includes(fluxoSistema as '3' | '4' | '5')) &&
@@ -206,7 +211,7 @@ export default function AppShell({ username, hierarquia, projetoId, projetoNome,
       ),
     }))
     .filter(g => g.items.length > 0),
-  [isAdminOrOwner, hierarquia, contratosLiberados, fluxoSistema, fluxoSistemaReceita])
+  [isAdminOrOwner, hierarquia, modulo, contratosLiberados, fluxoSistema, fluxoSistemaReceita])
 
   const ativo = (item: NavItem) =>
     pathname === item.href ||
@@ -320,7 +325,7 @@ export default function AppShell({ username, hierarquia, projetoId, projetoNome,
         {!col && (
           <div className="mb-2 min-w-0 px-1">
             <p className="truncate text-sm text-white">{username}</p>
-            <p className="text-xs text-white/60">{hierarquiaLabel[hierarquia]}</p>
+            <p className="text-xs text-white/60">{hierarquia === 'owner' ? hierarquiaLabel.owner : nomePerfil(hierarquia, modulo)}</p>
           </div>
         )}
         <div className={cn('flex gap-1', col && 'flex-col')}>

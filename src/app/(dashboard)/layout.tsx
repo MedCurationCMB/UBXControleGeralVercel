@@ -7,7 +7,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!session) redirect('/login')
 
   return (
-    <AppShell username={session.username} hierarquia={session.hierarquia} projetoId={session.projetoId} projetoNome={session.projetoNome}>
+    <AppShell username={session.username} hierarquia={session.hierarquia} projetoId={session.projetoId} projetoNome={session.projetoNome} modulo={session.modulo ?? null}>
       {children}
     </AppShell>
   )

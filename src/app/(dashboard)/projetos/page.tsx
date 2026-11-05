@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Pencil, Check, X, RefreshCw } from 'lucide-react'
+import { PERFIS, perfilValor, type Modulo, type Papel } from '@/lib/modulos'
 
 interface Projeto { id: number; nome: string; ativo: boolean; membros: number }
-interface Membro { usuario_id: number; papel: 'admin' | 'user'; username: string; email: string; status: string }
+interface Membro { usuario_id: number; papel: Papel; modulo: Modulo | null; username: string; email: string; status: string }
 
 async function chamar(url: string, method: string, body?: unknown) {
   const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
@@ -25,7 +26,7 @@ export default function ProjetosPage() {
   const [novoNome, setNovoNome] = useState('')
   const [renomeando, setRenomeando] = useState<{ id: number; nome: string } | null>(null)
   const [email, setEmail] = useState('')
-  const [papel, setPapel] = useState<'admin' | 'user'>('user')
+  const [perfil, setPerfil] = useState('user')
 
   const aviso = (tipo: 'ok' | 'erro', texto: string) => setMsg({ tipo, texto })
 
@@ -82,7 +83,7 @@ export default function ProjetosPage() {
   const adicionar = async () => {
     if (selecionado == null) return
     setMsg(null)
-    const { ok, erro, d } = await chamar(`/api/admin/projetos/${selecionado}/membros`, 'POST', { email, papel })
+    const { ok, erro, d } = await chamar(`/api/admin/projetos/${selecionado}/membros`, 'POST', { email, perfil })
     if (!ok) return aviso('erro', erro)
     setEmail('')
     aviso('ok', `${d.username} agora tem acesso ao projeto.`)
@@ -90,9 +91,9 @@ export default function ProjetosPage() {
     if (ehOwner) carregarProjetos()
   }
 
-  const mudarPapel = async (m: Membro, novo: 'admin' | 'user') => {
+  const mudarPerfil = async (m: Membro, novo: string) => {
     if (selecionado == null) return
-    const { ok, erro } = await chamar(`/api/admin/projetos/${selecionado}/membros/${m.usuario_id}`, 'PATCH', { papel: novo })
+    const { ok, erro } = await chamar(`/api/admin/projetos/${selecionado}/membros/${m.usuario_id}`, 'PATCH', { perfil: novo })
     if (!ok) aviso('erro', erro)
     carregarMembros(selecionado)
   }
@@ -185,7 +186,7 @@ export default function ProjetosPage() {
               <tr className="text-left text-slate-500 border-b border-slate-100">
                 <th className="table-cell font-medium">Usuário</th>
                 <th className="table-cell font-medium">E-mail</th>
-                <th className="table-cell font-medium">Papel no projeto</th>
+                <th className="table-cell font-medium">Perfil no projeto</th>
                 <th className="table-cell font-medium" />
               </tr>
             </thead>
@@ -198,10 +199,9 @@ export default function ProjetosPage() {
                   <td className="table-cell font-medium text-slate-800">{m.username}{m.usuario_id === voce && <span className="ml-2 text-xs text-slate-400">(você)</span>}</td>
                   <td className="table-cell text-slate-500">{m.email}</td>
                   <td className="table-cell">
-                    <select className="input py-1 w-auto" value={m.papel} disabled={m.usuario_id === voce}
-                      onChange={e => mudarPapel(m, e.target.value as 'admin' | 'user')}>
-                      <option value="user">Usuário</option>
-                      <option value="admin">Administrador</option>
+                    <select className="input py-1 w-auto" value={perfilValor(m.papel, m.modulo)} disabled={m.usuario_id === voce}
+                      onChange={e => mudarPerfil(m, e.target.value)}>
+                      {PERFIS.map(o => <option key={o.valor} value={o.valor}>{o.label}</option>)}
                     </select>
                   </td>
                   <td className="table-cell text-right">
@@ -217,14 +217,13 @@ export default function ProjetosPage() {
         <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-slate-100">
           <input className="input max-w-xs" type="email" placeholder="E-mail do usuário (já cadastrado)" value={email}
             onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && adicionar()} />
-          <select className="input w-auto" value={papel} onChange={e => setPapel(e.target.value as 'admin' | 'user')}>
-            <option value="user">Usuário</option>
-            <option value="admin">Administrador</option>
+          <select className="input w-auto" value={perfil} onChange={e => setPerfil(e.target.value)}>
+            {PERFIS.map(o => <option key={o.valor} value={o.valor}>{o.label}</option>)}
           </select>
           <button onClick={adicionar} disabled={!email.trim() || selecionado == null} className="btn-primary gap-1.5 text-sm"><Plus size={14} /> Adicionar acesso</button>
         </div>
         <p className="text-xs text-slate-400 mt-2">
-          O usuário precisa ter feito o cadastro e estar autorizado pelo owner. Administrador do projeto gerencia os acessos e as configurações dele.
+          O usuário precisa ter feito o cadastro e estar autorizado pelo owner. Usuário e Administrador (sem módulo) veem Pagamentos e Recebimentos; os perfis de Pagamento ou de Recebimento só veem o módulo escolhido. Só o Administrador dos dois módulos gerencia acessos.
         </p>
       </div>
     </div>

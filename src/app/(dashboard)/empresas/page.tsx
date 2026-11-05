@@ -27,7 +27,7 @@ function CopiarDe({ centros, excluir, value, onChange }: { centros: Centro[]; ex
 
 export default function CentrosResultadoPage() {
   const { session } = useSession()
-  const isAdmin = session?.hierarquia === 'admin' || session?.hierarquia === 'owner'
+  const isAdmin = (session?.hierarquia === 'admin' && !session.modulo) || session?.hierarquia === 'owner' // edita nome: só administrador dos dois módulos
   const [centros, setCentros] = useState<Centro[]>([])
   const [loading, setLoading] = useState(true)
   const [nome, setNome] = useState('')

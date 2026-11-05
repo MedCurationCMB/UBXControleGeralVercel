@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { useContratosLiberados } from '@/lib/useContratosLiberados'
+import { useSession } from '@/hooks/useSession'
+import { veModulo } from '@/lib/modulos'
 import {
   BarChart3, CheckSquare, Search, FileText, FolderOpen,
   ShoppingCart, Banknote, ClipboardList, CreditCard, Users,
@@ -108,6 +110,10 @@ function Card({ card }: { card: NavCard }) {
 
 export default function AtalhosPage() {
   const contratosLiberados = useContratosLiberados()
+  const { session } = useSession()
+  const modulo = session?.modulo ?? null
+  const secoesVisiveis = sections.filter(s =>
+    (s.title !== 'Módulo de Pagamentos' || veModulo(modulo, 'pagamentos')) && (s.title !== 'Módulo de Recebimentos' || veModulo(modulo, 'recebimentos')))
   return (
     <div className="space-y-8">
       <div>
@@ -115,7 +121,7 @@ export default function AtalhosPage() {
         <p className="page-subtitle">Atalhos para todas as telas do sistema</p>
       </div>
 
-      {sections.map(section => (
+      {secoesVisiveis.map(section => (
         <div key={section.title} className="card space-y-4">
           <h2 className="text-base font-semibold text-slate-800 border-b border-slate-100 pb-3">
             {section.title}
@@ -123,7 +129,7 @@ export default function AtalhosPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {section.columns.map((col, ci) => (
               <div key={ci} className="space-y-2">
-                {col.filter(card => !card.contrato || contratosLiberados).map(card => (
+                {col.filter(card => (!card.contrato || contratosLiberados) && !(modulo && card.href === '/admin')).map(card => (
                   <Card key={card.href} card={card} />
                 ))}
               </div>

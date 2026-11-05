@@ -1,3 +1,4 @@
+import { veModulo } from '@/lib/modulos'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabase/server'
@@ -19,6 +20,9 @@ export async function POST(req: NextRequest) {
     const recebimentoId = form.get('recebimento_id') as string | null
     const tipoDocumento = parseInt(form.get('tipo_documento') as string)
     const modulo = (form.get('modulo') as string) ?? 'pagamentos'
+    if (!veModulo(session.modulo, modulo === 'recebimentos' ? 'recebimentos' : 'pagamentos')) {
+      return NextResponse.json({ error: 'Sem acesso a este módulo' }, { status: 403 })
+    }
     const extrairBoleto = form.get('extrair_boleto') === 'true'
     const analisar = form.get('analisar') === 'true'
 

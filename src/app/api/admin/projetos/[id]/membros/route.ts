@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase/server'
 import { sessaoGestor, podeGerenciarMembros, negado } from '@/lib/gestao-projetos'
+import { lerPerfil } from '@/lib/modulos'
 
 type Ctx = { params: Promise<{ id: string }> }
 
@@ -13,13 +14,13 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
   const { data, error } = await supabaseServer
     .from('usuarios_projetos')
-    .select('usuario_id, papel, usuarios!inner(username, email, status_cadastro)')
+    .select('usuario_id, papel, modulo, usuarios!inner(username, email, status_cadastro)')
     .eq('projeto_id', projetoId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   const membros = (data ?? []).map(r => {
     const u = r.usuarios as unknown as { username: string; email: string; status_cadastro: string }
-    return { usuario_id: r.usuario_id, papel: r.papel, username: u.username, email: u.email, status: u.status_cadastro }
+    return { usuario_id: r.usuario_id, papel: r.papel, modulo: r.modulo, username: u.username, email: u.email, status: u.status_cadastro }
   }).sort((a, b) => a.username.localeCompare(b.username))
   return NextResponse.json({ membros, voce: g.session.userId })
 }
@@ -31,8 +32,9 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const projetoId = Number((await params).id)
   if (!Number.isInteger(projetoId) || !podeGerenciarMembros(g.session, projetoId)) return negado()
 
-  const { email, papel } = await req.json()
-  if (papel !== 'admin' && papel !== 'user') return NextResponse.json({ error: 'Papel inválido' }, { status: 400 })
+  const { email, perfil } = await req.json()
+  const p = lerPerfil(perfil)
+  if (!p) return NextResponse.json({ error: 'Perfil inválido' }, { status: 400 })
   const mail = String(email ?? '').toLowerCase().trim()
   if (!mail) return NextResponse.json({ error: 'Informe o e-mail do usuário' }, { status: 400 })
 
@@ -45,7 +47,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
     return NextResponse.json({ error: 'Este usuário ainda não teve o cadastro autorizado pelo owner' }, { status: 400 })
   }
 
-  const { error } = await supabaseServer.from('usuarios_projetos').insert({ usuario_id: usuario.id, projeto_id: projetoId, papel })
+  const { error } = await supabaseServer.from('usuarios_projetos').insert({ usuario_id: usuario.id, projeto_id: projetoId, papel: p.papel, modulo: p.modulo })
   if (error) {
     return NextResponse.json(
       { error: error.code === '23505' ? 'Este usuário já faz parte do projeto' : error.message },
