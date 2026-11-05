@@ -1,3 +1,4 @@
+import { clienteDoUsuario } from '@/lib/supabase/usuario'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabase/server'
@@ -87,16 +88,17 @@ export async function POST(
       modelo_estatico_id: number
     }
 
+    const db = await clienteDoUsuario(session) // com RLS: só pedidos/linhas dos centros do usuário
     // Fetch pedido + fluxo in parallel
     const [{ data: pedido }, { data: fluxo }, { data: modeloVar }, { data: modeloEst }] =
       await Promise.all([
-        supabaseServer
+        db
           .from('pedidos_solicitados')
           .select('id,empresa,categoria,fornecedor,valor_pedido,status,data_solicitacao,data_autorizacao,emergencia,observacao')
           .eq('id', pedidoId)
           .eq('projeto_id', session.projetoId)
           .maybeSingle(),
-        supabaseServer
+        db
           .from('pedidos_solicitados_fluxo')
           .select('mes,ano,valor_referente')
           .eq('pedido_id', pedidoId)

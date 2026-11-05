@@ -1,5 +1,6 @@
 'use client'
 
+import { useSession } from '@/hooks/useSession'
 import { useCallback, useEffect, useState } from 'react'
 import { Shuffle, Clock } from 'lucide-react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
@@ -30,7 +31,9 @@ export default function RealocacaoPedido({ mod, pedido, usuario, onPendente, onC
   const [carregado, setCarregado] = useState(false)
 
   const pendente = hist.find(r => r.status === 'Aguardando Autorização')
-  const podeRealocar = pedido.status === 'Autorizado' && !pedido.cancelado && !pendente
+  const { session } = useSession()
+  // quem vê só alguns centros não realoca (a realocação mexe em vários centros)
+  const podeRealocar = pedido.status === 'Autorizado' && !pedido.cancelado && !pendente && !session?.restrito
 
   const load = useCallback(async () => {
     const [{ data: rs }, { data: fl }] = await Promise.all([

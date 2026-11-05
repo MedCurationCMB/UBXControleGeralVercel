@@ -2,20 +2,20 @@ import { supabaseServer } from '@/lib/supabase/server'
 import type { TipoHierarquia } from '@/types/database'
 import type { Modulo, Papel } from '@/lib/modulos'
 
-export interface ProjetoAcesso { id: number; nome: string; papel: Papel; modulo: Modulo | null }
+export interface ProjetoAcesso { id: number; nome: string; papel: Papel; modulo: Modulo | null; todosCentros: boolean }
 
 // Projetos que o usuário pode abrir. Owner enxerga todos os projetos ativos.
 export async function projetosDoUsuario(userId: number, hierarquiaGlobal: TipoHierarquia): Promise<ProjetoAcesso[]> {
   if (hierarquiaGlobal === 'owner') {
     const { data } = await supabaseServer.from('projetos').select('id, nome').eq('ativo', true).order('id')
-    return (data ?? []).map(p => ({ id: p.id, nome: p.nome, papel: 'admin' as const, modulo: null }))
+    return (data ?? []).map(p => ({ id: p.id, nome: p.nome, papel: 'admin' as const, modulo: null, todosCentros: true }))
   }
   const { data } = await supabaseServer
-    .from('usuarios_projetos').select('papel, modulo, projetos!inner(id, nome, ativo)').eq('usuario_id', userId)
+    .from('usuarios_projetos').select('papel, modulo, todos_centros, projetos!inner(id, nome, ativo)').eq('usuario_id', userId)
   return (data ?? [])
-    .map(r => ({ p: r.projetos as unknown as { id: number; nome: string; ativo: boolean }, papel: r.papel as Papel, modulo: (r.modulo as Modulo | null) ?? null }))
+    .map(r => ({ p: r.projetos as unknown as { id: number; nome: string; ativo: boolean }, papel: r.papel as Papel, modulo: (r.modulo as Modulo | null) ?? null, todosCentros: r.todos_centros !== false }))
     .filter(r => r.p.ativo)
-    .map(r => ({ id: r.p.id, nome: r.p.nome, papel: r.papel, modulo: r.modulo }))
+    .map(r => ({ id: r.p.id, nome: r.p.nome, papel: r.papel, modulo: r.modulo, todosCentros: r.todosCentros }))
     .sort((a, b) => a.id - b.id)
 }
 

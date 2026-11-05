@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { useSession } from '@/hooks/useSession'
 import Modal from '@/components/ui/Modal'
@@ -11,6 +11,40 @@ type Msg = { type: 'success' | 'error'; text: string }
 
 const resumoCopia = (r: { pagamentos: number; recebimentos: number }) =>
   `${r.pagamentos} categoria(s) de pagamentos e ${r.recebimentos} de recebimentos copiadas.`
+
+const NIL = '00000000-0000-0000-0000-000000000000'
+
+// Quem pode ver o centro: só interessa quem é restrito (quem vê "todos" já vê, inclusive os centros novos)
+function QuemVe({ projetoId, empresaId, onChange }: { projetoId: number; empresaId?: string; onChange: (ids: number[]) => void }) {
+  const [lista, setLista] = useState<{ usuario_id: number; username: string; marcado: boolean }[] | null>(null)
+  const aoMudar = useRef(onChange); aoMudar.current = onChange
+  useEffect(() => {
+    let vivo = true
+    fetch(`/api/admin/projetos/${projetoId}/centros/${empresaId ?? NIL}/usuarios`).then(r => r.ok ? r.json() : null).then(d => {
+      if (!vivo || !d) return
+      setLista(d.usuarios); aoMudar.current(d.usuarios.filter((u: { marcado: boolean }) => u.marcado).map((u: { usuario_id: number }) => u.usuario_id))
+    })
+    return () => { vivo = false }
+  }, [projetoId, empresaId])
+  if (!lista || lista.length === 0) return null
+  const alternar = (id: number, v: boolean) => {
+    const nova = lista.map(u => u.usuario_id === id ? { ...u, marcado: v } : u)
+    setLista(nova); onChange(nova.filter(u => u.marcado).map(u => u.usuario_id))
+  }
+  return (
+    <div>
+      <label className="label">Quem pode ver este centro</label>
+      <div className="border border-slate-200 rounded-lg p-2 space-y-1 max-h-40 overflow-y-auto">
+        {lista.map(u => (
+          <label key={u.usuario_id} className="flex items-center gap-2 text-sm text-slate-700 px-1">
+            <input type="checkbox" checked={u.marcado} onChange={ev => alternar(u.usuario_id, ev.target.checked)} /> {u.username}
+          </label>
+        ))}
+      </div>
+      <p className="text-xs text-slate-400 mt-1">Usuários que veem todos os centros já enxergam este. Aqui aparecem só os que escolhem centros.</p>
+    </div>
+  )
+}
 
 function CopiarDe({ centros, excluir, value, onChange }: { centros: Centro[]; excluir?: string; value: string; onChange: (v: string) => void }) {
   return (
@@ -38,6 +72,9 @@ export default function CentrosResultadoPage() {
   const [editNome, setEditNome] = useState('')
   const [editCopiar, setEditCopiar] = useState('')
   const [editErro, setEditErro] = useState('')
+  const [quem, setQuem] = useState<number[]>([])
+  const [editQuem, setEditQuem] = useState<number[]>([])
+  const restrito = !!session?.restrito // quem vê só alguns centros não cria centro novo
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -65,13 +102,17 @@ export default function CentrosResultadoPage() {
       return
     }
     let extra = ''
+    if (isAdmin && session && quem.length) {
+      const r = await fetch(`/api/admin/projetos/${session.projetoId}/centros/${data.id}/usuarios`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: quem }) })
+      if (!r.ok) extra += ' Mas não foi possível definir quem vê o centro.'
+    }
     if (copiarDe) {
       const c = await copiar(copiarDe, data.id)
       extra = c.erro ? ` Mas a cópia das categorias falhou: ${c.erro}` : ` ${c.texto}`
     }
     setSaving(false)
     setMsg({ type: 'success', text: `Centro de Resultado "${nome.trim()}" cadastrado com sucesso!${extra}` })
-    setNome(''); setCopiarDe('')
+    setNome(''); setCopiarDe(''); setQuem([])
     load()
   }
 
@@ -83,6 +124,10 @@ export default function CentrosResultadoPage() {
     if (editNome.trim() !== edit.empresa) {
       const { error } = await supabase.rpc('empresa_renomear', { p_id: edit.id, p_novo: editNome })
       if (error) { setSaving(false); setEditErro(error.message); return }
+    }
+    if (session) {
+      const r = await fetch(`/api/admin/projetos/${session.projetoId}/centros/${edit.id}/usuarios`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: editQuem }) })
+      if (!r.ok) { setSaving(false); setEditErro('Não foi possível salvar quem vê o centro.'); return }
     }
     if (editCopiar) {
       const c = await copiar(editCopiar, edit.id)
@@ -141,6 +186,9 @@ export default function CentrosResultadoPage() {
       </div>
 
       {/* Formulário */}
+      {restrito ? (
+        <p className="text-sm text-slate-500">Seu perfil vê só alguns centros de resultado e não cadastra centros novos.</p>
+      ) : (
       <div className="card max-w-lg">
         <h2 className="text-sm font-semibold text-slate-700 mb-4">Novo Cadastro</h2>
         <form onSubmit={handleCadastrar} className="space-y-3">
@@ -154,6 +202,7 @@ export default function CentrosResultadoPage() {
             />
           </div>
           <CopiarDe centros={centros} value={copiarDe} onChange={setCopiarDe} />
+          {isAdmin && session && <QuemVe projetoId={session.projetoId} onChange={setQuem} />}
           {msg && (
             <p className={`text-sm ${msg.type === 'success' ? 'text-green-700' : 'text-red-600'}`}>
               {msg.text}
@@ -164,6 +213,7 @@ export default function CentrosResultadoPage() {
           </button>
         </form>
       </div>
+      )}
 
       <Modal open={!!edit} onClose={() => setEdit(null)} title="Editar Centro de Resultado">
         <div className="space-y-3">
@@ -173,6 +223,7 @@ export default function CentrosResultadoPage() {
             <p className="text-xs text-slate-400 mt-1">O novo nome vale também para pedidos, orçamentos e categorias já existentes.</p>
           </div>
           <CopiarDe centros={centros} excluir={edit?.id} value={editCopiar} onChange={setEditCopiar} />
+          {edit && session && <QuemVe key={edit.id} projetoId={session.projetoId} empresaId={edit.id} onChange={setEditQuem} />}
           {editErro && <p className="text-sm text-red-600">{editErro}</p>}
           <div className="flex justify-end gap-2">
             <button onClick={() => setEdit(null)} className="btn-secondary text-sm">Cancelar</button>

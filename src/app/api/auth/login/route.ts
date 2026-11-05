@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
       projetoId: projeto.id,
       projetoNome: projeto.nome,
       modulo: projeto.modulo,
+      restrito: !projeto.todosCentros,
     })
 
     await setSessionCookie(token)

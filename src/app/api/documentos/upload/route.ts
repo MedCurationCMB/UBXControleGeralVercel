@@ -1,3 +1,4 @@
+import { clienteDoUsuario } from '@/lib/supabase/usuario'
 import { veModulo } from '@/lib/modulos'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     // O pedido precisa ser do projeto ativo
     if (pedidoId) {
-      const { data: ped } = await supabaseServer
+      const { data: ped } = await (await clienteDoUsuario(session)) // com RLS: só pedidos dos centros do usuário
         .from(modulo === 'recebimentos' ? 'pedidos_solicitados_receita' : 'pedidos_solicitados')
         .select('id').eq('id', parseInt(pedidoId)).eq('projeto_id', session.projetoId).maybeSingle()
       if (!ped) return NextResponse.json({ error: 'Pedido não encontrado neste projeto' }, { status: 404 })

@@ -1,3 +1,4 @@
+import { clienteDoUsuario } from '@/lib/supabase/usuario'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { supabaseServer } from '@/lib/supabase/server'
@@ -14,7 +15,8 @@ export async function GET(
   const pedidoId = parseInt(id)
   if (isNaN(pedidoId)) return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
 
-  const { data: pedido } = await supabaseServer
+  const db = await clienteDoUsuario(session) // com RLS: só pedidos dos centros do usuário
+  const { data: pedido } = await db
     .from('pedidos_solicitados_receita')
     .select('analise_texto, arquivo_texto, empresa, categoria, cliente, valor_pedido, observacao')
     .eq('id', pedidoId)

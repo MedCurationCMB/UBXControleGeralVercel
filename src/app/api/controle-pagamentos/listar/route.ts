@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { getSituacao, consultaControles, type FiltrosControle } from '@/lib/controle-pagamentos-server'
 import { getSession } from '@/lib/auth'
+import { clienteDoUsuario } from '@/lib/supabase/usuario'
 
 interface Pedido {
   empresa: string; categoria: string; fornecedor: string; status: string; observacao: string | null
@@ -58,7 +59,8 @@ export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   const projetoId = session.projetoId
-  const supabase = createServerClient()
+  const supabase = await clienteDoUsuario(session) // com RLS: módulo e centros do usuário
+  const servico = createServerClient() // extratos não têm policy: só o servidor lê
   const { searchParams } = req.nextUrl
   const filtros: FiltrosControle = {
     empresa: searchParams.get('empresa') || '',
@@ -82,8 +84,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: (error as Error).message }, { status: 500 })
     }
     const rows = all.map(montarLinha).filter(r => !situacao || r.situacao === situacao)
-    if (isExport) return NextResponse.json({ rows: await comExtrato(supabase, rows), total: rows.length })
-    return NextResponse.json({ rows: await comExtrato(supabase, rows.slice(page * pageSize, (page + 1) * pageSize)), total: rows.length })
+    if (isExport) return NextResponse.json({ rows: await comExtrato(servico, rows), total: rows.length })
+    return NextResponse.json({ rows: await comExtrato(servico, rows.slice(page * pageSize, (page + 1) * pageSize)), total: rows.length })
   }
 
   // Sem filtro de situação: pagina direto no banco.
@@ -91,5 +93,5 @@ export async function GET(req: NextRequest) {
     .order('id', { ascending: false })
     .range(page * pageSize, (page + 1) * pageSize - 1)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ rows: await comExtrato(supabase, ((data ?? []) as unknown as Controle[]).map(montarLinha)), total: count ?? 0 })
+  return NextResponse.json({ rows: await comExtrato(servico, ((data ?? []) as unknown as Controle[]).map(montarLinha)), total: count ?? 0 })
 }

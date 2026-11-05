@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Pencil, Check, X, RefreshCw } from 'lucide-react'
 import { PERFIS, perfilValor, type Modulo, type Papel } from '@/lib/modulos'
+import Modal from '@/components/ui/Modal'
 
 interface Projeto { id: number; nome: string; ativo: boolean; membros: number }
-interface Membro { usuario_id: number; papel: Papel; modulo: Modulo | null; username: string; email: string; status: string }
+interface Membro { usuario_id: number; papel: Papel; modulo: Modulo | null; todos_centros: boolean; centros: number; username: string; email: string; status: string }
 
 async function chamar(url: string, method: string, body?: unknown) {
   const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
@@ -27,6 +28,13 @@ export default function ProjetosPage() {
   const [renomeando, setRenomeando] = useState<{ id: number; nome: string } | null>(null)
   const [email, setEmail] = useState('')
   const [perfil, setPerfil] = useState('user')
+
+  // Centros de resultado que o membro vê
+  const [centrosDe, setCentrosDe] = useState<Membro | null>(null)
+  const [todosCentros, setTodosCentros] = useState(true)
+  const [centrosLista, setCentrosLista] = useState<{ id: string; empresa: string; marcado: boolean }[]>([])
+  const [salvandoCentros, setSalvandoCentros] = useState(false)
+  const [erroCentros, setErroCentros] = useState('')
 
   const aviso = (tipo: 'ok' | 'erro', texto: string) => setMsg({ tipo, texto })
 
@@ -95,6 +103,25 @@ export default function ProjetosPage() {
     if (selecionado == null) return
     const { ok, erro } = await chamar(`/api/admin/projetos/${selecionado}/membros/${m.usuario_id}`, 'PATCH', { perfil: novo })
     if (!ok) aviso('erro', erro)
+    carregarMembros(selecionado)
+  }
+
+  const abrirCentros = async (m: Membro) => {
+    if (selecionado == null) return
+    setCentrosDe(m); setErroCentros(''); setCentrosLista([])
+    const { ok, erro, d } = await chamar(`/api/admin/projetos/${selecionado}/membros/${m.usuario_id}/centros`, 'GET')
+    if (!ok) return setErroCentros(erro)
+    setTodosCentros(d.todos); setCentrosLista(d.empresas)
+  }
+
+  const salvarCentros = async () => {
+    if (selecionado == null || !centrosDe) return
+    setSalvandoCentros(true); setErroCentros('')
+    const { ok, erro } = await chamar(`/api/admin/projetos/${selecionado}/membros/${centrosDe.usuario_id}/centros`, 'PUT',
+      { todos: todosCentros, ids: centrosLista.filter(c => c.marcado).map(c => c.id) })
+    setSalvandoCentros(false)
+    if (!ok) return setErroCentros(erro)
+    setCentrosDe(null)
     carregarMembros(selecionado)
   }
 
@@ -187,12 +214,13 @@ export default function ProjetosPage() {
                 <th className="table-cell font-medium">Usuário</th>
                 <th className="table-cell font-medium">E-mail</th>
                 <th className="table-cell font-medium">Perfil no projeto</th>
+                <th className="table-cell font-medium">Centros de resultado</th>
                 <th className="table-cell font-medium" />
               </tr>
             </thead>
             <tbody>
               {membros.length === 0 && (
-                <tr><td colSpan={4} className="table-cell text-slate-400 text-center py-6">Nenhum usuário neste projeto.</td></tr>
+                <tr><td colSpan={5} className="table-cell text-slate-400 text-center py-6">Nenhum usuário neste projeto.</td></tr>
               )}
               {membros.map(m => (
                 <tr key={m.usuario_id} className="border-b border-slate-50">
@@ -203,6 +231,13 @@ export default function ProjetosPage() {
                       onChange={e => mudarPerfil(m, e.target.value)}>
                       {PERFIS.map(o => <option key={o.valor} value={o.valor}>{o.label}</option>)}
                     </select>
+                  </td>
+                  <td className="table-cell">
+                    {m.usuario_id === voce ? <span className="text-slate-400">Todos</span> : (
+                      <button onClick={() => abrirCentros(m)} className="text-sm text-primary-700 hover:underline" title="Escolher os centros que este usuário vê">
+                        {m.todos_centros ? 'Todos' : `${m.centros} selecionado${m.centros === 1 ? '' : 's'}`}
+                      </button>
+                    )}
                   </td>
                   <td className="table-cell text-right">
                     {m.usuario_id !== voce && (
@@ -226,6 +261,31 @@ export default function ProjetosPage() {
           O usuário precisa ter feito o cadastro e estar autorizado pelo owner. Usuário e Administrador (sem módulo) veem Pagamentos e Recebimentos; os perfis de Pagamento ou de Recebimento só veem o módulo escolhido. Só o Administrador dos dois módulos gerencia acessos.
         </p>
       </div>
+
+      <Modal open={!!centrosDe} onClose={() => setCentrosDe(null)} title={`Centros de resultado — ${centrosDe?.username ?? ''}`}>
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input type="checkbox" checked={todosCentros} onChange={e => setTodosCentros(e.target.checked)} />
+            Todos (ver todos os centros, inclusive os que forem criados depois)
+          </label>
+          <div className={`max-h-64 overflow-y-auto border border-slate-200 rounded-lg p-2 space-y-1 ${todosCentros ? 'opacity-50' : ''}`}>
+            {centrosLista.length === 0 && <p className="text-sm text-slate-400 p-2">Nenhum centro de resultado neste projeto.</p>}
+            {centrosLista.map(c => (
+              <label key={c.id} className="flex items-center gap-2 text-sm text-slate-700 px-2 py-1 rounded hover:bg-slate-50">
+                <input type="checkbox" disabled={todosCentros} checked={todosCentros || c.marcado}
+                  onChange={e => setCentrosLista(l => l.map(x => x.id === c.id ? { ...x, marcado: e.target.checked } : x))} />
+                {c.empresa}
+              </label>
+            ))}
+          </div>
+          {!todosCentros && !centrosLista.some(c => c.marcado) && <p className="text-xs text-amber-600">Nenhum centro marcado: este usuário não verá nenhum pedido.</p>}
+          {erroCentros && <p className="text-sm text-red-600">{erroCentros}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setCentrosDe(null)} className="btn-secondary text-sm">Cancelar</button>
+            <button onClick={salvarCentros} disabled={salvandoCentros} className="btn-primary text-sm">{salvandoCentros ? 'Salvando...' : 'Salvar'}</button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

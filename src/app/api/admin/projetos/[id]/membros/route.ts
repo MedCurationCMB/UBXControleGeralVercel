@@ -14,13 +14,16 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
   const { data, error } = await supabaseServer
     .from('usuarios_projetos')
-    .select('usuario_id, papel, modulo, usuarios!inner(username, email, status_cadastro)')
+    .select('usuario_id, papel, modulo, todos_centros, usuarios!inner(username, email, status_cadastro)')
     .eq('projeto_id', projetoId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const { data: marcas } = await supabaseServer.from('usuarios_projetos_empresas').select('usuario_id').eq('projeto_id', projetoId)
+  const qtd = new Map<number, number>()
+  for (const x of marcas ?? []) qtd.set(x.usuario_id as number, (qtd.get(x.usuario_id as number) ?? 0) + 1)
 
   const membros = (data ?? []).map(r => {
     const u = r.usuarios as unknown as { username: string; email: string; status_cadastro: string }
-    return { usuario_id: r.usuario_id, papel: r.papel, modulo: r.modulo, username: u.username, email: u.email, status: u.status_cadastro }
+    return { usuario_id: r.usuario_id, papel: r.papel, modulo: r.modulo, todos_centros: r.todos_centros !== false, centros: qtd.get(r.usuario_id as number) ?? 0, username: u.username, email: u.email, status: u.status_cadastro }
   }).sort((a, b) => a.username.localeCompare(b.username))
   return NextResponse.json({ membros, voce: g.session.userId })
 }

@@ -525,4 +525,5 @@ export interface SessionPayload {
   projetoId: number
   projetoNome: string
   modulo?: 'pagamentos' | 'recebimentos' | null // perfil por módulo no projeto ativo; ausente/null = os dois
+  restrito?: boolean // vê só alguns centros de resultado (não vê todos)
 }

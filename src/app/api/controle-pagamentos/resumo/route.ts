@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
+import { clienteDoUsuario } from '@/lib/supabase/usuario'
 import { getSituacao, consultaControles, type ControleRow } from '@/lib/controle-pagamentos-server'
 import { getSession } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-  const supabase = createServerClient()
+  const supabase = await clienteDoUsuario(session) // com RLS: módulo e centros do usuário
   const { searchParams } = req.nextUrl
   const empresa = searchParams.get('empresa') || ''
   const categoria = searchParams.get('categoria') || ''

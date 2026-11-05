@@ -16,6 +16,11 @@ const ROTAS_MODULO: Record<Modulo, string[]> = {
   recebimentos: ['/recebimentos', '/api/pedidos-receita', '/api/controle-recebimentos', '/api/orcamentos-receita', '/api/clientes'],
 }
 const ROTAS_SEM_MODULO = ['/extratos-bancarios', '/api/extratos-bancarios', '/admin', '/api/admin', '/projetos']
+// Perfil restrito a alguns centros: rotas de servidor que ainda não filtram por centro (chave de serviço) ficam fechadas.
+const ROTAS_SO_TODOS_CENTROS = [
+  '/api/remessa', '/api/email', '/api/pedidos/importar-lote', '/api/pedidos-receita/importar-lote', '/api/controle-pagamentos/importar-lote',
+  '/api/controle-recebimentos/importar-lote', '/api/orcamentos/importar-lote', '/api/orcamentos-receita/importar-lote',
+]
 const casa = (pathname: string, base: string) => pathname === base || pathname.startsWith(base + '/')
 
 function getSecretKey() {
@@ -73,6 +78,10 @@ export async function middleware(req: NextRequest) {
           ? NextResponse.json({ error: 'Sem acesso a este módulo' }, { status: 403 })
           : NextResponse.redirect(new URL('/?erro=acesso_negado', req.url))
       }
+    }
+
+    if (payload.restrito === true && hierarquia !== 'owner' && ROTAS_SO_TODOS_CENTROS.some(r => casa(pathname, r))) {
+      return NextResponse.json({ error: 'Seu perfil vê só alguns centros de resultado' }, { status: 403 })
     }
 
     const res = NextResponse.next()
