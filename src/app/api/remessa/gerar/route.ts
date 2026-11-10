@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/server'
 import { uploadFile } from '@/lib/b2'
-import { linhaDigitavelParaCodigoBarras, ehTributo, dvTributoValido } from '@/lib/boleto'
+import { linhaDigitavelParaCodigoBarras, ehTributo, dvTributoValido, dvBoleto47Valido } from '@/lib/boleto'
 import { Company, Tx, generateCnabFile, padN } from '@/lib/cnab240'
 
 // O OCR devolve "CPF"/"CNPJ" (texto), não o código 1/2 exigido pelo CNAB.
@@ -132,7 +132,8 @@ export async function POST(req: NextRequest) {
       const dataVenc = info.data_vencimento ? new Date(`${info.data_vencimento}T12:00:00`) : dataPag
       const linha = String(info.codigo_barras ?? '')
       const codigoBarras = linhaDigitavelParaCodigoBarras(linha)
-      if (codigoBarras.length !== 44 || (linha.replace(/\D/g, '').length === 48 && !dvTributoValido(linha))) {
+      const nDig = linha.replace(/\D/g, '').length
+      if (codigoBarras.length !== 44 || (nDig === 48 && !dvTributoValido(linha)) || (nDig === 47 && !dvBoleto47Valido(linha))) {
         boletosSemCodigo.push(t.pagamento_id)
         continue
       }

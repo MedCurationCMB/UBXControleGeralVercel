@@ -33,6 +33,20 @@ export function dvTributoValido(linha48: string): boolean {
   return [0, 12, 24, 36].every(i => dvModulo10(d.slice(i, i + 11)) === Number(d[i + 11]))
 }
 
+// Confere os DVs de uma linha digitável de 47 dígitos (3 de módulo 10 + o geral de módulo 11, que cobre fator e valor).
+// É o que o banco confere: um dígito lido errado do PDF (ex.: o valor) volta como "boleto inválido" só depois da remessa enviada.
+export function dvBoleto47Valido(linha47: string): boolean {
+  const d = linha47.replace(/\D/g, '')
+  if (d.length !== 47) return false
+  if (![[0, 9], [10, 20], [21, 31]].every(([a, b]) => dvModulo10(d.slice(a, b)) === Number(d[b]))) return false
+  const barras = linhaDigitavelParaCodigoBarras(d)
+  const barras43 = barras.slice(0, 4) + barras.slice(5)
+  let soma = 0
+  for (let i = barras43.length - 1, peso = 2; i >= 0; i--, peso = peso === 9 ? 2 : peso + 1) soma += Number(barras43[i]) * peso
+  const dv = 11 - (soma % 11)
+  return (dv === 0 || dv === 10 || dv === 11 ? 1 : dv) === Number(d[32])
+}
+
 function dvModulo10(bloco: string): number {
   let soma = 0
   for (let i = bloco.length - 1, peso = 2; i >= 0; i--, peso = peso === 2 ? 1 : 2) {
