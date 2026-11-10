@@ -33,19 +33,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const [min, max] = [Math.min(...ids), Math.max(...ids)] // ids de um extrato são inseridos em lote, ficam contíguos
     const tipos = new Set<TipoConta>((lancamentos ?? []).map(l => tipoDoValor(l.valor as number)))
 
-    const vinculos = new Map<number, { tipo: TipoConta; conta_id: number; parte: string }>()
+    // uma linha pode ter várias contas (folha, rateio por centro)
+    const vinculos = new Map<number, { tipo: TipoConta; contas: { conta_id: number; parte: string; valor: number }[] }>()
     const livres = {} as Record<TipoConta, Awaited<ReturnType<typeof carregarContasLivres>>>
     for (const tipo of tipos) {
       const { tabela, pedido, parte, benef } = CONTAS[tipo]
       const { data } = await supabase
         .from(tabela)
-        .select(`id, extrato_lancamento_id, ${benef}, ${pedido}(${parte})`)
+        .select(`id, extrato_lancamento_id, valor_pagar, valor_pagamento, ${benef}, ${pedido}(${parte})`)
         .eq('projeto_id', session.projetoId)
         .gte('extrato_lancamento_id', min)
         .lte('extrato_lancamento_id', max)
+        .order('id')
       for (const r of (data ?? []) as unknown as Record<string, unknown>[]) {
         const ped = (r[pedido] ?? {}) as Record<string, string>
-        vinculos.set(r.extrato_lancamento_id as number, { tipo, conta_id: r.id as number, parte: (r[benef] as string | null) ?? ped[parte] ?? '' })
+        const v = vinculos.get(r.extrato_lancamento_id as number) ?? { tipo, contas: [] }
+        v.contas.push({ conta_id: r.id as number, parte: (r[benef] as string | null) ?? ped[parte] ?? '', valor: (r.valor_pagamento ?? r.valor_pagar ?? 0) as number })
+        vinculos.set(r.extrato_lancamento_id as number, v)
       }
       livres[tipo] = await carregarContasLivres(supabase, session.projetoId, tipo)
     }

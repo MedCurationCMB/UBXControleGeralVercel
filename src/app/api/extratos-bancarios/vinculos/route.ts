@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { createServerClient } from '@/lib/supabase/server'
-import { CONTAS, erroVinculo, tipoDoValor } from '@/lib/extratoVinculo'
+import { CONTAS, carregarContasLivres, contasDoDia, erroGrupo, tipoDoValor } from '@/lib/extratoVinculo'
 
 // Linha do extrato (do projeto da sessão) -> { id, data, valor }
 async function carregarLancamento(supabase: ReturnType<typeof createServerClient>, projetoId: number, id: number) {
@@ -20,12 +20,24 @@ export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
+  const supabase = createServerClient()
+
+  // Por linha do extrato: contas livres do dia (mesmo sentido) para marcar e somar até fechar o valor
+  if (req.nextUrl.searchParams.has('lancamento_id')) {
+    const l = await carregarLancamento(supabase, session.projetoId, Number(req.nextUrl.searchParams.get('lancamento_id')))
+    if (!l) return NextResponse.json({ error: 'Linha do extrato não encontrada' }, { status: 404 })
+    try {
+      return NextResponse.json({ contas: contasDoDia(l, await carregarContasLivres(supabase, session.projetoId, tipoDoValor(l.valor))) })
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 })
+    }
+  }
+
   const contaId = Number(req.nextUrl.searchParams.get('conta_id'))
   if (!Number.isInteger(contaId)) return NextResponse.json({ error: 'conta_id é obrigatório' }, { status: 400 })
 
   const tipo = req.nextUrl.searchParams.get('tipo') === 'receber' ? 'receber' : 'pagar'
   const { tabela } = CONTAS[tipo]
-  const supabase = createServerClient()
   const { data: c } = await supabase
     .from(tabela)
     .select('data_vencimento, data_pagamento, valor_pagar, valor_pagamento')
@@ -69,41 +81,46 @@ export async function POST(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-  const { lancamento_id, conta_id } = await req.json().catch(() => ({}))
-  if (!Number.isInteger(lancamento_id) || !Number.isInteger(conta_id)) {
-    return NextResponse.json({ error: 'lancamento_id e conta_id são obrigatórios' }, { status: 400 })
+  // conta_ids (várias contas na mesma linha) ou conta_id (uma só)
+  const { lancamento_id, conta_id, conta_ids } = await req.json().catch(() => ({}))
+  const ids: unknown[] = Array.isArray(conta_ids) ? conta_ids : [conta_id]
+  if (!Number.isInteger(lancamento_id) || ids.length === 0 || !ids.every(Number.isInteger)) {
+    return NextResponse.json({ error: 'lancamento_id e conta_ids são obrigatórios' }, { status: 400 })
   }
+  const unicos = [...new Set(ids as number[])]
 
   const supabase = createServerClient()
   const l = await carregarLancamento(supabase, session.projetoId, lancamento_id)
   if (!l) return NextResponse.json({ error: 'Linha do extrato não encontrada' }, { status: 404 })
 
   const { tabela } = CONTAS[tipoDoValor(l.valor)]
-  const { data: c } = await supabase
+  const { data: contas } = await supabase
     .from(tabela)
     .select('id, extrato_lancamento_id, data_vencimento, data_pagamento, valor_pagar, valor_pagamento')
-    .eq('id', conta_id)
+    .in('id', unicos)
     .eq('projeto_id', session.projetoId)
-    .maybeSingle()
-  if (!c) return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404 })
-  if (c.extrato_lancamento_id) return NextResponse.json({ error: 'Essa conta já está vinculada a outra linha do extrato.' }, { status: 409 })
+  if (contas?.length !== unicos.length) return NextResponse.json({ error: 'Conta não encontrada' }, { status: 404 })
+  if (contas.some(c => c.extrato_lancamento_id)) return NextResponse.json({ error: 'Uma das contas já está vinculada a outra linha do extrato.' }, { status: 409 })
 
-  const erro = erroVinculo(l, { ...c, parte: '', empresa: '' })
+  const erro = erroGrupo(l, contas.map(c => ({ ...c, parte: '', empresa: '' })))
   if (erro) return NextResponse.json({ error: erro }, { status: 422 })
 
-  // o índice único parcial barra a linha do extrato já usada por outra conta (23505)
-  const { error } = await supabase
+  // Sem índice único: a linha tem que estar livre, e depois de gravar só as contas marcadas podem estar nela (senão desfaz).
+  const { count: jaNaLinha } = await supabase.from(tabela).select('id', { count: 'exact', head: true }).eq('extrato_lancamento_id', l.id)
+  if (jaNaLinha) return NextResponse.json({ error: 'Essa linha do extrato já está vinculada a outra conta.' }, { status: 409 })
+
+  const { data: feitos, error } = await supabase
     .from(tabela)
     .update({ extrato_lancamento_id: l.id })
-    .eq('id', conta_id)
+    .in('id', unicos)
     .eq('projeto_id', session.projetoId)
     .is('extrato_lancamento_id', null)
-  if (error) {
-    const jaUsada = error.code === '23505'
-    return NextResponse.json(
-      { error: jaUsada ? 'Essa linha do extrato já está vinculada a outra conta.' : error.message },
-      { status: jaUsada ? 409 : 500 }
-    )
+    .select('id')
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const { count: naLinha } = await supabase.from(tabela).select('id', { count: 'exact', head: true }).eq('extrato_lancamento_id', l.id)
+  if (feitos.length !== unicos.length || naLinha !== unicos.length) {
+    await supabase.from(tabela).update({ extrato_lancamento_id: null }).in('id', feitos.map(f => f.id)).eq('extrato_lancamento_id', l.id)
+    return NextResponse.json({ error: 'Alguém alterou essas contas ou esta linha ao mesmo tempo. Nada foi vinculado; tente de novo.' }, { status: 409 })
   }
   return NextResponse.json({ ok: true })
 }

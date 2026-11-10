@@ -42,6 +42,24 @@ export function erroVinculo(l: { data: string; valor: number }, c: ContaLivre): 
   return null
 }
 
+// Varias contas numa linha do extrato (folha por colaborador, rateio por centro): a soma tem que fechar com o valor da linha
+// e cada conta, se ja tem data de pagamento, tem que ser a da linha. Uma conta so e o caso particular.
+export function erroGrupo(l: { data: string; valor: number }, contas: ContaLivre[]): string | null {
+  if (contas.length === 0) return 'Marque ao menos uma conta.'
+  if (contas.reduce((s, c) => s + cents(valorDaConta(c)), 0) !== cents(Math.abs(l.valor))) return 'A soma das contas marcadas é diferente do valor da linha do extrato.'
+  if (contas.some(c => c.data_pagamento && c.data_pagamento.slice(0, 10) !== l.data)) return 'A data de pagamento de uma das contas é diferente da data da linha do extrato.'
+  return null
+}
+
+// Contas livres que podem entrar no grupo da linha: pagas no dia da linha, mais as que casam sozinhas com o valor (ex.: sem data de pagamento).
+export function contasDoDia(l: { data: string; valor: number }, contas: ContaLivre[]): Candidato[] {
+  const sozinhas = new Set(candidatos(l, contas, Infinity).map(c => c.id))
+  return contas
+    .filter(c => c.data_pagamento?.slice(0, 10) === l.data || sozinhas.has(c.id))
+    .map(c => ({ ...c, valor: valorDaConta(c), sugerido: (c.data_pagamento ?? c.data_vencimento)?.slice(0, 10) === l.data }))
+    .sort((a, b) => a.id - b.id)
+}
+
 const PAGE = 1000
 
 // ponytail: traz todas as contas sem vinculo do projeto e filtra em memoria; filtrar por valor no banco
