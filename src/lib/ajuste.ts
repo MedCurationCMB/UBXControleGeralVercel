@@ -1,4 +1,5 @@
-import { supabaseBrowser as supabase } from '@/lib/supabase/client'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { supabaseBrowser } from '@/lib/supabase/client'
 import { criarContasDoPedido } from '@/lib/contasDoPedido'
 
 export type ModuloPedido = 'pagamentos' | 'recebimentos'
@@ -19,7 +20,7 @@ export const TAB_PEDIDO = {
 
 // Devolve o pedido ao solicitante: status, marca de reenvio zerada e comentário do gestor.
 // A marca vai em update separado: se a coluna ainda não existir, só ela falha.
-export async function solicitarAjuste(mod: ModuloPedido, pedidoId: number, comentario: string, usuario: string) {
+export async function solicitarAjuste(mod: ModuloPedido, pedidoId: number, comentario: string, usuario: string, supabase: SupabaseClient = supabaseBrowser) {
   const t = TAB_PEDIDO[mod]
   const { error } = await supabase.from(t.pedido).update({ status: 'Aguardando Ajuste' }).eq('id', pedidoId)
   if (error) return error.message
@@ -33,13 +34,13 @@ export async function solicitarAjuste(mod: ModuloPedido, pedidoId: number, comen
 }
 
 // Autoriza ou rejeita um pedido (mesmos passos do detalhe do pedido): status do pedido e do cronograma e, ao autorizar, as contas a pagar/receber.
-export async function decidirPedido(mod: ModuloPedido, id: number, parte: string, valor: number, status: 'Autorizado' | 'Não Autorizado', username: string) {
+export async function decidirPedido(mod: ModuloPedido, id: number, parte: string, valor: number, status: 'Autorizado' | 'Não Autorizado', username: string, supabase: SupabaseClient = supabaseBrowser) {
   const t = TAB_PEDIDO[mod]
   const { error } = await supabase.from(t.pedido).update({
     status, data_autorizacao: new Date().toISOString().split('T')[0], usuario_autorizador: username,
   }).eq('id', id)
   if (error) return error.message
   await supabase.from(t.fluxo).update({ status }).eq('pedido_id', id)
-  if (status === 'Autorizado') await criarContasDoPedido(mod === 'pagamentos' ? 'pagar' : 'receber', id, parte, valor)
+  if (status === 'Autorizado') await criarContasDoPedido(mod === 'pagamentos' ? 'pagar' : 'receber', id, parte, valor, supabase)
   return null
 }

@@ -1,10 +1,12 @@
-import { supabaseBrowser as supabase } from '@/lib/supabase/client'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { supabaseBrowser } from '@/lib/supabase/client'
 import { CONTAS, type TipoConta } from '@/lib/extratoVinculo'
 import { contasPorBeneficiario } from '@/lib/contasPorBeneficiario'
 
 // Ao autorizar um pedido, cria a(s) conta(s) a pagar/receber conforme o fluxo: uma por beneficiário, no mesmo pedido.
 // Pedido com um beneficiário só (todos os normais) = uma conta pelo valor do pedido, como sempre foi.
-export async function criarContasDoPedido(tipo: TipoConta, pedidoId: number, partePedido: string, valorPedido: number) {
+// supabase: o navegador usa o padrão; o MCP passa o cliente do usuário (com o RLS dele).
+export async function criarContasDoPedido(tipo: TipoConta, pedidoId: number, partePedido: string, valorPedido: number, supabase: SupabaseClient = supabaseBrowser) {
   const { tabela, fluxo, benef, status } = CONTAS[tipo]
   const { data: ex } = await supabase.from(tabela).select('id').eq('pedido_id', pedidoId).limit(1)
   if (ex?.length) return
