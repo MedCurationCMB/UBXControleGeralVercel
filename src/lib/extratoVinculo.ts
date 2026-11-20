@@ -112,3 +112,132 @@ export function candidatos(l: { data: string; valor: number }, contas: ContaLivr
     .slice(0, max)
     .map(x => x.c)
 }
+
+// ---- Acesso ao banco (cliente de serviço, sempre filtrado pelo projeto): usado pelas rotas e pelo MCP ----
+type Db = ReturnType<typeof createServerClient>
+export interface ErroHttp { erro: string; status: number }
+
+// Linha do extrato (do projeto) -> { id, data, descricao, valor }
+export async function carregarLancamento(supabase: Db, projetoId: number, id: number) {
+  const { data } = await supabase
+    .from('extratos_bancarios_lancamentos')
+    .select('id, data, descricao, valor, extratos_bancarios!inner(projeto_id)')
+    .eq('id', id)
+    .eq('extratos_bancarios.projeto_id', projetoId)
+    .maybeSingle()
+  return data as { id: number; data: string; descricao: string; valor: number } | null
+}
+
+// Extrato com as linhas, o vínculo de cada uma e as contas candidatas das que estão sem vínculo. null = não existe. Lança Error se o banco falhar.
+export async function carregarExtrato(supabase: Db, projetoId: number, id: number | string) {
+  const { data: extrato } = await supabase
+    .from('extratos_bancarios')
+    .select('id, conta, periodo_inicio, periodo_fim, saldo_inicial, saldo_final, formato_origem, nome_arquivo, criado_em')
+    .eq('id', id)
+    .eq('projeto_id', projetoId)
+    .maybeSingle()
+  if (!extrato) return null
+
+  const { data: lancamentos, error } = await supabase
+    .from('extratos_bancarios_lancamentos')
+    .select('id, data, descricao, valor, saldo_apos, codigo_origem')
+    .eq('extrato_id', id)
+    .order('data', { ascending: true })
+    .order('id', { ascending: true })
+  if (error) throw new Error(error.message)
+
+  const ids = (lancamentos ?? []).map(l => l.id as number)
+  const [min, max] = [Math.min(...ids), Math.max(...ids)] // ids de um extrato são inseridos em lote, ficam contíguos
+  const tipos = new Set<TipoConta>((lancamentos ?? []).map(l => tipoDoValor(l.valor as number)))
+
+  // uma linha pode ter várias contas (folha, rateio por centro)
+  const vinculos = new Map<number, { tipo: TipoConta; contas: { conta_id: number; parte: string; valor: number }[] }>()
+  const livres = {} as Record<TipoConta, ContaLivre[]>
+  for (const tipo of tipos) {
+    const { tabela, pedido, parte, benef } = CONTAS[tipo]
+    const { data } = await supabase
+      .from(tabela)
+      .select(`id, extrato_lancamento_id, valor_pagar, valor_pagamento, ${benef}, ${pedido}(${parte})`)
+      .eq('projeto_id', projetoId)
+      .gte('extrato_lancamento_id', min)
+      .lte('extrato_lancamento_id', max)
+      .order('id')
+    for (const r of (data ?? []) as unknown as Record<string, unknown>[]) {
+      const ped = (r[pedido] ?? {}) as Record<string, string>
+      const v = vinculos.get(r.extrato_lancamento_id as number) ?? { tipo, contas: [] }
+      v.contas.push({ conta_id: r.id as number, parte: (r[benef] as string | null) ?? ped[parte] ?? '', valor: (r.valor_pagamento ?? r.valor_pagar ?? 0) as number })
+      vinculos.set(r.extrato_lancamento_id as number, v)
+    }
+    livres[tipo] = await carregarContasLivres(supabase, projetoId, tipo)
+  }
+
+  return {
+    extrato,
+    lancamentos: (lancamentos ?? []).map(l => {
+      const vinculo = vinculos.get(l.id as number) ?? null
+      return {
+        ...l,
+        tipo: tipoDoValor(l.valor as number),
+        vinculo,
+        candidatos: vinculo ? [] : candidatos(l as { data: string; valor: number }, livres[tipoDoValor(l.valor as number)]),
+      }
+    }),
+  }
+}
+
+// Confere se as contas podem ir na linha (mesmas regras e códigos HTTP da rota). Não grava nada.
+export async function conferirVinculo(supabase: Db, projetoId: number, lancamentoId: number, contaIds: number[]) {
+  const unicos = [...new Set(contaIds)]
+  const l = await carregarLancamento(supabase, projetoId, lancamentoId)
+  if (!l) return { erro: 'Linha do extrato não encontrada', status: 404 } as ErroHttp
+
+  const { tabela } = CONTAS[tipoDoValor(l.valor)]
+  const { data: contas } = await supabase
+    .from(tabela)
+    .select('id, extrato_lancamento_id, data_vencimento, data_pagamento, valor_pagar, valor_pagamento')
+    .in('id', unicos)
+    .eq('projeto_id', projetoId)
+  if (contas?.length !== unicos.length) return { erro: 'Conta não encontrada', status: 404 } as ErroHttp
+  if (contas.some(c => c.extrato_lancamento_id)) return { erro: 'Uma das contas já está vinculada a outra linha do extrato.', status: 409 } as ErroHttp
+
+  const erro = erroGrupo(l, contas.map(c => ({ ...c, parte: '', empresa: '' })))
+  if (erro) return { erro, status: 422 } as ErroHttp
+
+  // Sem índice único: a linha tem que estar livre, e depois de gravar só as contas marcadas podem estar nela (senão desfaz).
+  const { count: jaNaLinha } = await supabase.from(tabela).select('id', { count: 'exact', head: true }).eq('extrato_lancamento_id', l.id)
+  if (jaNaLinha) return { erro: 'Essa linha do extrato já está vinculada a outra conta.', status: 409 } as ErroHttp
+  return { l, tabela, unicos }
+}
+
+// Vincula as contas à linha. null = ok.
+export async function vincular(supabase: Db, projetoId: number, lancamentoId: number, contaIds: number[]): Promise<ErroHttp | null> {
+  const c = await conferirVinculo(supabase, projetoId, lancamentoId, contaIds)
+  if ('erro' in c) return c
+  const { l, tabela, unicos } = c
+  const { data: feitos, error } = await supabase
+    .from(tabela)
+    .update({ extrato_lancamento_id: l.id })
+    .in('id', unicos)
+    .eq('projeto_id', projetoId)
+    .is('extrato_lancamento_id', null)
+    .select('id')
+  if (error) return { erro: error.message, status: 500 }
+  const { count: naLinha } = await supabase.from(tabela).select('id', { count: 'exact', head: true }).eq('extrato_lancamento_id', l.id)
+  if (feitos.length !== unicos.length || naLinha !== unicos.length) {
+    await supabase.from(tabela).update({ extrato_lancamento_id: null }).in('id', feitos.map(f => f.id)).eq('extrato_lancamento_id', l.id)
+    return { erro: 'Alguém alterou essas contas ou esta linha ao mesmo tempo. Nada foi vinculado; tente de novo.', status: 409 }
+  }
+  return null
+}
+
+// Solta todas as contas da linha. null = ok.
+export async function desvincular(supabase: Db, projetoId: number, lancamentoId: number): Promise<ErroHttp | null> {
+  const l = await carregarLancamento(supabase, projetoId, lancamentoId)
+  if (!l) return { erro: 'Linha do extrato não encontrada', status: 404 }
+  const { error } = await supabase
+    .from(CONTAS[tipoDoValor(l.valor)].tabela)
+    .update({ extrato_lancamento_id: null })
+    .eq('extrato_lancamento_id', l.id)
+    .eq('projeto_id', projetoId)
+  return error ? { erro: error.message, status: 500 } : null
+}

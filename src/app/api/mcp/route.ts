@@ -3,6 +3,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { baseUrl, verificar, type TokenJwt } from '@/lib/mcp/oauth'
 import { registrarPedidos } from '@/lib/mcp/pedidos'
 import { registrarOrcamento } from '@/lib/mcp/orcamento'
+import { registrarConciliacao } from '@/lib/mcp/conciliacao'
 import { projetosDoUsuario, hierarquiaEfetiva } from '@/lib/projetos'
 import { supabaseServer } from '@/lib/supabase/server'
 import type { SessionPayload, Usuario } from '@/types/database'
@@ -35,6 +36,7 @@ export async function POST(req: Request) {
   const server = new McpServer({ name: 'ubx-financeiro', version: '0.1.0' })
   registrarPedidos(server, s)
   registrarOrcamento(server, s)
+  registrarConciliacao(server, s)
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
   await server.connect(transport)
   return transport.handleRequest(req)

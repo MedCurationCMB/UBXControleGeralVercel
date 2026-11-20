@@ -71,6 +71,24 @@ try {
     const { count: depois } = await db.from('registro_orcamentos').select('id', { count: 'exact', head: true })
     assert.equal(depois, antes, 'a prévia não pode gravar')
   }
+  // conciliação: leitura + prévia (nunca confirmar=true aqui)
+  const exs = await chamar('listar_extratos', {})
+  console.log('listar_extratos:', exs.slice(0, 400))
+  const ex = exs.match(/extrato #(\d+)/)
+  if (ex) {
+    const ver = await chamar('ver_extrato', { extrato_id: Number(ex[1]), limite: 8 })
+    console.log('ver_extrato:', ver.slice(0, 1200))
+    const m = ver.match(/linha #(\d+) .*?candidatas: conta #(\d+)/)
+    const cnt = async () => (await db.from('controle_pagamentos').select('id', { count: 'exact', head: true }).not('extrato_lancamento_id', 'is', null)).count
+    const antes = await cnt()
+    if (m) {
+      const prev = await chamar('vincular_extrato', { lancamento_id: Number(m[1]), conta_ids: [Number(m[2])] })
+      console.log('prévia de vincular_extrato:', prev)
+      assert.match(prev, /Nada foi feito|valor|soma|data/i)
+      console.log('contas_para_linha:', (await chamar('contas_para_linha', { lancamento_id: Number(m[1]) })).slice(0, 500))
+    }
+    assert.equal(await cnt(), antes, 'a prévia não pode gravar')
+  }
   if (rej) {
     const { data: antes } = await db.from('pedidos_solicitados').select('status, empresa').eq('id', rej).single()
     assert.equal(antes.status, 'Aguardando Autorização')
