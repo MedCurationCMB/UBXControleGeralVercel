@@ -56,6 +56,21 @@ try {
     const { data } = await db.from(tab).select('status').eq('id', p.id).single()
     assert.equal(data.status, 'Aguardando Autorização', 'a prévia não pode gravar')
   } else console.log('(sem pedido pendente visível para esse usuário/projeto)')
+  // orçamento: consulta + prévia (nunca confirmar=true aqui)
+  const orc = await chamar('consultar_orcamento', { modulo: 'pagamentos', ano: 2026 })
+  console.log('consultar_orcamento:', orc.slice(0, 500))
+  const o = (() => { try { return JSON.parse(orc).linhas?.[0] } catch { return null } })()
+  if (o) {
+    const [mes, ano] = o.periodo.split('/').map(Number)
+    const { count: antes } = await db.from('registro_orcamentos').select('id', { count: 'exact', head: true })
+    const num = v => Number(v.replace(/[^\d,]/g, '').replace(',', '.'))
+    const prev = await chamar('lancar_orcamento', { modulo: 'pagamentos', centro: o.centro, categoria: o.categoria, mes, ano, valor: num(o.orcamento) + 1000 })
+    console.log('prévia de lancar_orcamento:', prev)
+    const ruim = await chamar('lancar_orcamento', { modulo: 'pagamentos', centro: o.centro, categoria: 'NAO EXISTE', mes, ano, valor: 10 })
+    assert.match(ruim, /não encontrada/)
+    const { count: depois } = await db.from('registro_orcamentos').select('id', { count: 'exact', head: true })
+    assert.equal(depois, antes, 'a prévia não pode gravar')
+  }
   if (rej) {
     const { data: antes } = await db.from('pedidos_solicitados').select('status, empresa').eq('id', rej).single()
     assert.equal(antes.status, 'Aguardando Autorização')

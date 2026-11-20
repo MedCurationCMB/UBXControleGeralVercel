@@ -6,10 +6,10 @@ import { veModulo, type Modulo } from '@/lib/modulos'
 import type { SessionPayload } from '@/types/database'
 
 const AGUARDANDO = 'Aguardando Autorização'
-const modulo = z.enum(['pagamentos', 'recebimentos']).describe('pagamentos = pedidos de compra; recebimentos = pedidos de venda')
-const brl = (v: number) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-const ok = (obj: unknown) => ({ content: [{ type: 'text' as const, text: typeof obj === 'string' ? obj : JSON.stringify(obj, null, 1) }] })
-const falha = (msg: string) => ({ isError: true, content: [{ type: 'text' as const, text: msg }] })
+export const modulo = z.enum(['pagamentos', 'recebimentos']).describe('pagamentos = pedidos de compra; recebimentos = pedidos de venda')
+export const brl = (v: number) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+export const ok = (obj: unknown) => ({ content: [{ type: 'text' as const, text: typeof obj === 'string' ? obj : JSON.stringify(obj, null, 1) }] })
+export const falha = (msg: string) => ({ isError: true, content: [{ type: 'text' as const, text: msg }] })
 
 // Mesma regra das telas: só admin (ou owner) do projeto decide, e só no módulo do seu perfil. O RLS ainda filtra projeto e centros.
 const podeDecidir = (s: SessionPayload, m: Modulo) => (s.hierarquia === 'admin' || s.hierarquia === 'owner') && veModulo(s.modulo, m)
