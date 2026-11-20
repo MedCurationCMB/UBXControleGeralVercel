@@ -12,7 +12,7 @@ export const ok = (obj: unknown) => ({ content: [{ type: 'text' as const, text: 
 export const falha = (msg: string) => ({ isError: true, content: [{ type: 'text' as const, text: msg }] })
 
 // Mesma regra das telas: só admin (ou owner) do projeto decide, e só no módulo do seu perfil. O RLS ainda filtra projeto e centros.
-const podeDecidir = (s: SessionPayload, m: Modulo) => (s.hierarquia === 'admin' || s.hierarquia === 'owner') && veModulo(s.modulo, m)
+export const podeDecidir = (s: SessionPayload, m: Modulo) => (s.hierarquia === 'admin' || s.hierarquia === 'owner') && veModulo(s.modulo, m)
 
 export function registrarPedidos(server: McpServer, s: SessionPayload) {
   const db = () => clienteDoUsuario(s)

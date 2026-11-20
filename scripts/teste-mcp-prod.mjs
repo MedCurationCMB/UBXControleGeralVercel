@@ -71,6 +71,32 @@ try {
     const { count: depois } = await db.from('registro_orcamentos').select('id', { count: 'exact', head: true })
     assert.equal(depois, antes, 'a prévia não pode gravar')
   }
+  // requisições e criar pedido: leitura + prévia (nunca confirmar=true aqui)
+  const contar = async tab => (await db.from(tab).select('id', { count: 'exact', head: true })).count
+  const [nReq, nPed] = [await contar('requisicoes'), await contar('pedidos_solicitados')]
+  const aguard = await chamar('listar_requisicoes', { modulo: 'pagamentos' })
+  console.log('requisições aguardando:', aguard.slice(0, 400))
+  const livres = await chamar('listar_requisicoes', { modulo: 'pagamentos', situacao: 'autorizadas_sem_pedido' })
+  console.log('requisições autorizadas sem pedido:', livres.slice(0, 400))
+  const idAg = aguard.match(/^#(\d+)/)?.[1]
+  if (idAg) console.log('prévia decidir_requisicao:', await chamar('decidir_requisicao', { modulo: 'pagamentos', id: Number(idAg), decisao: 'autorizar' }))
+  const { data: orcs } = await db.from('controle_orcamento').select('empresa, categoria, mes, ano, valor_orcamento, valor_pedidos_solicitados').eq('projeto_id', pid).gte('ano', 2026)
+  const com = (orcs ?? []).find(x => x.valor_orcamento - x.valor_pedidos_solicitados >= 10)
+  const { data: forn } = await db.from('fornecedores').select('nome').eq('projeto_id', pid).limit(1)
+  if (com && forn?.length) {
+    const base = { modulo: 'pagamentos', centro: com.empresa, categoria: com.categoria, parte: forn[0].nome, periodos: [{ mes: com.mes, ano: com.ano, valor: 1 }] }
+    console.log('criar_requisicao (prévia):', await chamar('criar_requisicao', { modulo: 'pagamentos', centro: com.empresa, categoria: com.categoria, descricao: 'teste de prévia' }))
+    const semReq = await chamar('criar_pedido', base)
+    console.log('criar_pedido sem requisição:', semReq)
+    const req = livres.match(new RegExp(`^#(\\d+) · ${com.empresa.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `, 'm'))?.[1]
+    if (req) console.log('criar_pedido com requisição (prévia):', await chamar('criar_pedido', { ...base, requisicao_id: Number(req) }))
+    const estoura = await chamar('criar_pedido', { ...base, requisicao_id: req ? Number(req) : undefined, periodos: [{ mes: com.mes, ano: com.ano, valor: 999999999 }] })
+    console.log('criar_pedido acima do saldo:', estoura)
+    assert.match(estoura, /excede|exige uma requisição|requisição/i)
+  }
+  assert.equal(await contar('requisicoes'), nReq, 'requisições não podem mudar')
+  assert.equal(await contar('pedidos_solicitados'), nPed, 'pedidos não podem mudar')
+
   // conciliação: leitura + prévia (nunca confirmar=true aqui)
   const exs = await chamar('listar_extratos', {})
   console.log('listar_extratos:', exs.slice(0, 400))

@@ -4,6 +4,7 @@ import { baseUrl, verificar, type TokenJwt } from '@/lib/mcp/oauth'
 import { registrarPedidos } from '@/lib/mcp/pedidos'
 import { registrarOrcamento } from '@/lib/mcp/orcamento'
 import { registrarConciliacao } from '@/lib/mcp/conciliacao'
+import { registrarSolicitacoes } from '@/lib/mcp/solicitacoes'
 import { projetosDoUsuario, hierarquiaEfetiva } from '@/lib/projetos'
 import { supabaseServer } from '@/lib/supabase/server'
 import type { SessionPayload, Usuario } from '@/types/database'
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
   registrarPedidos(server, s)
   registrarOrcamento(server, s)
   registrarConciliacao(server, s)
+  registrarSolicitacoes(server, s)
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
   await server.connect(transport)
   return transport.handleRequest(req)
