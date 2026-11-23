@@ -11,7 +11,8 @@ Observação: os itens ✅ de escrita foram testados só em prévia (`confirmar=
 ## Busca e contexto
 
 - [x] Buscar fornecedor, cliente, centro de resultado e categoria (`buscar_cadastro`; nomes exatos que o `criar_pedido` exige)
-- [ ] Selecionar/trocar projeto (opções: tabela do "projeto ativo" por usuário, ou parâmetro `projeto` nas ferramentas)
+- [x] Selecionar projeto, só para quem tem mais de um (`listar_projetos` + parâmetro `projeto`, nome ou id, em todas as ferramentas; sem ele vale o projeto do conector). Decisão do chefe em 23/11: quem tem um projeto só não vê nada disso
+- Decisão do chefe em 23/11: cadastrar fornecedor, cliente, centro e categoria segue exatamente o perfil de usuário do sistema (como na tela); ajustar depois, junto com a revisão de usuários
 
 ## Cadastros base
 

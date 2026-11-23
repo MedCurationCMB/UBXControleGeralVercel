@@ -15,7 +15,7 @@ const num = z.number().int().nonnegative()
 
 export function registrarEstrutura(server: McpServer, s: SessionPayload) {
   const db = () => clienteDoUsuario(s)
-  const adminDosDois = (s.hierarquia === 'admin' && !s.modulo) || s.hierarquia === 'owner'
+  const adminDosDois = () => (s.hierarquia === 'admin' && !s.modulo) || s.hierarquia === 'owner' // função: a sessão pode trocar de projeto durante a chamada
 
   async function centro(nome: string) {
     const { data } = await (await db()).from('empresas').select('id, empresa').eq('empresa', nome).maybeSingle()
@@ -56,7 +56,7 @@ export function registrarEstrutura(server: McpServer, s: SessionPayload) {
     inputSchema: { centro: z.string().describe('nome exato atual'), novo_nome: z.string().min(2), confirmar: z.boolean().default(false) },
     annotations: { destructiveHint: true },
   }, async ({ centro: nome, novo_nome, confirmar }) => {
-    if (!adminDosDois) return falha('Só administrador (dos dois módulos) ou dono renomeia centros.')
+    if (!adminDosDois()) return falha('Só administrador (dos dois módulos) ou dono renomeia centros.')
     const c = await centro(nome)
     if (!c) return falha(`Centro "${nome}" não encontrado (use o nome exato).`)
     novo_nome = novo_nome.trim()
@@ -73,7 +73,7 @@ export function registrarEstrutura(server: McpServer, s: SessionPayload) {
     inputSchema: { origem: z.string(), destino: z.string(), confirmar: z.boolean().default(false) },
     annotations: { destructiveHint: true },
   }, async ({ origem, destino, confirmar }) => {
-    if (!adminDosDois) return falha('Só administrador (dos dois módulos) ou dono copia categorias entre centros.')
+    if (!adminDosDois()) return falha('Só administrador (dos dois módulos) ou dono copia categorias entre centros.')
     const [o, d] = await Promise.all([centro(origem), centro(destino)])
     if (!o || !d) return falha(`Centro "${!o ? origem : destino}" não encontrado (use o nome exato).`)
     if (o.id === d.id) return falha('Origem e destino são o mesmo centro.')

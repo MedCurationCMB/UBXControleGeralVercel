@@ -141,6 +141,32 @@ try {
   assert.equal(await fotoContas(), antesContas, 'as prévias não podem alterar contas')
   assert.equal(await fotoReceb(), antesReceb, 'as prévias não podem alterar recebimentos')
 
+  // seleção de projeto: só para quem tem mais de um (nunca grava)
+  const tl = (await rpc('tools/list', {})).tools
+  assert.ok(tl.some(t => t.name === 'listar_projetos'), 'quem tem vários projetos deve ver listar_projetos')
+  assert.ok(tl.every(t => t.name === 'listar_projetos' || 'projeto' in (t.inputSchema.properties ?? {})), 'toda ferramenta deve ter o parâmetro projeto')
+  console.log('listar_projetos:\n' + await chamar('listar_projetos', {}))
+  const ver = pend?.[0]
+  if (ver) {
+    console.log('ver_pedido (padrão):', (await chamar('ver_pedido', { modulo: ver.modulo, id: ver.id })).slice(0, 60).replace(/\n/g, ' '))
+    console.log('ver_pedido com projeto=DEV:', await chamar('ver_pedido', { modulo: ver.modulo, id: ver.id, projeto: 'PROJETO DEV' }))
+  }
+  console.log('projeto ambíguo:', (await chamar('listar_pedidos', { projeto: 'e' })).split('\n')[0])
+  console.log('projeto inexistente:', (await chamar('listar_pedidos', { projeto: 'xyz' })).split('\n')[0])
+  console.log('buscar centro no projeto 2:', (await chamar('buscar_cadastro', { tipo: 'centro', limite: 3, projeto: '2' })).replace(/\n/g, ' | '))
+  // quem tem um projeto só não vê nada disso
+  const { data: vinc } = await db.from('usuarios_projetos').select('usuario_id, projeto_id')
+  const cont = {}; for (const v of vinc ?? []) cont[v.usuario_id] = (cont[v.usuario_id] ?? 0) + 1
+  const { data: simples } = await db.from('usuarios').select('id, hierarquia').in('id', Object.keys(cont).filter(k => cont[k] === 1).map(Number)).neq('hierarquia', 'owner').eq('status_cadastro', 'Autorizado').limit(1)
+  if (simples?.length) {
+    const pj = (vinc ?? []).find(v => v.usuario_id === simples[0].id).projeto_id
+    const tk = await new SignJWT({ uid: simples[0].id, pid: pj, cid: 'teste', typ: 'access' }).setProtectedHeader({ alg: 'HS256' }).setIssuedAt().setExpirationTime('10m').sign(key)
+    const r = await fetch(`${B}/api/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: `Bearer ${tk}` }, body: JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'tools/list', params: {} }) })
+    const lista1 = JSON.parse(await r.text()).result.tools
+    assert.ok(!lista1.some(t => t.name === 'listar_projetos') && lista1.every(t => !('projeto' in (t.inputSchema.properties ?? {}))), 'quem tem um projeto só não vê a seleção de projeto')
+    console.log(`usuário com um projeto só: ${lista1.length} ferramentas, sem listar_projetos e sem parâmetro projeto`)
+  } else console.log('(nenhum usuário comum com um projeto só para testar)')
+
   // upload por link: gera o link, confere a página e as recusas (não-PDF, token ruim). Só envia PDF de verdade com --upload=ID (pedido de pagamentos).
   const alvoUp = Number(args.find(a => a.startsWith('--upload=') || a.startsWith('--alvo='))?.split('=')[1]) || Number(pend?.[0]?.id)
   if (alvoUp) {
