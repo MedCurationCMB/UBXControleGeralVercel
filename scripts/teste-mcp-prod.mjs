@@ -71,6 +71,117 @@ try {
     const { count: depois } = await db.from('registro_orcamentos').select('id', { count: 'exact', head: true })
     assert.equal(depois, antes, 'a prévia não pode gravar')
   }
+  // comentários, cancelar, ajustar e realocação: leitura + prévia (nunca confirmar=true aqui)
+  const fotoPed = async () => JSON.stringify([(await db.from('comentarios').select('id', { count: 'exact', head: true })).count, (await db.from('realocacoes').select('id', { count: 'exact', head: true })).count,
+    (await db.from('pedidos_solicitados').select('id, status, valor_pedido, cancelado').eq('projeto_id', pid).order('id')).data])
+  const antesPed = await fotoPed()
+  const pAg = pend?.[0]
+  if (pAg) {
+    console.log('adicionar_comentario (prévia):', await chamar('adicionar_comentario', { modulo: pAg.modulo, pedido_id: pAg.id, comentario: 'teste de prévia' }))
+    console.log('cancelar_pedido (prévia):', await chamar('cancelar_pedido', { modulo: pAg.modulo, pedido_id: pAg.id }))
+    console.log('ajustar_pedido (pedido fora de ajuste):', await chamar('ajustar_pedido', { modulo: pAg.modulo, pedido_id: pAg.id, observacao: 'x' }))
+  }
+  console.log('pedidos aguardando ajuste:', (await chamar('listar_pedidos', { situacao: 'ajuste' })).slice(0, 300).replace(/\n/g, ' '))
+  const { data: aut } = await db.from('pedidos_solicitados').select('id, empresa, valor_pedido').eq('projeto_id', pid).eq('status', 'Autorizado').eq('cancelado', false).gt('valor_pedido', 0).order('id', { ascending: false }).limit(1)
+  const outroCentro = (await chamar('buscar_cadastro', { tipo: 'centro', limite: 5 })).split('\n').find(c => c !== aut?.[0]?.empresa)
+  if (aut?.length) {
+    const r = await chamar('solicitar_realocacao', { modulo: 'pagamentos', pedido_id: aut[0].id, modo: 'percentual', destinos: [{ centro: aut[0].empresa, percentual: 50 }, { centro: outroCentro, percentual: 50 }] })
+    console.log('solicitar_realocacao (simulação):', r.slice(0, 700))
+    console.log('realocação com soma errada:', (await chamar('solicitar_realocacao', { modulo: 'pagamentos', pedido_id: aut[0].id, modo: 'percentual', destinos: [{ centro: outroCentro, percentual: 30 }] })).slice(0, 300))
+  }
+  console.log('listar_realocacoes (aguardando):', (await chamar('listar_realocacoes', {})).slice(0, 500))
+  const lt = await chamar('listar_realocacoes', { situacao: 'todas' })
+  console.log('listar_realocacoes (todas):', lt.slice(0, 500))
+  const idR = lt.match(/^realocação #(\d+) .*Aguardando/m)?.[1]
+  if (idR) console.log('decidir_realocacao (prévia):', await chamar('decidir_realocacao', { id: Number(idR), decisao: 'autorizar' }))
+  assert.equal(await fotoPed(), antesPed, 'as prévias não podem alterar pedidos, comentários ou realocações')
+
+  // centros, categorias e contas bancárias: leitura + prévia (nunca confirmar=true aqui)
+  const cnt = async t => (await db.from(t).select('id', { count: 'exact', head: true })).count
+  const antesEstr = JSON.stringify([await cnt('empresas'), await cnt('categorias'), await cnt('categorias_receita'), await cnt('conta_pagador')])
+  const cens = (await chamar('buscar_cadastro', { tipo: 'centro', limite: 2 })).split('\n')
+  const cats = (await chamar('buscar_cadastro', { tipo: 'categoria', modulo: 'pagamentos', limite: 1 })).split(' / ')
+  console.log('criar_centro (prévia):', await chamar('criar_centro', { nome: 'TESTE MCP CENTRO', copiar_categorias_de: cens[0] }))
+  console.log('criar_centro duplicado:', await chamar('criar_centro', { nome: cens[0].toLowerCase() }))
+  console.log('renomear_centro (prévia):', await chamar('renomear_centro', { centro: cens[0], novo_nome: 'TESTE MCP RENOMEADO' }))
+  console.log('copiar_categorias (prévia):', await chamar('copiar_categorias', { origem: cens[0], destino: cens[1] }))
+  console.log('criar_categoria (prévia):', await chamar('criar_categoria', { modulo: 'pagamentos', centro: cats[0], categoria: 'TESTE MCP CATEGORIA' }))
+  console.log('criar_categoria duplicada:', await chamar('criar_categoria', { modulo: 'pagamentos', centro: cats[0], categoria: cats[1] }))
+  console.log('renomear_categoria (prévia):', await chamar('renomear_categoria', { modulo: 'pagamentos', centro: cats[0], categoria: cats[1], novo_nome: 'TESTE MCP RENOMEADA' }))
+  console.log('excluir_categoria (prévia):', await chamar('excluir_categoria', { modulo: 'pagamentos', centro: cats[0], categoria: cats[1] }))
+  console.log('listar_contas_bancarias:', (await chamar('listar_contas_bancarias', {})).slice(0, 400))
+  console.log('salvar_conta_bancaria (prévia):', await chamar('salvar_conta_bancaria', { nome_empresa: 'TESTE MCP', cnpj: '12.345.678/0001-95', agencia: 1234, conta_corrente: 56789, digito_conta: 0, cep: '60000-000', estado: 'ce' }))
+  console.log('salvar_conta_bancaria (cnpj inválido):', await chamar('salvar_conta_bancaria', { nome_empresa: 'TESTE MCP', cnpj: '123' }))
+  assert.equal(JSON.stringify([await cnt('empresas'), await cnt('categorias'), await cnt('categorias_receita'), await cnt('conta_pagador')]), antesEstr, 'as prévias não podem alterar a estrutura')
+
+  // contas a pagar/receber: leitura + prévia (nunca confirmar=true aqui)
+  const fotoContas = async () => JSON.stringify((await db.from('controle_pagamentos').select('id, valor_pagamento, data_pagamento, status_pagamento, data_vencimento, valor_pagar').order('id')).data)
+  const antesContas = await fotoContas()
+  const atras = await chamar('listar_contas', { modulo: 'pagamentos', situacao: 'Atrasado', limite: 4 })
+  console.log('listar_contas (atrasadas):\n' + atras.slice(0, 900))
+  console.log('listar_contas (receber):', (await chamar('listar_contas', { modulo: 'recebimentos', limite: 2 })).slice(0, 500))
+  console.log('listar_contas (centro+parte):', (await chamar('listar_contas', { modulo: 'pagamentos', centro: 'ADM', parte: 'a', status: 'Pago', limite: 2 })).slice(0, 500))
+  // a prévia roda em quem tiver conta aberta (o código é o mesmo nos dois módulos)
+  const modC = atras.match(/^conta #/m) ? 'pagamentos' : 'recebimentos'
+  const abertas = modC === 'pagamentos' ? atras : await chamar('listar_contas', { modulo: modC, situacao: 'Atrasado', limite: 3 })
+  const idConta = abertas.match(/^conta #(\d+)/m)?.[1]
+  if (idConta) {
+    console.log(`registrar (${modC}, prévia):`, await chamar('registrar_pagamento', { modulo: modC, conta_id: Number(idConta) }))
+    console.log('atualizar_conta (prévia):', await chamar('atualizar_conta', { modulo: modC, conta_id: Number(idConta), data_vencimento: '2026-12-31', tipo: 'pix' }))
+    console.log('atualizar_conta (status inválido):', await chamar('atualizar_conta', { modulo: modC, conta_id: Number(idConta), status: 'xyz' }))
+    console.log('registrar com valor maior (prévia):', await chamar('registrar_pagamento', { modulo: modC, conta_id: Number(idConta), data: '2026-11-23', valor: 99999 }))
+  }
+  const fotoReceb = async () => JSON.stringify((await db.from('controle_recebimento').select('id, valor_pagamento, data_pagamento, status_recebimento, data_vencimento, valor_pagar').order('id')).data)
+  const antesReceb = await fotoReceb()
+  const { data: pedAut } = await db.from('pedidos_solicitados').select('id').eq('projeto_id', pid).eq('status', 'Autorizado').eq('cancelado', false).limit(1)
+  if (pedAut?.length) {
+    console.log('adicionar_conta (prévia):', await chamar('adicionar_conta', { modulo: 'pagamentos', pedido_id: pedAut[0].id, data_vencimento: '2026-12-15', valor: 1, tipo: 'PIX' }))
+    console.log('adicionar_conta (pedido não autorizado):', (await chamar('adicionar_conta', { modulo: 'pagamentos', pedido_id: Number(pend?.[0]?.id), data_vencimento: '2026-12-15', valor: 1, tipo: 'PIX' })).slice(0, 200))
+  }
+  assert.equal(await fotoContas(), antesContas, 'as prévias não podem alterar contas')
+  assert.equal(await fotoReceb(), antesReceb, 'as prévias não podem alterar recebimentos')
+
+  // upload por link: gera o link, confere a página e as recusas (não-PDF, token ruim). Só envia PDF de verdade com --upload=ID (pedido de pagamentos).
+  const alvoUp = Number(args.find(a => a.startsWith('--upload=') || a.startsWith('--alvo='))?.split('=')[1]) || Number(pend?.[0]?.id)
+  if (alvoUp) {
+    const nDocs = (await db.from('documentos').select('id', { count: 'exact', head: true })).count
+    const lk = await chamar('anexar_documento', { modulo: 'pagamentos', alvo: 'pedido', id: alvoUp })
+    console.log('anexar_documento:', lk.replace(/(\/anexar\/)[\w.-]+/, '$1<token>'))
+    const link = lk.match(/https?:\/\/\S+\/anexar\/[\w.-]+/)?.[0].replace(/^https?:\/\/[^/]+/, B)
+    assert.ok(link, 'sem link')
+    const pagina = await fetch(link)
+    assert.equal(pagina.status, 200); assert.match(await pagina.text(), /Anexar documento/)
+    const tok = link.split('/anexar/')[1]
+    const post = (token, nome, conteudo, tipo) => fetch(`${B}/api/anexar/${token}`, { method: 'POST', body: (() => { const fd = new FormData(); fd.append('file', new File([conteudo], nome, { type: tipo })); return fd })() })
+    const naoPdf = await post(tok, 'x.pdf', 'isto nao e um pdf', 'application/pdf')
+    assert.equal(naoPdf.status, 422); console.log('não-PDF recusado:', (await naoPdf.json()).error)
+    assert.equal((await post('lixo', 'x.pdf', '%PDF-1.4', 'application/pdf')).status, 401)
+    assert.equal((await fetch(`${B}/anexar/lixo`)).status, 410)
+    const antesTxt = await chamar('listar_documentos', { modulo: 'pagamentos', alvo: 'pedido', id: alvoUp })
+    console.log('listar_documentos antes:', antesTxt.replace(/https?:\/\/\S+/g, '<url>').slice(0, 300))
+    const urlDoc = antesTxt.match(/https?:\/\/\S+/)?.[0]
+    if (urlDoc) { const d = await fetch(urlDoc); const t = await d.text(); assert.equal(d.status, 200); assert.ok(t.startsWith('%PDF-'), 'download não devolveu o PDF'); console.log('download assinado ok:', t.length, 'bytes') }
+    if (args.some(a => a.startsWith('--upload='))) {
+      const pdf = '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 100]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF'
+      const r = await post(tok, 'teste-mcp-upload.pdf', pdf, 'application/pdf')
+      console.log('upload real:', r.status, JSON.stringify(await r.json()))
+      console.log('listar_documentos depois:', (await chamar('listar_documentos', { modulo: 'pagamentos', alvo: 'pedido', id: alvoUp })).replace(/https?:\/\/\S+/g, '<url>').slice(0, 400))
+    } else assert.equal((await db.from('documentos').select('id', { count: 'exact', head: true })).count, nDocs, 'sem --upload nada pode ser gravado')
+  }
+
+  // buscas e cadastro de fornecedor/cliente: leitura + prévia (nunca confirmar=true aqui)
+  const nForn = (await db.from('fornecedores').select('id', { count: 'exact', head: true })).count
+  const bf = await chamar('buscar_cadastro', { tipo: 'fornecedor', busca: 'a', limite: 3 })
+  console.log('buscar fornecedor:\n' + bf)
+  console.log('buscar centro:', (await chamar('buscar_cadastro', { tipo: 'centro', limite: 3 })).replace(/\n/g, ' | '))
+  console.log('buscar categoria:', (await chamar('buscar_cadastro', { tipo: 'categoria', modulo: 'pagamentos', limite: 3 })).replace(/\n/g, ' | '))
+  console.log('buscar cliente:', (await chamar('buscar_cadastro', { tipo: 'cliente', limite: 2 })).replace(/\n/g, ' | '))
+  console.log('salvar_parceiro (novo, prévia):', await chamar('salvar_parceiro', { tipo: 'fornecedor', nome: 'TESTE MCP PREVIA', cnpj_cpf: '12345678000195', estado: 'ce', tipo_chave: 'CPF/CNPJ' }))
+  console.log('cnpj inválido:', await chamar('salvar_parceiro', { tipo: 'fornecedor', nome: 'TESTE MCP PREVIA', cnpj_cpf: '123' }))
+  const nomeExistente = [...bf.matchAll(/^#\d+ · ([^·]+) ·/gm)].map(m => m[1]).find(n => n === n.trim() && !n.includes('  '))?.trim()
+  if (nomeExistente) console.log('nome repetido:', await chamar('salvar_parceiro', { tipo: 'fornecedor', nome: nomeExistente.toLowerCase() }))
+  assert.equal((await db.from('fornecedores').select('id', { count: 'exact', head: true })).count, nForn, 'fornecedores não podem mudar')
+
   // requisições e criar pedido: leitura + prévia (nunca confirmar=true aqui)
   const contar = async tab => (await db.from(tab).select('id', { count: 'exact', head: true })).count
   const [nReq, nPed] = [await contar('requisicoes'), await contar('pedidos_solicitados')]
@@ -123,5 +234,5 @@ try {
     const { data: fl } = await db.from('pedidos_solicitados_fluxo').select('status').eq('pedido_id', rej)
     console.log('depois:', JSON.stringify(dep), 'fluxo:', JSON.stringify(fl))
     assert.equal(dep.status, 'Não Autorizado')
-  } else console.log('OK — nada foi gravado')
+  } else console.log('OK (sem flags de escrita, o teste só lê; as prévias nunca gravam)')
 } finally { parar() }

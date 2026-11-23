@@ -1,4 +1,5 @@
-import { supabaseBrowser as supabase } from '@/lib/supabase/client'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { supabaseBrowser } from '@/lib/supabase/client'
 import type { ModuloPedido } from '@/lib/ajuste'
 
 // Realocação de centro de resultado: as regras (saldo, reserva, autorização, histórico) moram nas funções do banco
@@ -33,7 +34,7 @@ export const periodoLabel = (mes: number | null, ano: number | null) =>
 
 export async function solicitarRealocacao(
   mod: ModuloPedido, pedidoId: number, modo: 'percentual' | 'valor', destinos: DestinoRealocacao[],
-  usuario: string, observacao: string, simular: boolean,
+  usuario: string, observacao: string, simular: boolean, supabase: SupabaseClient = supabaseBrowser,
 ): Promise<{ plano?: PlanoRealocacao; erro?: string }> {
   const { data, error } = await supabase.rpc('realocacao_solicitar', {
     p_modulo: mod, p_pedido_id: pedidoId, p_modo: modo, p_destinos: destinos,
@@ -43,12 +44,12 @@ export async function solicitarRealocacao(
   return { plano: data as PlanoRealocacao }
 }
 
-export async function autorizarRealocacao(id: number, usuario: string): Promise<string | null> {
+export async function autorizarRealocacao(id: number, usuario: string, supabase: SupabaseClient = supabaseBrowser): Promise<string | null> {
   const { error } = await supabase.rpc('realocacao_autorizar', { p_id: id, p_usuario: usuario })
   return error?.message ?? null
 }
 
-export async function recusarRealocacao(id: number, usuario: string, motivo: string): Promise<string | null> {
+export async function recusarRealocacao(id: number, usuario: string, motivo: string, supabase: SupabaseClient = supabaseBrowser): Promise<string | null> {
   const { error } = await supabase.rpc('realocacao_recusar', { p_id: id, p_usuario: usuario, p_motivo: motivo.trim() || null })
   return error?.message ?? null
 }

@@ -5,7 +5,7 @@ import { SignJWT, jwtVerify } from 'jose'
 // Chave própria (SESSION_SECRET + ':mcp') e claim `typ`: um token do MCP nunca vale como cookie de sessão, nem o contrário.
 // ponytail: código de uso único não é garantido (vale 2 min e exige PKCE) e refresh token não é revogável
 // (o usuário é reconferido no banco a cada chamada); tabela de códigos/revogação se isso importar.
-type Typ = 'client' | 'code' | 'access' | 'refresh'
+type Typ = 'client' | 'code' | 'access' | 'refresh' | 'upload'
 
 const key = () => {
   const s = process.env.SESSION_SECRET
@@ -44,6 +44,8 @@ export function uriOk(u: string) {
 export interface ClienteJwt { ru: string[]; name: string }
 export interface CodigoJwt { uid: number; pid: number; cid: string; ru: string; cc: string }
 export interface TokenJwt { uid: number; pid: number; cid: string }
+// Link de upload de PDF para um pedido ou requisição (vale 30 min)
+export interface UploadJwt { uid: number; pid: number; mod: 'pagamentos' | 'recebimentos'; alvo: 'pedido' | 'requisicao'; id: number }
 
 // access (1h) + refresh (30d)
 export async function emitirTokens(t: TokenJwt) {

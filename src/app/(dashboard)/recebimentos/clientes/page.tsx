@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
+import { UFS, somenteDigitos, validarCpfCnpj, formatarCpfCnpj } from '@/lib/cadastros'
 import { Plus, Pencil, Trash2, Search, RefreshCw, X, Download, Upload, FileSpreadsheet, CheckCircle, AlertCircle } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -13,19 +14,7 @@ interface Cliente {
   tipo_chave: number | null; chave_pix: string | null
 }
 
-const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
-
-// ── CPF/CNPJ helpers ──────────────────────────────────────────────────────────
-function somenteDigitos(v: string) { return v.replace(/\D/g, '') }
-function validarCpfCnpj(v: string) {
-  const d = somenteDigitos(v)
-  return { ok: d.length === 11 || d.length === 14, digitos: d }
-}
-function formatarCpfCnpj(d: string): string {
-  if (d.length === 11) return `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9,11)}`
-  if (d.length === 14) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12,14)}`
-  return d
-}
+// CPF/CNPJ e UFs: src/lib/cadastros.ts (compartilhado com o MCP)
 function isCadastroCompleto(c: Cliente) {
   return !!(c.nome && c.cnpj_cpf && c.rua_avenida && c.numero &&
     c.bairro && c.cidade && c.estado && c.cep && c.tipo_chave && c.chave_pix)

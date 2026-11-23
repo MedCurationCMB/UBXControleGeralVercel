@@ -6,18 +6,19 @@ import { CONTAS } from '@/lib/extratoVinculo'
 import { clienteDoUsuario } from '@/lib/supabase/usuario'
 import { veModulo } from '@/lib/modulos'
 import { brl, falha, modulo, ok, podeDecidir } from '@/lib/mcp/pedidos'
+import { linkUpload } from '@/lib/mcp/upload'
 import type { SessionPayload } from '@/types/database'
 
 const AGUARDANDO = 'Aguardando Autorização'
 const REQ = { pagamentos: 'requisicoes', recebimentos: 'requisicoes_receita' } as const
 const ORC_USUARIOS = { pagamentos: 'orcamentos_usuarios', recebimentos: 'orcamentos_usuarios_receita' } as const
-const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
+export const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 const hoje = () => new Date().toISOString().split('T')[0]
 const dia = (d: string) => d.slice(0, 10).split('-').reverse().join('/')
 
 // Fluxo do projeto/módulo, como a tela decide: 1 pedido com orçamento · 2 pedido sem orçamento · 3 conta lançada direto (sem pedido)
 // · 4 requisição + pedido com orçamento · 5 requisição + pedido sem orçamento.
-async function fluxoDe(cli: SupabaseClient, m: ModuloPedido): Promise<'1' | '2' | '3' | '4' | '5'> {
+export async function fluxoDe(cli: SupabaseClient, m: ModuloPedido): Promise<'1' | '2' | '3' | '4' | '5'> {
   const { data: c } = await cli.from('config').select('valor').eq('chave', TAB_PEDIDO[m].cfgFluxo).maybeSingle()
   if (c?.valor) return c.valor
   if (m === 'recebimentos') return '2'
@@ -25,11 +26,13 @@ async function fluxoDe(cli: SupabaseClient, m: ModuloPedido): Promise<'1' | '2' 
   return o?.valor === 'true' ? '1' : '2'
 }
 const usaRequisicao = (f: string) => f === '4' || f === '5'
-const controlaOrcamento = (f: string) => f === '1' || f === '4'
+export const controlaOrcamento = (f: string) => f === '1' || f === '4'
 
 // Requisições e criação de pedido, com as regras das telas "Fazer Requisição", "Autorizar Requisições" e "Fazer Pedido".
-// Documentos (PDF) ainda não: anexar pela tela do pedido/requisição.
-export function registrarSolicitacoes(server: McpServer, s: SessionPayload) {
+// Depois de criar, o resultado traz o link de upload de PDF (vale 30 min): o Claude deve perguntar se há documento e entregar o link.
+export function registrarSolicitacoes(server: McpServer, s: SessionPayload, origin: string) {
+  const aviso = async (m: ModuloPedido, alvo: 'pedido' | 'requisicao', id: number) =>
+    `\nPergunte ao usuário se há documento (PDF) para anexar. Se sim, entregue este link (vale 30 min): ${await linkUpload(origin, s, m, alvo, id)}`
   const db = () => clienteDoUsuario(s)
 
   server.registerTool('listar_requisicoes', {
@@ -54,7 +57,7 @@ export function registrarSolicitacoes(server: McpServer, s: SessionPayload) {
   })
 
   server.registerTool('criar_requisicao', {
-    description: 'Cria uma requisição (fica aguardando autorização). Só nos fluxos 4 e 5. Pergunte ao usuário se há documento (PDF) para anexar: por enquanto o anexo é feito pela tela da requisição. ' +
+    description: 'Cria uma requisição (fica aguardando autorização). Só nos fluxos 4 e 5. Pergunte ao usuário se há documento (PDF) para anexar; depois de criar, o resultado traz o link de upload. ' +
       'Chame primeiro com confirmar=false para ver o resumo, mostre ao usuário e só use confirmar=true depois do OK dele.',
     inputSchema: { modulo, centro: z.string().describe('nome exato do centro de resultado'), categoria: z.string().describe('nome exato da categoria'), descricao: z.string().min(3), confirmar: z.boolean().default(false) },
     annotations: { destructiveHint: true },
@@ -68,7 +71,7 @@ export function registrarSolicitacoes(server: McpServer, s: SessionPayload) {
     const resumo = `REQUISIÇÃO ${m}: ${centro} / ${categoria} — "${descricao.trim()}"`
     if (!confirmar) return ok(`${resumo}\nNada foi feito ainda. Para executar, chame de novo com confirmar=true.`)
     const { data, error } = await cli.from(REQ[m]).insert({ empresa: centro, categoria, descricao: descricao.trim(), status: AGUARDANDO, data_solicitacao: hoje() }).select('id').single()
-    return error ? falha(error.message) : ok(`Feito: requisição #${data.id} criada, aguardando autorização. ${resumo}`)
+    return error ? falha(error.message) : ok(`Feito: requisição #${data.id} criada, aguardando autorização. ${resumo}${await aviso(m, 'requisicao', data.id)}`)
   })
 
   server.registerTool('decidir_requisicao', {
@@ -90,7 +93,7 @@ export function registrarSolicitacoes(server: McpServer, s: SessionPayload) {
   server.registerTool('criar_pedido', {
     description: 'Cria um pedido (de compra em pagamentos, de venda em recebimentos) aguardando autorização: centro, categoria, fornecedor/cliente e o cronograma por mês. ' +
       'Segue o fluxo do projeto: nos fluxos 4 e 5 exige uma requisição já autorizada do mesmo centro (requisicao_id; veja listar_requisicoes); nos fluxos 1 e 4 cada mês precisa caber no saldo do orçamento. Fluxo 3 não tem pedido. ' +
-      'Pergunte ao usuário se há documento (PDF) para anexar: por enquanto o anexo é feito pela tela do pedido. Chame primeiro com confirmar=false, mostre o resumo e só use confirmar=true depois do OK dele.',
+      'Pergunte ao usuário se há documento (PDF) para anexar; depois de criar, o resultado traz o link de upload. Chame primeiro com confirmar=false, mostre o resumo e só use confirmar=true depois do OK dele.',
     inputSchema: {
       modulo, centro: z.string().describe('nome exato do centro de resultado'), categoria: z.string().describe('nome exato da categoria'),
       parte: z.string().describe('nome exato do fornecedor (pagamentos) ou cliente (recebimentos)'),
@@ -173,6 +176,6 @@ export function registrarSolicitacoes(server: McpServer, s: SessionPayload) {
       return falha(`Não foi possível gravar os períodos: ${eFluxo.message}`)
     }
     await cli.from(t.pedido).update({ usuario_solicitante: s.username }).eq('id', ped.id) // como a tela: falha em silêncio se a coluna não existir
-    return ok(`Feito: pedido #${ped.id} criado, aguardando autorização.\n${resumo}`)
+    return ok(`Feito: pedido #${ped.id} criado, aguardando autorização.\n${resumo}${await aviso(m, 'pedido', ped.id)}`)
   })
 }

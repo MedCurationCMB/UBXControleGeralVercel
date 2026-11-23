@@ -4,8 +4,8 @@ import { SESSION_COOKIE } from '@/lib/auth'
 import { garantirTokenDb } from '@/lib/db-token'
 import type { Modulo } from '@/lib/modulos'
 
-const PUBLIC_ROUTES = ['/login', '/recuperar-senha', '/api/auth/login', '/api/auth/cadastro', '/api/auth/recuperar-senha', '/.well-known', '/api/oauth', '/api/mcp']
-// /api/oauth e /api/mcp cuidam da própria autenticação (login do UBX no authorize; Bearer no mcp)
+const PUBLIC_ROUTES = ['/login', '/recuperar-senha', '/api/auth/login', '/api/auth/cadastro', '/api/auth/recuperar-senha', '/.well-known', '/api/oauth', '/api/mcp', '/anexar', '/api/anexar']
+// /api/oauth, /api/mcp e /anexar cuidam da própria autenticação (login do UBX no authorize; Bearer no mcp; token assinado no link de upload)
 const ADMIN_ROUTES = ['/admin', '/api/admin', '/projetos']
 const OWNER_ROUTES: string[] = ['/relatorios', '/api/relatorios'] // rotas exclusivas do owner
 
