@@ -11,19 +11,19 @@ import type { SessionPayload } from '@/types/database'
 
 // Contas a pagar (controle_pagamentos) e a receber (controle_recebimento): listar, adicionar parcela, registrar pagamento/recebimento e editar,
 // com as regras da tela de Controle. Quem vê o módulo pode, como na tela (o menu não é só de admin). Excluir e boleto/comprovante ficam para depois.
-const REF = {
+export const REF = {
   pagamentos: { statusTab: 'pagamento_status', tipoTab: 'tipos_pagamento', tipoCol: 'tipo_pagamento', tipo: 'pagar', verbo: 'pagamento' },
   recebimentos: { statusTab: 'recebimento_status', tipoTab: 'tipos_recebimento', tipoCol: 'tipo_recebimento', tipo: 'receber', verbo: 'recebimento' },
 } as const satisfies Record<ModuloPedido, object>
 
-const hojeBrasilia = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
-const dataOk = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d))
+export const hojeBrasilia = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+export const dataOk = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d))
 const dia = (d: string | null) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '-')
-const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+export const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
 const limpa = (s: string) => s.replace(/[%,()]/g, '').trim() // vai num ilike
 const data = z.string().describe('AAAA-MM-DD')
 
-async function referencias(cli: SupabaseClient, m: ModuloPedido) {
+export async function referencias(cli: SupabaseClient, m: ModuloPedido) {
   const r = REF[m]
   const [{ data: st }, { data: tp }] = await Promise.all([cli.from(r.statusTab).select('id, nome_status'), cli.from(r.tipoTab).select('id, tipos')])
   const statuses = (st ?? []) as { id: number; nome_status: string }[]

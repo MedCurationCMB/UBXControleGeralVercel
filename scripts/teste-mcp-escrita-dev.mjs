@@ -260,6 +260,94 @@ try {
     const ver = (await chamar('ver_extrato', { extrato_id: ex.id })).texto; assert.match(ver, /2 linhas/); assert.match(ver, /TESTE MCP OFX UM/)
   })
 
+  // ---- alterar contas em lote ----
+  await passo('lote: status e vencimento de várias contas, recusa de id inexistente', async () => {
+    const contas = (await db.from('controle_pagamentos').select('id').eq('pedido_id', ctx.ped).order('id')).data.map(c => c.id); assert.equal(contas.length, 2)
+    const ruim = await chamar('atualizar_contas_em_lote', { modulo: 'pagamentos', conta_ids: [...contas, 999999999], status: 'Pago', confirmar: true }); assert.ok(ruim.erro, 'id inexistente deveria recusar tudo')
+    assert.ok((await db.from('controle_pagamentos').select('status_pagamento').in('id', contas)).data.every(c => c.status_pagamento === 1), 'nada pode mudar quando recusa')
+    assert.match((await chamar('atualizar_contas_em_lote', { modulo: 'pagamentos', conta_ids: contas, status: 'Pago' })).texto, /sem data\/valor de pagamento/)
+    await exec('atualizar_contas_em_lote', { modulo: 'pagamentos', conta_ids: contas, status: 'Enviado para o banco', data_vencimento: '2026-12-28' })
+    const r = (await db.from('controle_pagamentos').select('status_pagamento, data_vencimento').in('id', contas)).data; assert.ok(r.every(c => c.status_pagamento === 2 && c.data_vencimento === '2026-12-28'))
+    await exec('atualizar_contas_em_lote', { modulo: 'pagamentos', conta_ids: contas, status: 'À Pagar' })
+    assert.ok((await db.from('controle_pagamentos').select('status_pagamento').in('id', contas)).data.every(c => c.status_pagamento === 1))
+  })
+
+  // ---- requisição atendida sem pedido ----
+  await passo('requisição: atendida sem pedido (autoriza junto), bloqueio de pedido, desfazer', async () => {
+    const t = await exec('criar_requisicao', { modulo: 'pagamentos', centro: 'Rhuan Financeiro', categoria: 'Financeiro', descricao: `TESTE MCP ${T} atendida` }); const rid = num(t, /requisição #(\d+)/)
+    await exec('marcar_requisicao_atendida', { modulo: 'pagamentos', id: rid, observacao: 'TESTE MCP resolvida por fora' })
+    const r = await um('requisicoes', q => q.eq('id', rid)); assert.equal(r.status, 'Autorizado'); assert.equal(r.atendida_sem_pedido, true); assert.equal(r.atendida_usuario, u.username); assert.equal(r.atendida_obs, 'TESTE MCP resolvida por fora')
+    assert.ok((await chamar('marcar_requisicao_atendida', { modulo: 'pagamentos', id: rid, confirmar: true })).erro, 'já atendida deve ser recusada')
+    const ped = await chamar('criar_pedido', { modulo: 'pagamentos', centro: 'Rhuan Financeiro', categoria: 'Financeiro', parte: nomeForn, periodos: [{ mes: 11, ano: 2026, valor: 10 }], observacao: `TESTE MCP ${T}`, requisicao_id: rid, confirmar: true })
+    assert.ok(ped.erro, 'requisição atendida não pode gerar pedido')
+    assert.ok((await chamar('listar_requisicoes', { modulo: 'pagamentos', situacao: 'autorizadas_sem_pedido' })).texto.indexOf(`#${rid} `) === -1, 'atendida não deve aparecer como disponível')
+    await exec('desfazer_requisicao_atendida', { modulo: 'pagamentos', id: rid })
+    const d = await um('requisicoes', q => q.eq('id', rid)); assert.equal(d.atendida_sem_pedido, false); assert.equal(d.status, 'Autorizado'); assert.equal(d.atendida_usuario, null)
+    const usada = await chamar('marcar_requisicao_atendida', { modulo: 'pagamentos', id: ctx.req, confirmar: true }); assert.ok(usada.erro, 'requisição com pedido não pode ser marcada: ' + usada.texto)
+  })
+
+  // ---- excluir documento, fornecedor, cliente e conta bancária ----
+  await passo('documento: excluir comprovante (gatilho limpa a conta) e boleto (apaga o que foi lido)', async () => {
+    const lista = (await chamar('listar_documentos', { modulo: 'pagamentos', alvo: 'conta', id: ctx.conta })).texto
+    const idComp = num(lista, /- #(\d+) comprovante-teste\.pdf/), idBol = num(lista, /- #(\d+) boleto-teste\.pdf/)
+    const prev = (await chamar('excluir_documento', { modulo: 'pagamentos', documento_id: idComp })).texto; assert.match(prev, /Nada foi feito/)
+    assert.equal((await db.from('documentos').select('id').eq('id', idComp)).data.length, 1)
+    await exec('excluir_documento', { modulo: 'pagamentos', documento_id: idComp })
+    assert.equal((await db.from('documentos').select('id').eq('id', idComp)).data.length, 0)
+    const c = await um('controle_pagamentos', q => q.eq('id', ctx.conta)); assert.ok(!c.tem_comprovante && !c.anexo_id, 'a conta deveria perder o comprovante')
+    await exec('excluir_documento', { modulo: 'pagamentos', documento_id: idBol })
+    assert.equal((await db.from('documentos').select('id').eq('id', idBol)).data.length, 0)
+    assert.equal((await db.from('informacoes_boleto').select('id').eq('boleto_id', idBol)).data.length, 0, 'dados do boleto deveriam sair junto')
+  })
+  await passo('fornecedor e cliente: em uso é recusado, sem uso é excluído', async () => {
+    const emUso = await chamar('excluir_parceiro', { tipo: 'fornecedor', id: ctx.forn, confirmar: true }); assert.ok(emUso.erro && /está em/.test(emUso.texto), emUso.texto)
+    assert.equal((await db.from('fornecedores').select('id').eq('id', ctx.forn)).data.length, 1)
+    await exec('salvar_parceiro', { tipo: 'fornecedor', nome: `TESTE MCP FORN DEL ${T}` }); const f = await um('fornecedores', q => q.eq('nome', `TESTE MCP FORN DEL ${T}`))
+    await exec('excluir_parceiro', { tipo: 'fornecedor', id: f.id }); assert.equal((await db.from('fornecedores').select('id').eq('id', f.id)).data.length, 0)
+    await exec('salvar_parceiro', { tipo: 'cliente', nome: `TESTE MCP CLI DEL ${T}` }); const c = await um('clientes', q => q.eq('nome', `TESTE MCP CLI DEL ${T}`))
+    await exec('excluir_parceiro', { tipo: 'cliente', id: c.id }); assert.equal((await db.from('clientes').select('id').eq('id', c.id)).data.length, 0)
+  })
+  await passo('conta bancária: excluir', async () => {
+    await exec('salvar_conta_bancaria', { nome_empresa: `TESTE MCP CONTA DEL ${T}` }); const c = await um('conta_pagador', q => q.eq('nome_empresa', `TESTE MCP CONTA DEL ${T}`))
+    assert.match((await chamar('excluir_conta_bancaria', { id: c.id })).texto, /Nada foi feito/)
+    await exec('excluir_conta_bancaria', { id: c.id }); assert.equal((await db.from('conta_pagador').select('id').eq('id', c.id)).data.length, 0)
+  })
+
+  // ---- lançar conta direto (fluxo 3): troca o fluxo do DEV só durante estes passos e restaura ----
+  const cfgOrig = (await db.from('config').select('id, chave, valor').eq('projeto_id', PID).in('chave', ['fluxo_sistema', 'fluxo_sistema_receita'])).data
+  const trocarFluxo = async v => { for (const c of cfgOrig) await db.from('config').update({ valor: v }).eq('id', c.id) }
+  const restaurarFluxo = async () => { for (const c of cfgOrig) await db.from('config').update({ valor: c.valor }).eq('id', c.id) }
+  ctx.restaurarFluxo = restaurarFluxo
+  await passo('lançar conta: recusado fora do fluxo 3', async () => {
+    const r = await chamar('lancar_conta', { modulo: 'pagamentos', centro: 'Rhuan Financeiro', categoria: 'Financeiro', parte: nomeForn, valor: 80, tipo: 'PIX', confirmar: true }); assert.ok(r.erro && /fluxo 3/.test(r.texto), r.texto)
+  })
+  await passo('lançar conta direto: pagamentos e recebimentos (fluxo 3), com excluir conta', async () => {
+    await trocarFluxo('3')
+    const t = await exec('lancar_conta', { modulo: 'pagamentos', centro: 'Rhuan Financeiro', categoria: 'Financeiro', parte: nomeForn, valor: 80, data_vencimento: '2026-12-05', tipo: 'pix', observacao: `TESTE MCP ${T} conta direta` })
+    const pid = num(t, /pedido #(\d+)/), cid = num(t, /conta #(\d+)/)
+    const p = await um('pedidos_solicitados', q => q.eq('id', pid)); assert.equal(p.status, 'Autorizado'); assert.equal(p.usuario_autorizador, u.username); assert.equal(Number(p.valor_pedido), 80)
+    const c = await um('controle_pagamentos', q => q.eq('id', cid)); assert.equal(c.pedido_id, pid); assert.equal(Number(c.valor_pagar), 80); assert.equal(c.status_pagamento, 1); assert.equal(c.tipo_pagamento, 1); assert.equal(c.data_vencimento, '2026-12-05')
+    assert.equal((await db.from('pedidos_solicitados_fluxo').select('id').eq('pedido_id', pid)).data.length, 0, 'fluxo 3 não tem cronograma')
+    assert.match((await chamar('listar_contas', { modulo: 'pagamentos', pedido_id: pid })).texto, new RegExp(`conta #${cid} `))
+    await exec('criar_categoria', { modulo: 'recebimentos', centro: centroT, categoria: 'RECEITA DIRETA' })
+    const tr = await exec('lancar_conta', { modulo: 'recebimentos', centro: centroT, categoria: 'RECEITA DIRETA', parte: nomeCli, valor: 55.5, tipo: 'Boleto', observacao: `TESTE MCP ${T} receber direto` })
+    const pr = num(tr, /pedido #(\d+)/), cr = num(tr, /conta #(\d+)/)
+    assert.equal((await um('pedidos_solicitados_receita', q => q.eq('id', pr))).status, 'Autorizado')
+    const crow = await um('controle_recebimento', q => q.eq('id', cr)); assert.equal(Number(crow.valor_pagar), 55.5); assert.equal(crow.tipo_recebimento, 3); assert.equal(crow.status_recebimento, 1)
+    // excluir conta: com pagamento registrado o resumo avisa; depois exclui
+    await exec('registrar_pagamento', { modulo: 'pagamentos', conta_id: cid, data: '2026-11-23' })
+    const av = (await chamar('excluir_conta', { modulo: 'pagamentos', conta_id: cid })).texto; assert.match(av, /ATENÇÃO.*pagamento registrado/)
+    assert.equal((await db.from('controle_pagamentos').select('id').eq('id', cid)).data.length, 1, 'a prévia não pode excluir')
+    await exec('excluir_conta', { modulo: 'pagamentos', conta_id: cid }); assert.equal((await db.from('controle_pagamentos').select('id').eq('id', cid)).data.length, 0)
+    assert.equal((await db.from('pedidos_solicitados').select('id').eq('id', pid)).data.length, 1, 'o pedido continua')
+    await exec('excluir_conta', { modulo: 'recebimentos', conta_id: cr }); assert.equal((await db.from('controle_recebimento').select('id').eq('id', cr)).data.length, 0)
+  })
+  await passo('fluxo do DEV restaurado', async () => {
+    await restaurarFluxo()
+    const agora = (await db.from('config').select('id, valor').eq('projeto_id', PID).in('chave', ['fluxo_sistema', 'fluxo_sistema_receita'])).data
+    for (const c of cfgOrig) assert.equal(agora.find(x => x.id === c.id).valor, c.valor)
+  })
+
   // ---- conciliação (extrato fictício só do teste) ----
   await passo('conciliação: vincular, recusar valor errado, grupo de contas e desvincular', async () => {
     const ex = (await db.from('extratos_bancarios').insert({ projeto_id: PID, conta: 'TESTE MCP', periodo_inicio: '2026-11-01', periodo_fim: '2026-11-30', saldo_inicial: 0, saldo_final: 0, formato_origem: 'csv', nome_arquivo: `TESTE MCP ${T}.csv`, usuario: u.username }).select('id').single())
@@ -358,6 +446,7 @@ try {
   console.log('ERRO GERAL:', e.message)
 } finally {
   console.log('\nlimpando dados de teste…')
+  try { await ctx.restaurarFluxo?.() } catch (e) { console.log('ATENÇÃO: não consegui restaurar o fluxo do DEV:', e.message) }
   await limpar()
   const depois = await contar()
   const sobras = Object.keys(antes).filter(t => antes[t] !== depois[t]).map(t => `${t}: ${antes[t]} → ${depois[t]}`)

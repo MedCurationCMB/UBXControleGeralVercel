@@ -6,7 +6,7 @@ Legenda: ✅ feito e publicado · ❌ falta · 📎 envolve upload · 🚫 não 
 
 Última atualização: 23/11/2026. Endereço do conector: `https://financeiro-importantist.vercel.app/api/mcp` (login OAuth do UBX; o projeto é o que estava ativo no UBX ao clicar em "Permitir").
 
-Testes: `node scripts/teste-mcp-prod.mjs "<usuário>" 1` (leitura e prévias, nunca grava) e `node scripts/teste-mcp-escrita-dev.mjs "<usuário>"` (gravação real, SÓ no PROJETO DEV: 37 passos, confere no banco e apaga tudo que criou). Em 23/11 os 37 passos passaram, incluindo comprovante, boleto (código válido/inválido, reenvio sem duplicar) e importação de extrato OFX por link: cadastros (fornecedor, cliente, centro, categoria, conta bancária), orçamento, requisição, pedido (criar, anexar PDF, comentar, pedir ajuste, ajustar e reenviar, autorizar, cancelar), contas (parcela barrada acima do valor do pedido, editar, adicionar, registrar e desfazer pagamento), conciliação (vincular, valor errado recusado, grupo de contas, desvincular), recebimentos (pedido de venda até recebimento) e realocação.
+Testes: `node scripts/teste-mcp-prod.mjs "<usuário>" 1` (leitura e prévias, nunca grava) e `node scripts/teste-mcp-escrita-dev.mjs "<usuário>"` (gravação real, SÓ no PROJETO DEV: 45 passos, confere no banco e apaga tudo que criou; troca o fluxo do DEV para 3 só nos passos de "lançar conta" e restaura). Em 23/11 os 45 passos passaram, incluindo comprovante, boleto (código válido/inválido, reenvio sem duplicar), importação de extrato OFX por link, lançar conta direto, excluir (conta, documento, fornecedor, cliente, conta bancária), atendida sem pedido e alteração em lote: cadastros (fornecedor, cliente, centro, categoria, conta bancária), orçamento, requisição, pedido (criar, anexar PDF, comentar, pedir ajuste, ajustar e reenviar, autorizar, cancelar), contas (parcela barrada acima do valor do pedido, editar, adicionar, registrar e desfazer pagamento), conciliação (vincular, valor errado recusado, grupo de contas, desvincular), recebimentos (pedido de venda até recebimento) e realocação.
 Ainda sem gravação real testada: rejeitar pedido/requisição de verdade fora o caso de 23/11, lançar orçamento com pedidos no mês, realocação aguardando autorização de outro usuário, e perfis diferentes de admin (o teste usa o dono).
 
 ## Busca e contexto
@@ -18,13 +18,13 @@ Ainda sem gravação real testada: rejeitar pedido/requisição de verdade fora 
 ## Cadastros base
 
 - [x] Fornecedores (pagamentos) e Clientes (recebimentos): criar e editar (`salvar_parceiro`; nome único, CPF/CNPJ e chave Pix validados como na tela)
-- [ ] Fornecedores e Clientes: excluir
+- [x] Fornecedores e Clientes: excluir (`excluir_parceiro`; mais seguro que a tela: recusa se houver pedido, parcela ou conta usando o nome)
 - [ ] Fornecedores/Clientes: importar planilha (dados direto na ferramenta, sem upload)
 - [x] Centros de resultado: criar (com cópia de categorias opcional), renomear, copiar categorias (`criar_centro`, `renomear_centro`, `copiar_categorias`; renomear e copiar só admin dos dois módulos/dono, como na tela). A tela não exclui centro, então o MCP também não
 - [ ] Centros: definir quem vê cada centro (fica na tela de Projetos e Acessos, admin)
 - [x] Categorias: criar, renomear, excluir (`criar_categoria`, `renomear_categoria`, `excluir_categoria`; pagamentos e recebimentos)
 - [x] Contas bancárias da empresa (conta_pagador, serve aos dois módulos): listar, cadastrar e editar (`listar_contas_bancarias`, `salvar_conta_bancaria`)
-- [ ] Contas bancárias: excluir
+- [x] Contas bancárias: excluir (`excluir_conta_bancaria`)
 - [ ] 📎 Modelos de contrato: enviar e excluir
 
 ## Orçamento
@@ -39,7 +39,7 @@ Ainda sem gravação real testada: rejeitar pedido/requisição de verdade fora 
 - [x] Criar (`criar_requisicao`)
 - [x] Autorizar ou rejeitar (`decidir_requisicao`)
 - [x] 📎 Anexar documento (PDF, por link: `anexar_documento`; `criar_requisicao` já entrega o link)
-- [ ] Marcar "atendida sem pedido" e desfazer
+- [x] Marcar "atendida sem pedido" e desfazer (`marcar_requisicao_atendida`, `desfazer_requisicao_atendida`; só admin do módulo; o banco barra se já há pedido)
 
 ## Pedidos (compra e venda)
 
@@ -53,7 +53,7 @@ Ainda sem gravação real testada: rejeitar pedido/requisição de verdade fora 
 - [x] Comentar (`adicionar_comentario`; os últimos 10 aparecem em `ver_pedido`)
 - [ ] 📎 Comentário com anexo (falta o link de upload para comentário)
 - [x] 📎 Documentos do pedido: enviar (por link) e listar com link de download (`anexar_documento`, `listar_documentos`)
-- [ ] Documentos do pedido: excluir
+- [x] Documentos do pedido/conta: excluir (`excluir_documento`; o arquivo no armazenamento não é apagado, como na tela; os dados lidos do boleto saem junto)
 - [x] Realocar centro de resultado: solicitar com simulação do banco, listar, autorizar e recusar (`solicitar_realocacao`, `listar_realocacoes`, `decidir_realocacao`)
 - [ ] Gerar contrato
 - [ ] Importar pedidos em lote (dados direto na ferramenta)
@@ -65,8 +65,8 @@ Ainda sem gravação real testada: rejeitar pedido/requisição de verdade fora 
 - [x] Editar conta: vencimento, valores, status, tipo, desfazer pagamento (`atualizar_conta`)
 - [x] Adicionar parcela a pedido autorizado (`adicionar_conta`; sem código de barras de boleto ainda)
 - [x] 📎 Anexar comprovante e boleto (PDF por link: `anexar_documento` com alvo=comprovante|boleto e o id da conta; o boleto é lido por IA e preenche o código de barras; um boleto por conta, reenviar atualiza)
-- [ ] Lançar conta direto (fluxo 3) e excluir conta
-- [ ] Alterar status/vencimento em lote (hoje: uma conta por chamada)
+- [x] Lançar conta direto, fluxo 3 (`lancar_conta`: cria o pedido já autorizado e a conta; só no fluxo 3) e excluir conta (`excluir_conta`: avisa pagamento registrado, conciliação, remessa e documentos)
+- [x] Alterar status/vencimento em lote (`atualizar_contas_em_lote`: até 200 contas por ids; recusa tudo se algum id não existir)
 - [x] Código de barras de boleto informado manualmente (`informar_boleto`; confere dígitos verificadores de 47 e 48 dígitos)
 - [ ] Importar em lote (dados direto na ferramenta)
 - [ ] 📎 Remessa CNAB, retorno do banco e relatório de enviados

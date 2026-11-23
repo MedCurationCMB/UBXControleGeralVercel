@@ -10,6 +10,7 @@ import { registrarContas } from '@/lib/mcp/contas'
 import { registrarEstrutura } from '@/lib/mcp/estrutura'
 import { registrarAcompanhamento } from '@/lib/mcp/acompanhamento'
 import { registrarRealocacao } from '@/lib/mcp/realocacao'
+import { registrarManutencao } from '@/lib/mcp/manutencao'
 import { registrarUpload } from '@/lib/mcp/upload'
 import { sessaoDe } from '@/lib/mcp/usuario'
 import { meusProjetos, registrarProjetos } from '@/lib/mcp/projetos'
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
   registrarEstrutura(server, s)
   registrarAcompanhamento(server, s)
   registrarRealocacao(server, s)
+  registrarManutencao(server, s)
   registrarUpload(server, s, baseUrl(req))
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true })
   await server.connect(transport)

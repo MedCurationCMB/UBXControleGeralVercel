@@ -176,7 +176,7 @@ export function registrarUpload(server: McpServer, s: SessionPayload, origin: st
         const { data: i } = await cli.from(k.info).select('codigo_barras, valor_nominal, data_vencimento, beneficiario_nome').eq('boleto_id', x.id).maybeSingle()
         if (i) boleto = `\n  boleto: código ${i.codigo_barras ?? '-'} · valor ${i.valor_nominal != null ? brl(Number(i.valor_nominal)) : '-'} · venc ${i.data_vencimento ?? '-'} · ${i.beneficiario_nome ?? ''}`
       }
-      return `- ${x.nome_documento} · ${tipo} · ${x.usuario} · ${String(x.data_upload).slice(0, 10)}${link ? `\n  ${link}` : ''}${boleto}`
+      return `- #${x.id} ${x.nome_documento} · ${tipo} · ${x.usuario} · ${String(x.data_upload).slice(0, 10)}${link ? `\n  ${link}` : ''}${boleto}`
     }))
     return ok(`${d}\n${linhas.join('\n')}`)
   })
