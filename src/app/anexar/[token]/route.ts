@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { verificar, type UploadJwt } from '@/lib/mcp/oauth'
 import { sessaoDe } from '@/lib/mcp/usuario'
-import { descricaoDoAlvo, MAX_BYTES } from '@/lib/mcp/upload'
+import { aceita, descricaoDoAlvo, MAX_BYTES } from '@/lib/mcp/upload'
 
 const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
 const html = (corpo: string, status = 200) => new NextResponse(
@@ -18,8 +18,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   const d = t && s ? await descricaoDoAlvo(s, t.mod, t.alvo, t.id) : null
   if (!t || !s || !d) return html('<h2>Link expirado</h2><p>Peça um novo link ao Claude.</p>', 410)
 
-  return html(`<h2>Anexar documento</h2><p>${esc(d)}</p><p style="font-size:13px;color:#64748b">Enviando como ${esc(s.username)} · PDF, até 4 MB cada</p>
-<input id="f" type="file" accept="application/pdf" multiple style="display:block;margin:16px 0">
+  const extrato = t.alvo === 'extrato'
+  return html(`<h2>${extrato ? 'Importar extrato' : 'Anexar documento'}</h2><p>${esc(d)}</p><p style="font-size:13px;color:#64748b">Enviando como ${esc(s.username)} · ${extrato ? 'CSV, OFX ou TXT' : 'PDF'}, até 4 MB cada</p>
+<input id="f" type="file" accept="${aceita(t.alvo)}" multiple style="display:block;margin:16px 0">
 <button id="b" style="padding:10px 18px;background:#0f766e;color:#fff;border:0;border-radius:6px;font-size:15px">Enviar</button>
 <ul id="l" style="list-style:none;padding:0;margin-top:16px;font-size:14px"></ul>
 <script>
@@ -32,7 +33,7 @@ b.onclick=async()=>{
     if(file.size>MAX){li.textContent='✖ '+file.name+' — excede 4 MB';continue}
     const fd=new FormData();fd.append('file',file)
     try{const r=await fetch('/api/anexar/'+token,{method:'POST',body:fd});const d=await r.json().catch(()=>({}))
-      li.textContent=(r.ok?'✔ ':'✖ ')+file.name+(r.ok?'':' — '+(d.error||'erro'))}
+      li.textContent=(r.ok?'✔ ':'✖ ')+file.name+(r.ok?(d.info?' — '+d.info:''):' — '+(d.error||'erro'))}
     catch{li.textContent='✖ '+file.name+' — falha de conexão'}
   }
   f.value='';b.disabled=false

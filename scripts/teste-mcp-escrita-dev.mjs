@@ -41,6 +41,8 @@ async function limpar() {
   if (peds.length) {
     await del('realocacoes', q => q.eq('projeto_id', PID).in('pedido_id', peds))
     await del('comentarios', q => q.in('pedido_id', peds))
+    const docsIds = ((await db.from('documentos').select('id').in('pedido_id', peds)).data ?? []).map(d => d.id)
+    if (docsIds.length) await del('informacoes_boleto', q => q.in('boleto_id', docsIds))
     await del('documentos', q => q.in('pedido_id', peds))
     await del('controle_pagamentos', q => q.in('pedido_id', peds))
     await del('pedidos_solicitados_fluxo', q => q.in('pedido_id', peds))
@@ -210,6 +212,52 @@ try {
   await passo('conta: desfazer pagamento', async () => {
     await exec('atualizar_conta', { modulo: 'pagamentos', conta_id: ctx.conta, limpar_pagamento: true })
     const c = await um('controle_pagamentos', q => q.eq('id', ctx.conta)); assert.equal(c.valor_pagamento, null); assert.equal(c.data_pagamento, null); assert.equal(c.status_pagamento, 1)
+  })
+
+  // ---- comprovante, boleto e importação de extrato por link ----
+  const linkDe = t => t.match(/https?:\/\/\S+\/anexar\/[\w.-]+/)?.[0].replace(/^https?:\/\/[^/]+/, B)
+  const enviar = async (link, nomeArq, conteudo, tipo) => {
+    const fd = new FormData(); fd.append('file', new File([conteudo], nomeArq, { type: tipo }))
+    const r = await fetch(`${B}/api/anexar/${link.split('/anexar/')[1]}`, { method: 'POST', body: fd }); return { status: r.status, corpo: await r.json() }
+  }
+  await passo('comprovante: link, upload e gatilhos do banco', async () => {
+    const link = linkDe((await chamar('anexar_documento', { modulo: 'pagamentos', alvo: 'comprovante', id: ctx.conta })).texto); assert.ok(link)
+    const r = await enviar(link, 'comprovante-teste.pdf', pdf, 'application/pdf'); assert.equal(r.status, 200, JSON.stringify(r.corpo)); assert.match(r.corpo.info, /comprovante anexado/)
+    const d = await um('documentos', q => q.eq('pagamento_id', ctx.conta).eq('tipo_documento', -2)); assert.equal(d.pedido_id, ctx.ped)
+    const c = await um('controle_pagamentos', q => q.eq('id', ctx.conta)); assert.equal(c.tem_comprovante, true); assert.ok(c.anexo_id, 'o gatilho deveria copiar o anexo para a conta')
+    assert.match((await chamar('listar_documentos', { modulo: 'pagamentos', alvo: 'conta', id: ctx.conta })).texto, /Comprovante de Pagamento/)
+  })
+  await passo('boleto: conta que não é do tipo Boleto é recusada', async () => {
+    const outra = (await db.from('controle_pagamentos').select('id, tipo_pagamento').eq('pedido_id', ctx.ped)).data.find(c => c.tipo_pagamento !== 3); assert.ok(outra)
+    const link = linkDe((await chamar('anexar_documento', { modulo: 'pagamentos', alvo: 'boleto', id: outra.id })).texto)
+    const r = await enviar(link, 'boleto-teste.pdf', pdf, 'application/pdf'); assert.equal(r.status, 422); assert.match(r.corpo.error, /tipo Boleto/)
+    const inf = await chamar('informar_boleto', { modulo: 'pagamentos', conta_id: outra.id, codigo_barras: '00190500954014481606906809350314337370000000100', confirmar: true }); assert.ok(inf.erro && /tipo Boleto/.test(inf.texto), inf.texto)
+  })
+  await passo('boleto: código inválido recusado e código válido gravado', async () => {
+    assert.ok((await chamar('informar_boleto', { modulo: 'pagamentos', conta_id: ctx.conta, codigo_barras: '123', confirmar: true })).erro)
+    assert.ok((await chamar('informar_boleto', { modulo: 'pagamentos', conta_id: ctx.conta, codigo_barras: '00190500954014481606906809350314337370000000101', confirmar: true })).erro, 'DV errado deveria ser recusado')
+    await exec('informar_boleto', { modulo: 'pagamentos', conta_id: ctx.conta, codigo_barras: '00190.50095 40144.816069 06809.350314 3 37370000000100' })
+    const doc = await um('documentos', q => q.eq('pagamento_id', ctx.conta).eq('tipo_documento', 4))
+    const info = (await db.from('informacoes_boleto').select('codigo_barras').eq('boleto_id', doc.id)).data; assert.equal(info.length, 1); assert.equal(info[0].codigo_barras, '00190500954014481606906809350314337370000000100')
+    assert.match((await chamar('listar_documentos', { modulo: 'pagamentos', alvo: 'conta', id: ctx.conta })).texto, /boleto: código 0019050095/)
+  })
+  await passo('boleto: PDF por link reaproveita o documento (não duplica)', async () => {
+    const link = linkDe((await chamar('anexar_documento', { modulo: 'pagamentos', alvo: 'boleto', id: ctx.conta })).texto)
+    const r = await enviar(link, 'boleto-teste.pdf', pdf, 'application/pdf'); assert.equal(r.status, 200, JSON.stringify(r.corpo)); assert.match(r.corpo.info, /boleto anexado/)
+    const docs = (await db.from('documentos').select('id, nome_documento').eq('pagamento_id', ctx.conta).eq('tipo_documento', 4)).data; assert.equal(docs.length, 1); assert.equal(docs[0].nome_documento, 'boleto-teste.pdf')
+  })
+  await passo('extrato: importar OFX por link, duplicado recusado, ver_extrato', async () => {
+    const ofx = `OFXHEADER:100\n<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKACCTFROM><ACCTID>TESTEMCP${T}</ACCTID></BANKACCTFROM><BANKTRANLIST><DTSTART>20261101</DTSTART><DTEND>20261130</DTEND>` +
+      `<STMTTRN><TRNTYPE>DEBIT</TRNTYPE><DTPOSTED>20261123</DTPOSTED><TRNAMT>-33.33</TRNAMT><FITID>T1</FITID><MEMO>TESTE MCP OFX UM</MEMO></STMTTRN>` +
+      `<STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20261124</DTPOSTED><TRNAMT>44.44</TRNAMT><FITID>T2</FITID><MEMO>TESTE MCP OFX DOIS</MEMO></STMTTRN></BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`
+    const link = linkDe((await chamar('importar_extrato', {})).texto); assert.ok(link)
+    const nomeArq = `TESTE MCP ${T}.ofx`
+    const r = await enviar(link, nomeArq, ofx, 'application/x-ofx'); assert.equal(r.status, 200, JSON.stringify(r.corpo)); assert.match(r.corpo.info, /2 lançamento/)
+    const ex = await um('extratos_bancarios', q => q.eq('nome_arquivo', nomeArq)); assert.equal(ex.conta, `TESTEMCP${T}`)
+    assert.equal((await db.from('extratos_bancarios_lancamentos').select('id').eq('extrato_id', ex.id)).data.length, 2)
+    const dup = await enviar(link, `TESTE MCP ${T} 2.ofx`, ofx, 'application/x-ofx'); assert.equal(dup.status, 422); assert.match(dup.corpo.error, /já foi enviado/)
+    const naoExtrato = await enviar(link, 'x.pdf', pdf, 'application/pdf'); assert.equal(naoExtrato.status, 422)
+    const ver = (await chamar('ver_extrato', { extrato_id: ex.id })).texto; assert.match(ver, /2 linhas/); assert.match(ver, /TESTE MCP OFX UM/)
   })
 
   // ---- conciliação (extrato fictício só do teste) ----

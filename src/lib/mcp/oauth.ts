@@ -44,8 +44,8 @@ export function uriOk(u: string) {
 export interface ClienteJwt { ru: string[]; name: string }
 export interface CodigoJwt { uid: number; pid: number; cid: string; ru: string; cc: string }
 export interface TokenJwt { uid: number; pid: number; cid: string }
-// Link de upload de PDF para um pedido ou requisição (vale 30 min)
-export interface UploadJwt { uid: number; pid: number; mod: 'pagamentos' | 'recebimentos'; alvo: 'pedido' | 'requisicao'; id: number }
+// Link de upload (vale 30 min): PDF para pedido, requisição, comprovante ou boleto (id = conta); extrato bancário (id = 0)
+export interface UploadJwt { uid: number; pid: number; mod: 'pagamentos' | 'recebimentos'; alvo: 'pedido' | 'requisicao' | 'comprovante' | 'boleto' | 'extrato'; id: number }
 
 // access (1h) + refresh (30d)
 export async function emitirTokens(t: TokenJwt) {

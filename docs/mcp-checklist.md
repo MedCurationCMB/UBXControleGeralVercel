@@ -6,7 +6,7 @@ Legenda: ✅ feito e publicado · ❌ falta · 📎 envolve upload · 🚫 não 
 
 Última atualização: 23/11/2026. Endereço do conector: `https://financeiro-importantist.vercel.app/api/mcp` (login OAuth do UBX; o projeto é o que estava ativo no UBX ao clicar em "Permitir").
 
-Testes: `node scripts/teste-mcp-prod.mjs "<usuário>" 1` (leitura e prévias, nunca grava) e `node scripts/teste-mcp-escrita-dev.mjs "<usuário>"` (gravação real, SÓ no PROJETO DEV: 32 passos, confere no banco e apaga tudo que criou). Em 23/11 os 32 passos passaram: cadastros (fornecedor, cliente, centro, categoria, conta bancária), orçamento, requisição, pedido (criar, anexar PDF, comentar, pedir ajuste, ajustar e reenviar, autorizar, cancelar), contas (parcela barrada acima do valor do pedido, editar, adicionar, registrar e desfazer pagamento), conciliação (vincular, valor errado recusado, grupo de contas, desvincular), recebimentos (pedido de venda até recebimento) e realocação.
+Testes: `node scripts/teste-mcp-prod.mjs "<usuário>" 1` (leitura e prévias, nunca grava) e `node scripts/teste-mcp-escrita-dev.mjs "<usuário>"` (gravação real, SÓ no PROJETO DEV: 37 passos, confere no banco e apaga tudo que criou). Em 23/11 os 37 passos passaram, incluindo comprovante, boleto (código válido/inválido, reenvio sem duplicar) e importação de extrato OFX por link: cadastros (fornecedor, cliente, centro, categoria, conta bancária), orçamento, requisição, pedido (criar, anexar PDF, comentar, pedir ajuste, ajustar e reenviar, autorizar, cancelar), contas (parcela barrada acima do valor do pedido, editar, adicionar, registrar e desfazer pagamento), conciliação (vincular, valor errado recusado, grupo de contas, desvincular), recebimentos (pedido de venda até recebimento) e realocação.
 Ainda sem gravação real testada: rejeitar pedido/requisição de verdade fora o caso de 23/11, lançar orçamento com pedidos no mês, realocação aguardando autorização de outro usuário, e perfis diferentes de admin (o teste usa o dono).
 
 ## Busca e contexto
@@ -64,10 +64,10 @@ Ainda sem gravação real testada: rejeitar pedido/requisição de verdade fora 
 - [x] Registrar pagamento ou recebimento (`registrar_pagamento`: data, valor, status Pago)
 - [x] Editar conta: vencimento, valores, status, tipo, desfazer pagamento (`atualizar_conta`)
 - [x] Adicionar parcela a pedido autorizado (`adicionar_conta`; sem código de barras de boleto ainda)
-- [ ] 📎 Anexar comprovante ou boleto (com leitura automática)
+- [x] 📎 Anexar comprovante e boleto (PDF por link: `anexar_documento` com alvo=comprovante|boleto e o id da conta; o boleto é lido por IA e preenche o código de barras; um boleto por conta, reenviar atualiza)
 - [ ] Lançar conta direto (fluxo 3) e excluir conta
 - [ ] Alterar status/vencimento em lote (hoje: uma conta por chamada)
-- [ ] Código de barras de boleto informado manualmente (tela de Controle, tipo Boleto)
+- [x] Código de barras de boleto informado manualmente (`informar_boleto`; confere dígitos verificadores de 47 e 48 dígitos)
 - [ ] Importar em lote (dados direto na ferramenta)
 - [ ] 📎 Remessa CNAB, retorno do banco e relatório de enviados
 
@@ -75,7 +75,7 @@ Ainda sem gravação real testada: rejeitar pedido/requisição de verdade fora 
 
 - [x] Listar e ver (`listar_extratos`, `ver_extrato`, `contas_para_linha`)
 - [x] Conciliar e desfazer (`vincular_extrato`, `desvincular_extrato`)
-- [ ] 📎 Importar extrato (OFX/CSV)
+- [x] 📎 Importar extrato (CSV, OFX ou TXT do Banco Inter, por link: `importar_extrato`; duplicado recusado; mesma importação da tela, agora em `src/lib/extratoImportacao.ts`)
 
 ## Upload (infraestrutura)
 

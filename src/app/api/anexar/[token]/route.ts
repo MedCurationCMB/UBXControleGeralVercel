@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { verificar, type UploadJwt } from '@/lib/mcp/oauth'
 import { sessaoDe } from '@/lib/mcp/usuario'
-import { gravarPdf } from '@/lib/mcp/upload'
+import { gravarArquivo } from '@/lib/mcp/upload'
 
 export const maxDuration = 60
 
@@ -14,8 +14,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   const file = (await req.formData().catch(() => null))?.get('file')
   if (!(file instanceof File)) return NextResponse.json({ error: 'Arquivo obrigatório' }, { status: 400 })
   try {
-    const erro = await gravarPdf(s, t, file)
-    return erro ? NextResponse.json({ error: erro }, { status: 422 }) : NextResponse.json({ ok: true })
+    const r = await gravarArquivo(s, t, file)
+    return r.erro ? NextResponse.json({ error: r.erro }, { status: 422 }) : NextResponse.json({ ok: true, info: r.info ?? null })
   } catch (e) {
     console.error('Upload por link falhou:', e)
     return NextResponse.json({ error: 'Erro ao enviar o arquivo.' }, { status: 500 })
