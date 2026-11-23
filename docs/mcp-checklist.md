@@ -6,7 +6,8 @@ Legenda: ✅ feito e publicado · ❌ falta · 📎 envolve upload · 🚫 não 
 
 Última atualização: 23/11/2026. Endereço do conector: `https://financeiro-importantist.vercel.app/api/mcp` (login OAuth do UBX; o projeto é o que estava ativo no UBX ao clicar em "Permitir").
 
-Observação: os itens ✅ de escrita foram testados só em prévia (`confirmar=false`) na produção, exceto a rejeição de um pedido de teste. Falta o teste de gravação real de: autorizar pedido, pedir ajuste, lançar orçamento, criar requisição, criar pedido, vincular/desvincular extrato.
+Testes: `node scripts/teste-mcp-prod.mjs "<usuário>" 1` (leitura e prévias, nunca grava) e `node scripts/teste-mcp-escrita-dev.mjs "<usuário>"` (gravação real, SÓ no PROJETO DEV: 32 passos, confere no banco e apaga tudo que criou). Em 23/11 os 32 passos passaram: cadastros (fornecedor, cliente, centro, categoria, conta bancária), orçamento, requisição, pedido (criar, anexar PDF, comentar, pedir ajuste, ajustar e reenviar, autorizar, cancelar), contas (parcela barrada acima do valor do pedido, editar, adicionar, registrar e desfazer pagamento), conciliação (vincular, valor errado recusado, grupo de contas, desvincular), recebimentos (pedido de venda até recebimento) e realocação.
+Ainda sem gravação real testada: rejeitar pedido/requisição de verdade fora o caso de 23/11, lançar orçamento com pedidos no mês, realocação aguardando autorização de outro usuário, e perfis diferentes de admin (o teste usa o dono).
 
 ## Busca e contexto
 

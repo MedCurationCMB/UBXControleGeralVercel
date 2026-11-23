@@ -1,7 +1,7 @@
 // Teste ponta a ponta do MCP: sobe o app contra o BANCO DE TESTE, faz login, OAuth (PKCE) e chama as ferramentas.
 // Uso: node scripts/teste-mcp.mjs   (precisa de .env.test.local; recusa a producao)
 import { readFileSync } from 'node:fs'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { createClient } from '@supabase/supabase-js'
@@ -13,7 +13,7 @@ if (env.NEXT_PUBLIC_SUPABASE_URL.includes('biswoctezxmkirsubxbi')) throw new Err
 const PORT = 3111
 const B = `http://localhost:${PORT}`
 const srv = spawn('npx', ['next', 'dev', '-p', String(PORT)], { env: { ...process.env, ...env }, shell: true, stdio: 'ignore' })
-const parar = () => { try { spawn('taskkill', ['/pid', String(srv.pid), '/t', '/f'], { stdio: 'ignore' }) } catch {} }
+const parar = () => { try { spawnSync('taskkill', ['/pid', String(srv.pid), '/t', '/f'], { stdio: 'ignore' }) } catch {} }
 process.on('exit', parar)
 
 try {

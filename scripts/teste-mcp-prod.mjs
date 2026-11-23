@@ -2,7 +2,7 @@
 // Pula o login do navegador: assina um access token do MCP para o usuário informado (usa o SESSION_SECRET do app).
 // Uso: node scripts/teste-mcp-prod.mjs <nome_de_usuario> [projeto_id] [--rejeitar=ID]  (--rejeitar grava de verdade, só nesse pedido de pagamentos)
 import { readFileSync } from 'node:fs'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import assert from 'node:assert/strict'
 import { SignJWT } from 'jose'
 import { createClient } from '@supabase/supabase-js'
@@ -27,7 +27,7 @@ const token = await new SignJWT({ uid: u.id, pid, cid: 'teste', typ: 'access' })
 
 const PORT = 3112, B = `http://localhost:${PORT}`
 const srv = spawn('npx', ['next', 'dev', '-p', String(PORT)], { env: { ...process.env, ...env }, shell: true, stdio: 'ignore' })
-const parar = () => { try { spawn('taskkill', ['/pid', String(srv.pid), '/t', '/f'], { stdio: 'ignore' }) } catch {} }
+const parar = () => { try { spawnSync('taskkill', ['/pid', String(srv.pid), '/t', '/f'], { stdio: 'ignore' }) } catch {} }
 process.on('exit', parar)
 
 try {
