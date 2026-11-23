@@ -5,7 +5,7 @@ import { SignJWT, jwtVerify } from 'jose'
 // Chave própria (SESSION_SECRET + ':mcp') e claim `typ`: um token do MCP nunca vale como cookie de sessão, nem o contrário.
 // ponytail: código de uso único não é garantido (vale 2 min e exige PKCE) e refresh token não é revogável
 // (o usuário é reconferido no banco a cada chamada); tabela de códigos/revogação se isso importar.
-type Typ = 'client' | 'code' | 'access' | 'refresh' | 'upload'
+type Typ = 'client' | 'code' | 'access' | 'refresh' | 'upload' | 'download'
 
 const key = () => {
   const s = process.env.SESSION_SECRET
@@ -45,7 +45,10 @@ export interface ClienteJwt { ru: string[]; name: string }
 export interface CodigoJwt { uid: number; pid: number; cid: string; ru: string; cc: string }
 export interface TokenJwt { uid: number; pid: number; cid: string }
 // Link de upload (vale 30 min): PDF para pedido, requisição, comprovante ou boleto (id = conta); extrato bancário (id = 0)
-export interface UploadJwt { uid: number; pid: number; mod: 'pagamentos' | 'recebimentos'; alvo: 'pedido' | 'requisicao' | 'comprovante' | 'boleto' | 'extrato'; id: number }
+export interface UploadJwt { uid: number; pid: number; mod: 'pagamentos' | 'recebimentos'; alvo: 'pedido' | 'requisicao' | 'comprovante' | 'boleto' | 'extrato' | 'comentario' | 'retorno'; id: number }
+
+// Link de download (vale 30 min): arquivo guardado no B2 (remessa, retorno, relatórios), por id (nome de arquivo não é único entre projetos)
+export interface DownloadJwt { uid: number; pid: number; fid: string }
 
 // access (1h) + refresh (30d)
 export async function emitirTokens(t: TokenJwt) {

@@ -416,6 +416,70 @@ try {
     assert.equal(por['Rhuan Financeiro'], 60); assert.equal(por[centroT], 60)
   })
 
+  // ---- comentário com anexo, remessa, relatório de enviados e retorno do banco ----
+  const linksDe = t => [...t.matchAll(/https?:\/\/\S+\/baixar\/[\w.-]+/g)].map(m => m[0].replace(/^https?:\/\/[^/]+/, B))
+  const baixar = async link => { const r = await fetch(link); assert.equal(r.status, 200, `download ${r.status}`); return Buffer.from(await r.arrayBuffer()) }
+  await passo('comentário com anexo: link, upload ligado ao comentário', async () => {
+    const t = await exec('adicionar_comentario', { modulo: 'pagamentos', pedido_id: ctx.ped, comentario: 'TESTE MCP comentário com anexo', com_anexo: true })
+    const link = linkDe(t); assert.ok(link, t)
+    const com = (await db.from('comentarios').select('id').eq('pedido_id', ctx.ped).eq('comentario', 'TESTE MCP comentário com anexo')).data; assert.equal(com.length, 1)
+    const r = await enviar(link, 'comentario-teste.pdf', pdf, 'application/pdf'); assert.equal(r.status, 200, JSON.stringify(r.corpo)); assert.match(r.corpo.info, /comentário/)
+    const d = await um('documentos', q => q.eq('comentario_id', com[0].id)); assert.equal(d.pedido_id, ctx.ped); assert.equal(d.tipo_documento, -1); assert.equal(d.nome_documento, 'comentario-teste.pdf')
+    const naoPdf = await enviar(link, 'x.ofx', 'abc', 'text/plain'); assert.equal(naoPdf.status, 422)
+  })
+  const seqAntes = (await db.from('controle_sequencial').select('valor').eq('projeto_id', PID).eq('tipo', 'remessa_cnab').maybeSingle()).data
+  ctx.restaurarSeq = async () => { if (seqAntes) await db.from('controle_sequencial').update({ valor: seqAntes.valor }).eq('projeto_id', PID).eq('tipo', 'remessa_cnab'); else await db.from('controle_sequencial').delete().eq('projeto_id', PID).eq('tipo', 'remessa_cnab') }
+  const inicioArquivos = new Date().toISOString()
+  ctx.limparArquivos = async () => { await db.from('documentos').delete().eq('projeto_id', PID).is('pedido_id', null).in('tipo_documento', [-3, -4, -5]).eq('usuario', u.username).gte('data_upload', inicioArquivos) }
+  await passo('remessa: recusa conta sem boleto/fora de À Pagar e mostra prévia sem gravar', async () => {
+    const cs = (await db.from('controle_pagamentos').select('id, valor_pagar').eq('pedido_id', ctx.ped)).data
+    ctx.cBol = cs.find(c => Number(c.valor_pagar) === 70).id; ctx.cPix = cs.find(c => Number(c.valor_pagar) === 50).id
+    for (const c of [ctx.cBol, ctx.cPix]) await exec('atualizar_conta', { modulo: 'pagamentos', conta_id: c, limpar_pagamento: true })
+    ctx.contaBanco = (await um('conta_pagador', q => q.eq('nome_empresa', `TESTE MCP CONTA ${T}`))).id
+    const semBoleto = await chamar('gerar_remessa', { conta_bancaria_id: ctx.contaBanco, contas: [ctx.cBol, ctx.cPix], confirmar: true }); assert.ok(semBoleto.erro && /boleto sem código/.test(semBoleto.texto), semBoleto.texto)
+    assert.ok((await db.from('controle_pagamentos').select('status_pagamento').in('id', [ctx.cBol, ctx.cPix])).data.every(c => c.status_pagamento === 1))
+    const inexistente = await chamar('gerar_remessa', { conta_bancaria_id: ctx.contaBanco, contas: [999999999] }); assert.ok(inexistente.erro)
+    await exec('informar_boleto', { modulo: 'pagamentos', conta_id: ctx.cBol, codigo_barras: '00190.50095 40144.816069 06809.350314 3 37370000000100' })
+    const prev = (await chamar('gerar_remessa', { conta_bancaria_id: ctx.contaBanco, contas: [ctx.cBol, ctx.cPix] })).texto; assert.match(prev, /Nada foi feito/); assert.match(prev, /2 pagamento/)
+    assert.ok((await db.from('controle_pagamentos').select('status_pagamento').in('id', [ctx.cBol, ctx.cPix])).data.every(c => c.status_pagamento === 1), 'a prévia não pode alterar nada')
+  })
+  await passo('remessa: gerar, links do .REM e do PDF, contas viram Enviado para o banco', async () => {
+    const t = await exec('gerar_remessa', { conta_bancaria_id: ctx.contaBanco, contas: [ctx.cBol, ctx.cPix] })
+    const nomeRem = t.match(/CI240_001_\d+\.REM/)[0]; ctx.remessa = nomeRem
+    const [linkRem, linkPdf] = linksDe(t); assert.ok(linkRem && linkPdf, t)
+    const rem = (await baixar(linkRem)).toString('utf-8'); ctx.remTexto = rem
+    const linhas = rem.split(/\r?\n/).filter(l => l.trim()); assert.ok(linhas.length >= 6 && linhas.every(l => l.length === 240), 'CNAB 240: todas as linhas com 240 posições')
+    assert.ok(linhas.some(l => l[13] === 'A' && l.includes(String(ctx.cPix))) && linhas.some(l => l[13] === 'J' && l.includes(String(ctx.cBol))), 'segmentos A (PIX) e J (boleto)')
+    assert.equal((await baixar(linkPdf)).subarray(0, 5).toString(), '%PDF-')
+    const cs = (await db.from('controle_pagamentos').select('status_pagamento, remessa_arquivo, enviado_banco_em').in('id', [ctx.cBol, ctx.cPix])).data
+    assert.ok(cs.every(c => c.status_pagamento === 2 && c.remessa_arquivo === nomeRem && c.enviado_banco_em), JSON.stringify(cs))
+    assert.ok((await db.from('documentos').select('id').eq('projeto_id', PID).eq('nome_documento', nomeRem).eq('tipo_documento', -3)).data.length >= 1)
+    const jaEnviada = await chamar('gerar_remessa', { conta_bancaria_id: ctx.contaBanco, contas: [ctx.cPix], confirmar: true }); assert.ok(jaEnviada.erro && /não está "À Pagar"/.test(jaEnviada.texto), jaEnviada.texto)
+  })
+  await passo('relatório de enviados: PDF do dia e dia sem envios', async () => {
+    const t = (await chamar('relatorio_enviados', {})).texto; const n = num(t, /: (\d+) pagamento/); assert.ok(n >= 2, t)
+    assert.equal((await baixar(linksDe(t)[0])).subarray(0, 5).toString(), '%PDF-')
+    assert.match((await chamar('relatorio_enviados', { dia: '2020-01-01' })).texto, /Nenhum pagamento/)
+    assert.ok((await chamar('relatorio_enviados', { dia: '2026-13-45' })).erro)
+  })
+  await passo('retorno do banco: link, upload, contas viram Pagas, duplicado e arquivo errado recusados', async () => {
+    // retorno fictício: o próprio .REM com data/valor de efetivação e ocorrência "00" nos segmentos A e J
+    const ret = ctx.remTexto.split(/\r?\n/).filter(l => l.trim()).map(l => {
+      if (l[7] === '3' && l[13] === 'A') l = l.slice(0, 154) + '23112026' + '000000000005000' + l.slice(177)
+      if (l[7] === '3' && (l[13] === 'A' || l[13] === 'J')) l = l.slice(0, 230) + '00'.padEnd(10) + l.slice(240)
+      return l
+    }).join('\r\n')
+    const link = linkDe((await chamar('importar_retorno', {})).texto); assert.ok(link)
+    const nomeRet = `TESTE MCP ${T}.ret`
+    const naoRet = await enviar(link, 'x.pdf', pdf, 'application/pdf'); assert.equal(naoRet.status, 422)
+    const r = await enviar(link, nomeRet, ret, 'text/plain'); assert.equal(r.status, 200, JSON.stringify(r.corpo)); assert.match(r.corpo.info, /2 pagamento\(s\) marcados como Pagos/)
+    const cs = (await db.from('controle_pagamentos').select('id, status_pagamento, data_pagamento, valor_pagamento').in('id', [ctx.cBol, ctx.cPix])).data
+    assert.ok(cs.every(c => c.status_pagamento === 3 && c.data_pagamento), JSON.stringify(cs))
+    assert.equal(Number(cs.find(c => c.id === ctx.cPix).valor_pagamento), 50); assert.equal(cs.find(c => c.id === ctx.cPix).data_pagamento, '2026-11-23')
+    const dup = await enviar(link, nomeRet, ret, 'text/plain'); assert.equal(dup.status, 422); assert.match(dup.corpo.error, /já foi importado/)
+    const arqs = (await chamar('listar_arquivos_remessa', {})).texto; assert.ok(arqs.includes(ctx.remessa) && arqs.includes(nomeRet) && /baixar\//.test(arqs), arqs)
+  })
+
   // ---- cancelar ----
   await passo('pedido: cancelar', async () => {
     await exec('cancelar_pedido', { modulo: 'pagamentos', pedido_id: ctx.ped })
@@ -447,6 +511,7 @@ try {
 } finally {
   console.log('\nlimpando dados de teste…')
   try { await ctx.restaurarFluxo?.() } catch (e) { console.log('ATENÇÃO: não consegui restaurar o fluxo do DEV:', e.message) }
+  try { await ctx.restaurarSeq?.(); await ctx.limparArquivos?.() } catch (e) { console.log('ATENÇÃO: não consegui limpar remessa/sequencial:', e.message) }
   await limpar()
   const depois = await contar()
   const sobras = Object.keys(antes).filter(t => antes[t] !== depois[t]).map(t => `${t}: ${antes[t]} → ${depois[t]}`)

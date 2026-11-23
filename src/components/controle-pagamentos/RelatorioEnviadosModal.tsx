@@ -2,14 +2,7 @@
 
 import { useState } from 'react'
 import { X, FileText, RefreshCw } from 'lucide-react'
-import { gerarRelatorioPdf, baixarPdf } from '@/lib/relatorioPdf'
-
-interface Enviado {
-  id: number; pedido_id: number | null; fornecedor: string; empresa: string; categoria: string
-  tipo_pagamento: number | null; data_vencimento: string | null; data_pagamento: string | null
-  valor_pagar: number | null; valor_pagamento: number | null; observacao: string | null
-  enviado_banco_em: string; remessa_arquivo: string | null
-}
+import { gerarRelatorioEnviados, baixarPdf, type Enviado } from '@/lib/relatorioPdf'
 
 // "Hoje" no fuso de Brasília (o navegador pode estar em outro fuso)
 const hoje = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
@@ -31,19 +24,7 @@ export default function RelatorioEnviadosModal({ onClose }: { onClose: () => voi
       if (rows.length === 0) { setMsg(`Nenhum pagamento foi enviado ao banco em ${dataBr}.`); return }
 
       const manuais = rows.filter(r => !r.remessa_arquivo).length
-      const bytes = await gerarRelatorioPdf({
-        titulo: 'Relatório de Pagamentos Enviados ao Banco',
-        cabecalho: [`Dia do envio: ${dataBr}`, `Via remessa: ${rows.length - manuais} · Manual: ${manuais}`],
-        rows: rows.map(r => ({
-          pagamento_id: r.id, pedido_id: r.pedido_id, fornecedor: r.fornecedor, empresa: r.empresa, categoria: r.categoria,
-          tipo_pagamento: r.tipo_pagamento ?? 0,
-          // enquanto não há retorno do banco, data/valor do pagamento ainda não existem: usa vencimento/valor a pagar
-          data_pagamento: r.data_pagamento ?? r.data_vencimento ?? '',
-          valor_pagamento: r.valor_pagamento ?? r.valor_pagar ?? 0,
-          observacao: r.observacao ?? '',
-          origem: r.remessa_arquivo ? `Remessa ${r.remessa_arquivo}` : 'Manual',
-        })),
-      })
+      const bytes = await gerarRelatorioEnviados(dia, rows)
       baixarPdf(bytes, `enviados_banco_${dia}.pdf`)
       setMsg(`Relatório gerado: ${rows.length} pagamento(s) (${rows.length - manuais} via remessa, ${manuais} manual).`)
     } catch (e) {

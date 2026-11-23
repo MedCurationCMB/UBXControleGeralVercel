@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabaseBrowser as supabase } from '@/lib/supabase/client'
 import { parseRet, type RegistroRetorno as ParsedRecord } from '@/lib/retornoCnab'
 import { gerarRelatorioPdf, baixarPdf, bytesParaBase64 } from '@/lib/relatorioPdf'
+import { getFormaIniciacao, cleanDoc, getTipoDocFav } from '@/lib/remessaDados'
 import { X, Download, Upload, RefreshCw, AlertTriangle, CheckCircle, FileText, Info } from 'lucide-react'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -50,13 +51,6 @@ interface GeradoData {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-const FORMA_INICIACAO_MAP: Record<string, string> = {
-  telefone: '01', celular: '01', email: '02', 'e-mail': '02',
-  cpf: '03', cnpj: '03', 'cpf/cnpj': '03',
-  aleatoria: '04', aleatória: '04', 'chave aleatoria': '04', 'chave aleatória': '04',
-  'dados bancarios': '05', 'dados bancários': '05',
-}
-
 const FORMA_OPTIONS = [
   { code: '01', label: '01 - Telefone' },
   { code: '02', label: '02 - E-mail' },
@@ -68,20 +62,6 @@ const FORMA_OPTIONS = [
 const fmtMoeda = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtData = (d: string | null | undefined) =>
   d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '-'
-
-function getFormaIniciacao(tipoChaveId: number | null, tiposChaveMap: Record<number, string>): string {
-  if (!tipoChaveId) return '03'
-  const nome = (tiposChaveMap[tipoChaveId] ?? '').toLowerCase().trim()
-  return FORMA_INICIACAO_MAP[nome] ?? '03'
-}
-
-function cleanDoc(doc: string | null | undefined): string {
-  return String(doc ?? '').replace(/\D/g, '')
-}
-
-function getTipoDocFav(cnpjCpf: string | null): string {
-  return cleanDoc(cnpjCpf).length <= 11 ? '1' : '2'
-}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 

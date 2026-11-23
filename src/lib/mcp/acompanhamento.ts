@@ -6,33 +6,35 @@ import { clienteDoUsuario } from '@/lib/supabase/usuario'
 import { veModulo } from '@/lib/modulos'
 import { brl, falha, modulo, ok } from '@/lib/mcp/pedidos'
 import { controlaOrcamento, fluxoDe, MESES } from '@/lib/mcp/solicitacoes'
+import { linkUpload } from '@/lib/mcp/upload'
 import type { SessionPayload } from '@/types/database'
 
 const CONTROLE = { pagamentos: 'controle_pagamentos', recebimentos: 'controle_recebimento' } as const
 const preview = (resumo: string) => ok(`${resumo}\nNada foi feito ainda. Para executar, chame de novo com confirmar=true.`)
 
 // Acompanhamento do pedido: comentar, cancelar e ajustar/reenviar (depois de "pedir ajuste"), com as regras das telas.
-export function registrarAcompanhamento(server: McpServer, s: SessionPayload) {
+export function registrarAcompanhamento(server: McpServer, s: SessionPayload, origin: string) {
   const db = () => clienteDoUsuario(s)
   async function carregar(m: 'pagamentos' | 'recebimentos', id: number) {
     const { data } = await (await db()).from(TAB_PEDIDO[m].pedido).select('*').eq('id', id).maybeSingle()
     return data as Record<string, unknown> | null
   }
   const comentar = async (m: 'pagamentos' | 'recebimentos', id: number, texto: string) =>
-    (await db()).from(TAB_PEDIDO[m].comentarios).insert({ pedido_id: id, comentario: texto, usuario: s.username, data_comentario: new Date().toISOString() })
+    (await db()).from(TAB_PEDIDO[m].comentarios).insert({ pedido_id: id, comentario: texto, usuario: s.username, data_comentario: new Date().toISOString() }).select('id').single()
 
   server.registerTool('adicionar_comentario', {
-    description: 'Comenta num pedido (aparece no histórico para todos que acompanham). Anexo ao comentário ainda não. Use confirmar=false antes, como nas outras escritas.',
-    inputSchema: { modulo, pedido_id: z.number().int(), comentario: z.string().min(1), confirmar: z.boolean().default(false) },
+    description: 'Comenta num pedido (aparece no histórico para todos que acompanham). Com com_anexo=true o resultado traz um link (vale 30 min) para o usuário enviar PDFs que ficam ligados ao comentário. Use confirmar=false antes, como nas outras escritas.',
+    inputSchema: { modulo, pedido_id: z.number().int(), comentario: z.string().min(1), com_anexo: z.boolean().default(false), confirmar: z.boolean().default(false) },
     annotations: { destructiveHint: true },
-  }, async ({ modulo: m, pedido_id, comentario, confirmar }) => {
+  }, async ({ modulo: m, pedido_id, comentario, com_anexo, confirmar }) => {
     if (!veModulo(s.modulo, m)) return falha('Seu perfil não acessa este módulo.')
     const p = await carregar(m, pedido_id)
     if (!p) return falha('Pedido não encontrado (ou fora dos seus centros).')
     const resumo = `COMENTAR no pedido #${pedido_id} (${p.empresa}) como ${s.username}: "${comentario.trim()}"`
     if (!confirmar) return preview(resumo)
-    const { error } = await comentar(m, pedido_id, comentario.trim())
-    return error ? falha(error.message) : ok(`Feito: ${resumo}`)
+    const { data, error } = await comentar(m, pedido_id, comentario.trim())
+    if (error || !data) return falha(error?.message ?? 'Erro ao comentar.')
+    return ok(`Feito: ${resumo}${com_anexo ? `\nLink para enviar o(s) PDF(s) do comentário #${data.id} (vale 30 min): ${await linkUpload(origin, s, m, 'comentario', data.id)}` : ''}`)
   })
 
   server.registerTool('cancelar_pedido', {

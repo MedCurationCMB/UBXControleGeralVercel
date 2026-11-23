@@ -114,6 +114,31 @@ export async function gerarRelatorioPdf({ titulo, cabecalho, rows }: {
   return doc.output('arraybuffer')
 }
 
+export interface Enviado {
+  id: number; pedido_id: number | null; fornecedor: string; empresa: string; categoria: string
+  tipo_pagamento: number | null; data_vencimento: string | null; data_pagamento: string | null
+  valor_pagar: number | null; valor_pagamento: number | null; observacao: string | null
+  enviado_banco_em: string; remessa_arquivo: string | null
+}
+
+// Consolidado do dia (tela e MCP). `rows` não vazio.
+export function gerarRelatorioEnviados(dia: string, rows: Enviado[]): Promise<ArrayBuffer> {
+  const manuais = rows.filter(r => !r.remessa_arquivo).length
+  return gerarRelatorioPdf({
+    titulo: 'Relatório de Pagamentos Enviados ao Banco',
+    cabecalho: [`Dia do envio: ${new Date(dia + 'T12:00:00').toLocaleDateString('pt-BR')}`, `Via remessa: ${rows.length - manuais} · Manual: ${manuais}`],
+    rows: rows.map(r => ({
+      pagamento_id: r.id, pedido_id: r.pedido_id, fornecedor: r.fornecedor, empresa: r.empresa, categoria: r.categoria,
+      tipo_pagamento: r.tipo_pagamento ?? 0,
+      // enquanto não há retorno do banco, data/valor do pagamento ainda não existem: usa vencimento/valor a pagar
+      data_pagamento: r.data_pagamento ?? r.data_vencimento ?? '',
+      valor_pagamento: r.valor_pagamento ?? r.valor_pagar ?? 0,
+      observacao: r.observacao ?? '',
+      origem: r.remessa_arquivo ? `Remessa ${r.remessa_arquivo}` : 'Manual',
+    })),
+  })
+}
+
 export function baixarPdf(bytes: ArrayBuffer, nome: string) {
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
   const a = document.createElement('a')

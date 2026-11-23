@@ -7,7 +7,8 @@ import { importarExtrato } from '@/lib/extratoImportacao'
 import { CONTAS } from '@/lib/extratoVinculo'
 import { extrairDadosBoleto } from '@/lib/gemini'
 import { assinar, type UploadJwt } from '@/lib/mcp/oauth'
-import { brl, falha, modulo, ok } from '@/lib/mcp/pedidos'
+import { brl, falha, modulo, ok, podeDecidir } from '@/lib/mcp/pedidos'
+import { importarRetorno } from '@/lib/remessa'
 import { veModulo } from '@/lib/modulos'
 import { supabaseServer } from '@/lib/supabase/server'
 import { clienteDoUsuario } from '@/lib/supabase/usuario'
@@ -26,7 +27,8 @@ const CONTA = { pagamentos: { c: CONTAS.pagar, tipoCol: 'tipo_pagamento', tipoTa
 const TIPO_COMPROVANTE = -2, TIPO_BOLETO = 4
 export type Alvo = UploadJwt['alvo']
 export const ehConta = (a: Alvo) => a === 'comprovante' || a === 'boleto'
-export const aceita = (a: Alvo) => (a === 'extrato' ? '.csv,.ofx,.txt' : 'application/pdf')
+const FORMATO = { extrato: { titulo: 'Importar extrato', aceita: '.csv,.ofx,.txt', rotulo: 'CSV, OFX ou TXT' }, retorno: { titulo: 'Importar retorno do banco', aceita: '.ret,.rem', rotulo: 'RET ou REM (CNAB 240)' } } as const
+export const formatoDe = (a: Alvo) => (a === 'extrato' || a === 'retorno' ? FORMATO[a] : { titulo: 'Anexar documento', aceita: 'application/pdf', rotulo: 'PDF' })
 
 export async function linkUpload(origin: string, s: SessionPayload, mod: UploadJwt['mod'], alvo: Alvo, id: number) {
   const t = await assinar('upload', { uid: s.userId, pid: s.projetoId, mod, alvo, id }, '30m')
@@ -43,8 +45,13 @@ async function carregarConta(s: SessionPayload, mod: UploadJwt['mod'], id: numbe
 // O item existe e o usuário o enxerga (RLS: projeto, módulo e centros)? Devolve uma descrição curta ou null.
 export async function descricaoDoAlvo(s: SessionPayload, mod: UploadJwt['mod'], alvo: Alvo, id: number): Promise<string | null> {
   if (alvo === 'extrato') return s.modulo ? null : `Importar extrato bancário no projeto ${s.projetoNome}`
+  if (alvo === 'retorno') return podeDecidir(s, 'pagamentos') ? `Importar retorno do banco (CNAB 240) no projeto ${s.projetoNome}: os pagamentos efetivados viram Pagos` : null
   if (!veModulo(s.modulo, mod)) return null
   const cli = await clienteDoUsuario(s)
+  if (alvo === 'comentario') {
+    const { data } = await cli.from(TAB_PEDIDO[mod].comentarios).select('pedido_id, usuario').eq('id', id).maybeSingle()
+    return data && data.usuario === s.username ? `Anexo do seu comentário #${id} no pedido #${data.pedido_id}` : null
+  }
   if (ehConta(alvo)) {
     const c = await carregarConta(s, mod, id)
     if (!c) return null
@@ -75,6 +82,13 @@ export async function gravarArquivo(s: SessionPayload, t: UploadJwt, file: File)
     return { info: `extrato importado: conta ${r.extrato.conta}, ${String(r.extrato.periodo_inicio)} a ${String(r.extrato.periodo_fim)}, ${r.lancamentos.length} lançamento(s)` }
   }
 
+  if (t.alvo === 'retorno') {
+    if (!/\.(ret|rem)$/i.test(file.name)) return { erro: `"${file.name}" não é um arquivo de retorno (.ret ou .rem).` }
+    const r = await importarRetorno(supabaseServer, s.projetoId, s.username, file.name, buf)
+    if ('erro' in r) return { erro: r.erro }
+    return { info: `retorno importado: ${r.updatedCount} pagamento(s) marcados como Pagos (${r.records.filter(x => x.status === 'Pago').length} pagos e ${r.records.filter(x => x.status !== 'Pago').length} não pagos no arquivo)` }
+  }
+
   if (buf.subarray(0, 5).toString('latin1') !== '%PDF-') return { erro: `"${file.name}" não é um PDF.` }
   const { fileId, downloadUrl } = await uploadFile(buf, generateFileName(t.alvo === 'requisicao' ? 'req' : 'doc', file.name), 'application/pdf')
   const cli = await clienteDoUsuario(s)
@@ -88,6 +102,15 @@ export async function gravarArquivo(s: SessionPayload, t: UploadJwt, file: File)
     if (error) return { erro: error.message }
     if (tipo) await cli.from(TAB_PEDIDO[t.mod].pedido).update({ tipo_documento: tipo.id }).eq('id', t.id) // como a tela
     return {}
+  }
+
+  if (t.alvo === 'comentario') { // como a tela: documento sem tipo (-1) ligado ao comentário
+    const { data: c } = await cli.from(TAB_PEDIDO[t.mod].comentarios).select('pedido_id').eq('id', t.id).maybeSingle()
+    const { error } = await supabaseServer.from(DOCS[t.mod]).insert({
+      projeto_id: s.projetoId, pedido_id: c?.pedido_id, comentario_id: t.id, tipo_documento: -1, anexo_id: fileId, anexo_url: downloadUrl,
+      nome_documento: file.name, usuario: s.username, data_upload: new Date().toISOString(),
+    })
+    return error ? { erro: error.message } : { info: `anexado ao comentário #${t.id}` }
   }
 
   if (t.alvo === 'requisicao') {
@@ -126,9 +149,9 @@ export async function gravarArquivo(s: SessionPayload, t: UploadJwt, file: File)
 export function registrarUpload(server: McpServer, s: SessionPayload, origin: string) {
   server.registerTool('anexar_documento', {
     description: 'Gera um link (vale 30 min) para o usuário enviar PDFs (um ou vários, até 4 MB cada) para: um pedido ou requisição (alvo=pedido|requisicao, id do item), ' +
-      'o comprovante de pagamento de uma conta (alvo=comprovante, id da conta) ou o boleto de uma conta do tipo Boleto (alvo=boleto, id da conta; o sistema lê o código de barras). ' +
+      'o comprovante de pagamento de uma conta (alvo=comprovante, id da conta), o boleto de uma conta do tipo Boleto (alvo=boleto, id da conta; o sistema lê o código de barras) ou um comentário seu (alvo=comentario, id do comentário; adicionar_comentario com com_anexo=true já entrega o link). ' +
       'O chat não consegue entregar o arquivo à ferramenta: entregue o link ao usuário e peça para abrir, escolher os PDFs e enviar. Depois use listar_documentos para conferir.',
-    inputSchema: { modulo, alvo: z.enum(['pedido', 'requisicao', 'comprovante', 'boleto']), id: z.number().int() },
+    inputSchema: { modulo, alvo: z.enum(['pedido', 'requisicao', 'comprovante', 'boleto', 'comentario']), id: z.number().int() },
     annotations: { readOnlyHint: true },
   }, async ({ modulo: m, alvo, id }) => {
     const d = await descricaoDoAlvo(s, m, alvo, id)

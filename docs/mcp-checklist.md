@@ -6,7 +6,7 @@ Legenda: ✅ feito e publicado · ❌ falta · 📎 envolve upload · 🚫 não 
 
 Última atualização: 23/11/2026. Endereço do conector: `https://financeiro-importantist.vercel.app/api/mcp` (login OAuth do UBX; o projeto é o que estava ativo no UBX ao clicar em "Permitir").
 
-Testes: `node scripts/teste-mcp-prod.mjs "<usuário>" 1` (leitura e prévias, nunca grava) e `node scripts/teste-mcp-escrita-dev.mjs "<usuário>"` (gravação real, SÓ no PROJETO DEV: 45 passos, confere no banco e apaga tudo que criou; troca o fluxo do DEV para 3 só nos passos de "lançar conta" e restaura). Em 23/11 os 45 passos passaram, incluindo comprovante, boleto (código válido/inválido, reenvio sem duplicar), importação de extrato OFX por link, lançar conta direto, excluir (conta, documento, fornecedor, cliente, conta bancária), atendida sem pedido e alteração em lote: cadastros (fornecedor, cliente, centro, categoria, conta bancária), orçamento, requisição, pedido (criar, anexar PDF, comentar, pedir ajuste, ajustar e reenviar, autorizar, cancelar), contas (parcela barrada acima do valor do pedido, editar, adicionar, registrar e desfazer pagamento), conciliação (vincular, valor errado recusado, grupo de contas, desvincular), recebimentos (pedido de venda até recebimento) e realocação.
+Testes: `node scripts/teste-mcp-prod.mjs "<usuário>" 1` (leitura e prévias, nunca grava) e `node scripts/teste-mcp-escrita-dev.mjs "<usuário>"` (gravação real, SÓ no PROJETO DEV: 45 passos, confere no banco e apaga tudo que criou; troca o fluxo do DEV para 3 só nos passos de "lançar conta" e restaura). Em 23/11 os 50 passos passaram (os 5 últimos: comentário com anexo, remessa com prévia e recusas, relatório de enviados, retorno do banco; o teste restaura o sequencial da remessa e apaga os arquivos registrados, só ficam arquivos soltos no B2), incluindo comprovante, boleto (código válido/inválido, reenvio sem duplicar), importação de extrato OFX por link, lançar conta direto, excluir (conta, documento, fornecedor, cliente, conta bancária), atendida sem pedido e alteração em lote: cadastros (fornecedor, cliente, centro, categoria, conta bancária), orçamento, requisição, pedido (criar, anexar PDF, comentar, pedir ajuste, ajustar e reenviar, autorizar, cancelar), contas (parcela barrada acima do valor do pedido, editar, adicionar, registrar e desfazer pagamento), conciliação (vincular, valor errado recusado, grupo de contas, desvincular), recebimentos (pedido de venda até recebimento) e realocação.
 Ainda sem gravação real testada: rejeitar pedido/requisição de verdade fora o caso de 23/11, lançar orçamento com pedidos no mês, realocação aguardando autorização de outro usuário, e perfis diferentes de admin (o teste usa o dono).
 
 ## Busca e contexto
@@ -51,7 +51,7 @@ Ainda sem gravação real testada: rejeitar pedido/requisição de verdade fora 
 - [x] Responder ajuste: editar e reenviar (`ajustar_pedido`; só quem pediu ou admin; reconfere saldo e registra o de → para no histórico)
 - [x] Cancelar pedido (`cancelar_pedido`; avisa se há contas e pagamentos)
 - [x] Comentar (`adicionar_comentario`; os últimos 10 aparecem em `ver_pedido`)
-- [ ] 📎 Comentário com anexo (falta o link de upload para comentário)
+- [x] 📎 Comentário com anexo (`adicionar_comentario` com `com_anexo=true` entrega o link; também `anexar_documento` alvo=comentario; só o autor do comentário anexa; PDF ligado ao comentário como na tela)
 - [x] 📎 Documentos do pedido: enviar (por link) e listar com link de download (`anexar_documento`, `listar_documentos`)
 - [x] Documentos do pedido/conta: excluir (`excluir_documento`; o arquivo no armazenamento não é apagado, como na tela; os dados lidos do boleto saem junto)
 - [x] Realocar centro de resultado: solicitar com simulação do banco, listar, autorizar e recusar (`solicitar_realocacao`, `listar_realocacoes`, `decidir_realocacao`)
@@ -69,7 +69,7 @@ Ainda sem gravação real testada: rejeitar pedido/requisição de verdade fora 
 - [x] Alterar status/vencimento em lote (`atualizar_contas_em_lote`: até 200 contas por ids; recusa tudo se algum id não existir)
 - [x] Código de barras de boleto informado manualmente (`informar_boleto`; confere dígitos verificadores de 47 e 48 dígitos)
 - [ ] Importar em lote (dados direto na ferramenta)
-- [ ] 📎 Remessa CNAB, retorno do banco e relatório de enviados
+- [x] 📎 Remessa CNAB 240, relatório de enviados e retorno do banco (decisão do chefe em 23/11: arquivos saem por link de download, retorno entra por link de upload). `gerar_remessa` (PIX e boleto "À Pagar"; prévia, valida chave PIX e código de barras, devolve links do .REM e do PDF), `relatorio_enviados` (PDF do dia), `importar_retorno` (link de upload .ret/.rem: pagamentos efetivados viram Pagos), `listar_arquivos_remessa` (aba Arquivos). Só administrador de Pagamentos (a tela não restringe por perfil; decidi mais seguro, ajustar se o chefe quiser). Links de download valem 30 min e usam o id do arquivo no B2 (`/baixar/<token>`); lógica movida para `src/lib/remessa.ts` e as rotas `/api/remessa/*` viraram wrappers
 
 ## Extratos e conciliação
 
